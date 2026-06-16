@@ -1,10 +1,10 @@
 # docs-skills
 
-Claude Code plugin for documentation workflows. Provides orchestrator skills, review agents, code analysis tools, and style guide compliance checking for AsciiDoc and Markdown documentation.
+Claude Code plugin for documentation workflows. Provides orchestrator workflow skills, review agents, code analysis tools, and style guide compliance checking for AsciiDoc and Markdown documentation.
 
 ## Overview
 
-This plugin provides the documentation automation layer for Claude Code. It includes skills for requirements analysis, documentation planning and writing, code-grounded technical review, style guide compliance, and CI/CD integration with JIRA and Git platforms.
+This plugin provides a documentation automation layer for Claude Code. It includes skills for requirements analysis, documentation planning and writing, code-grounded technical review, style guide compliance, and Git CI/CD integration.
 
 ### Skills
 
@@ -39,28 +39,13 @@ This plugin provides the documentation automation layer for Claude Code. It incl
 
 ## Installation
 
-### From GitHub (marketplace)
-
-Add the repo as a marketplace, then install the plugin:
-
 ```bash
-claude plugin marketplace add opendatahub-io/docs-skills
-claude plugin install docs-skills@opendatahub-docs
-```
+# From GitHub
+claude plugin install github:opendatahub-io/docs-skills
 
-### From local clone
-
-```bash
+# From local clone
 git clone git@github.com:opendatahub-io/docs-skills.git
-claude --plugin-dir ./docs-skills
-```
-
-### For development
-
-Use `--plugin-dir` to load the plugin without installing. Run `/reload-plugins` after making changes:
-
-```bash
-claude --plugin-dir /path/to/docs-skills
+claude plugin install /path/to/docs-skills
 ```
 
 ## Prerequisites
@@ -82,45 +67,11 @@ GITLAB_TOKEN=your_gitlab_pat
 
 ### Software dependencies
 
-#### Required
-
-| Tool | Min version | Install | Purpose |
-|------|-------------|---------|---------|
-| Python | 3.10+ | [python.org](https://www.python.org/) | Script execution |
-| [uv](https://docs.astral.sh/uv/) | — | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | Runs PEP 723 scripts with auto-managed deps |
-| git | 2.0+ | System package manager | Version control |
-| jq | — | System package manager | JSON processing in shell scripts |
-| curl | — | System package manager | HTTP requests |
-
-#### Conditional (per-feature)
-
-| Tool | Install | Required for |
-|------|---------|--------------|
-| Node.js 18+ / npm | [nodejs.org](https://nodejs.org/) | `learn-code` tree-sitter AST parsing |
-| `gh` | `dnf install gh` / [cli.github.com](https://cli.github.com/) | GitHub PR/issue workflows |
-| `glab` | `dnf install glab` / [gitlab.com](https://gitlab.com/gitlab-org/cli) | GitLab MR workflows |
-| `gcloud` | [cloud.google.com/sdk](https://cloud.google.com/sdk/docs/install) | Google Docs export (`docs-convert-gdoc-md`) |
-| [Vale](https://vale.sh/) | `dnf copr enable mczernek/vale && dnf install vale` / `brew install vale` | `lint-with-vale` style linting |
-
-#### Development / linting
-
-| Tool | Install | Used by |
-|------|---------|---------|
-| [ruff](https://docs.astral.sh/ruff/) | `uv tool install ruff` | `make lint` |
-| [shellcheck](https://www.shellcheck.net/) | `dnf install shellcheck` | `make lint` |
-
-#### Python packages (auto-managed by uv)
-
-These are declared as PEP 723 inline metadata in their scripts and installed automatically by `uv run --script` — no manual `pip install` needed:
-
-| Script | Packages |
-|--------|----------|
-| `jira-reader/scripts/jira_reader.py` | `jira`, `urllib3`, `ratelimit` |
-| `jira-writer/scripts/jira_writer.py` | `jira`, `ratelimit` |
-| `git-pr-reader/scripts/git_pr_reader.py` | `PyGithub`, `python-gitlab`, `pyyaml` |
-| `article-extractor/scripts/article_extractor.py` | `requests`, `beautifulsoup4`, `html2text` |
-| `redhat-docs-toc/scripts/toc_extractor.py` | `requests`, `beautifulsoup4` |
-| `docs-convert-gdoc-md/scripts/gdoc2md.py` | `python-pptx` |
+- Python 3.10+
+- [uv](https://docs.astral.sh/uv/) (for PEP 723 script execution)
+- Node.js (for tree-sitter code analysis)
+- `gh` CLI (for GitHub integration)
+- `glab` CLI (for GitLab integration)
 
 ## Quick Start
 
@@ -147,7 +98,7 @@ The orchestrator runs a YAML-defined step list. Customize per-repo by placing a 
 ```bash
 mkdir -p .agent_workspace
 # Copy the default workflow and edit it
-cp $(claude plugin path docs-skills)/skills/docs-orchestrator/defaults/docs-workflow.yaml \
+cp $(claude plugin path docs-tools)/skills/docs-orchestrator/defaults/docs-workflow.yaml \
    .agent_workspace/docs-workflow.yaml
 ```
 
@@ -157,11 +108,8 @@ See the workflow YAML for available steps, conditional execution (`when:` field)
 
 | Flag | Description |
 |------|-------------|
-| `--repo <url-or-path>` | Source code repository for learn-code analysis |
+| `--repo <url-or-path>` | Source code repository for code-learner analysis |
 | `--pr <url>` | PR/MR URL to include in requirements analysis (repeatable) |
-| `--no-source-repo` | Skip source resolution and all source-dependent steps |
-| `--auto-discover-repos` | Skip confirmation when secondary repos are discovered |
-| `--max-secondary-repos <N>` | Maximum secondary repos to clone (default: 3) |
 | `--mkdocs` | Generate Material for MkDocs Markdown instead of AsciiDoc |
 | `--create-merge-request` | Create branch, commit, push, and open MR/PR |
 | `--workflow <name>` | Use a named workflow variant |
@@ -179,7 +127,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow.
 
 ### Prerequisites
 
-See [Software dependencies](#software-dependencies) above. For linting, also install `ruff` and `shellcheck`.
+- Python 3.10+ with [ruff](https://docs.astral.sh/ruff/)
+- [uv](https://docs.astral.sh/uv/)
+- [shellcheck](https://www.shellcheck.net/)
 
 ## Evaluation
 
