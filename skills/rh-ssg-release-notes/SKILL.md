@@ -1,7 +1,7 @@
 ---
 context: fork
 name: rh-ssg-release-notes
-description: Review Red Hat release notes for SSG compliance — tense rules (present default, past for before this update), informative headings (sentence case, no gerunds, under 120 chars), Jira references on known/fixed issues, AsciiDoc formatting (description lists, + attachment), and release note types such as new features, enhancements, rebases (X.Y.Z format), Technology Preview entries, deprecated features, removed features, known issues (Cause > Consequence > Workaround > Result), and fixed issues (CCFR pattern). Use this skill whenever reviewing, writing, or checking release notes for any Red Hat product.
+description: Review Red Hat release notes for SSG compliance — tense rules (present default, past for before this update), informative headings (sentence case, no gerunds, under 120 chars), Jira references on known/fixed issues, AsciiDoc formatting (description lists, + attachment), and release note types: new features, enhancements, rebases (X.Y.Z format), Technology Preview entries, deprecated features, removed features, known issues (Cause > Consequence > Workaround > Result), and fixed issues (CCFR pattern). Use this skill whenever reviewing, writing, or checking release notes for any Red Hat product.
 ---
 
 # Red Hat SSG: Release Notes review skill
@@ -83,7 +83,7 @@ Review release notes for compliance with the Red Hat Supplementary Style Guide.
 
 - [ ] Feature was documented as deprecated in a preceding release
 - [ ] Describes the feature, states it is removed, and provides the alternative
-- [ ] Small part removals are treated as feature changes, not removed features
+- [ ] Small part removals are treated as feature change, not removed features
 
 ### Known issues
 

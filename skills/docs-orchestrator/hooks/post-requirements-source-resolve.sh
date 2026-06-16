@@ -119,7 +119,7 @@ RESOLVE_ARGS=(
   --skip-deferred-on-no-source
 )
 
-python3 "$RESOLVE_SCRIPT" "${RESOLVE_ARGS[@]}" > "$RESULT_FILE" 2>&2
+python3 "$RESOLVE_SCRIPT" "${RESOLVE_ARGS[@]}" > "$RESULT_FILE" 2>&1
 RESOLVE_EXIT=$?
 
 if [ "$RESOLVE_EXIT" -eq 0 ]; then
