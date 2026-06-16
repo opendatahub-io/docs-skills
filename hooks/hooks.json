@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f ${CLAUDE_PROJECT_DIR}/.claude/hooks/workflow-completion-check.sh && bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/workflow-completion-check.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f ${CLAUDE_PROJECT_DIR}/.claude/hooks/post-requirements-source-resolve.sh && bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/post-requirements-source-resolve.sh",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}

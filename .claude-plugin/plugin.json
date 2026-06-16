@@ -1,0 +1,10 @@
+{
+  "name": "docs-tools",
+  "version": "0.1.0",
+  "description": "Documentation review, writing, and workflow tools for AsciiDoc and Markdown documentation",
+  "author": {
+    "name": "opendatahub-io"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/opendatahub-io/docs-skills"
+}
