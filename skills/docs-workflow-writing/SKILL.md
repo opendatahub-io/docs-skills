@@ -1,7 +1,7 @@
 ---
 name: docs-workflow-writing
 description: Write documentation from a documentation plan. Dispatches the docs-writer agent. Supports AsciiDoc (default) and MkDocs formats. Default placement is UPDATE-IN-PLACE; use --draft for staging area. Also supports fix mode for applying technical review corrections.
-argument-hint: <ticket> --base-path <path> --format <adoc|mkdocs> [--draft] [--repo <path>]... [--repo-path <path>] [--fix-from <review_path>]
+argument-hint: "<ticket> --base-path <path> --format <adoc|mkdocs> [--draft] [--repo <path>]... [--repo-path <path>] [--fix-from <review_path>]"
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent
 ---
 

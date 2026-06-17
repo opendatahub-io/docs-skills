@@ -1,0 +1,14 @@
+{
+  "name": "opendatahub-docs",
+  "owner": {
+    "name": "opendatahub-io"
+  },
+  "description": "Documentation review, writing, and workflow tools for AsciiDoc and Markdown documentation",
+  "plugins": [
+    {
+      "name": "docs-tools",
+      "source": ".",
+      "description": "Documentation review, writing, and workflow tools for AsciiDoc and Markdown documentation"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 ---
 name: docs-workflow-requirements
 description: Analyze documentation requirements for a JIRA ticket using a two-pass fanout. Pass 1 dispatches a discovery agent to enumerate requirements. Pass 2 fans out one deep-analysis agent per requirement for isolated, thorough analysis. Assembles the standard requirements.md output. Invoked by the orchestrator.
-argument-hint: <ticket> --base-path <path> [--pr <url>]... [--repo <path>]
+argument-hint: "<ticket> --base-path <path> [--pr <url>]... [--repo <path>]"
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, WebSearch, WebFetch
 ---
 
