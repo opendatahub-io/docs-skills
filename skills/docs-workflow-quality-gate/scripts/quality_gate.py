@@ -86,11 +86,20 @@ def read_doc_content(base_path):
         print("ERROR: No files listed in writing/step-result.json", file=sys.stderr)
         sys.exit(1)
 
+    root = Path(base_path).resolve()
     parts = []
     for fpath in files:
-        p = Path(fpath)
-        if p.exists() and p.suffix in (".adoc", ".md"):
-            parts.append(f"### {p.name}\n\n{p.read_text()}")
+        p = Path(fpath).resolve()
+        if not p.is_relative_to(root):
+            print(f"ERROR: path outside workspace: {p}", file=sys.stderr)
+            sys.exit(1)
+        if not p.exists() or p.suffix not in (".adoc", ".md"):
+            print(f"WARNING: skipping {p} (missing or unsupported suffix)", file=sys.stderr)
+            continue
+        parts.append(f"### {p.name}\n\n{p.read_text()}")
+    if not parts:
+        print("ERROR: No readable documentation files found", file=sys.stderr)
+        sys.exit(1)
     return "\n\n".join(parts)
 
 
@@ -98,8 +107,8 @@ def read_ticket_context(base_path):
     """Read requirements/discovery.json and format as ticket context."""
     discovery = Path(base_path) / "requirements" / "discovery.json"
     if not discovery.exists():
-        print(f"WARNING: {discovery} not found, using minimal context", file=sys.stderr)
-        return "(No ticket context available)"
+        print(f"ERROR: {discovery} not found — required for intent-alignment judge", file=sys.stderr)
+        sys.exit(1)
 
     data = json.loads(discovery.read_text())
     lines = [f"**Ticket**: {data.get('ticket_summary', 'Unknown')}"]

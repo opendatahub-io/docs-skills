@@ -584,15 +584,15 @@ The `quality-gate` step uses `when: has_many_requirements`. This condition is ev
 
 The threshold and confidence logic can be overridden by using a custom workflow YAML that either always includes or always excludes quality-gate.
 
-When quality-gate is skipped, also mark `resolve-feedback` as `skipped` (it depends on quality-gate output).
+When quality-gate is skipped, resolve-feedback may still run if SME review comments are present (see `when: has_feedback` below).
 
 ### `when: has_feedback` condition
 
-The `resolve-feedback` step uses `when: has_feedback`. Evaluate this condition **after** the quality-gate step completes:
+The `resolve-feedback` step uses `when: has_feedback`. Evaluate this condition **after** the quality-gate step completes (or is skipped):
 
 - If quality-gate completed with `intent_alignment < 4` → `has_feedback` is true, mark resolve-feedback as `pending`
-- If quality-gate completed with `intent_alignment >= 4` → `has_feedback` is false, mark resolve-feedback as `skipped`
-- If quality-gate was skipped → mark resolve-feedback as `skipped`
+- If quality-gate completed with `intent_alignment >= 4` → check for unresolved SME review comments on the MR/PR (if one exists). If comments exist, `has_feedback` is true; otherwise mark resolve-feedback as `skipped`
+- If quality-gate was skipped → check for unresolved SME review comments on the MR/PR (if one exists). If comments exist, `has_feedback` is true and resolve-feedback runs with `sources: ["sme-comments"]` only; otherwise mark resolve-feedback as `skipped`
 
 ## Commit confirmation gate
 
