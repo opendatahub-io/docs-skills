@@ -24,7 +24,7 @@ The skill uses a Python script that connects to JIRA using an authentication tok
 
 ### Environment Variables Required
 
-Set in `~/.env` (global) or `.env` in the project root (local override). See docs-tools README for setup:
+Set in `~/.env` (global) or `.env` in the project root (local override). See docs-skills README for setup:
 
 ```bash
 JIRA_API_TOKEN=your-jira-api-token

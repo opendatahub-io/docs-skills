@@ -106,7 +106,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py detect --json
 
 ### Authentication
 
-Set in `~/.env` (global) or `.env` in the project root (local override). See docs-tools README for setup:
+Set in `~/.env` (global) or `.env` in the project root (local override). See docs-skills README for setup:
 
 ```bash
 GITHUB_TOKEN=your-github-pat    # required scope: "repo" for private, "public_repo" for public

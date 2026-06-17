@@ -1,8 +1,8 @@
-# docs-tools evaluation configuration
+# docs-skills evaluation configuration
 # Compatible with agent-eval-harness (https://github.com/opendatahub-io/agent-eval-harness)
 
-name: docs-tools
-description: Evaluation suite for docs-tools skills
+name: docs-skills
+description: Evaluation suite for docs-skills skills
 cases_dir: eval/cases
 
 # Add test cases as directories under eval/cases/

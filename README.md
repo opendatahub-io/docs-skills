@@ -98,7 +98,7 @@ The orchestrator runs a YAML-defined step list. Customize per-repo by placing a 
 ```bash
 mkdir -p .agent_workspace
 # Copy the default workflow and edit it
-cp $(claude plugin path docs-tools)/skills/docs-orchestrator/defaults/docs-workflow.yaml \
+cp $(claude plugin path docs-skills)/skills/docs-orchestrator/defaults/docs-workflow.yaml \
    .agent_workspace/docs-workflow.yaml
 ```
 

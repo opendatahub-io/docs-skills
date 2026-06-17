@@ -45,7 +45,7 @@ python3 skills/learn-code/scripts/detect_language.py --repo /path/to/repo
 
 Skills use bare names: `docs-workflow-requirements`, `jira-reader`, `learn-code`.
 
-Qualified names (`docs-tools:docs-workflow-requirements`) also work since the plugin name is `docs-tools`. Use bare names in workflow YAML step lists and skill-to-skill invocations.
+Qualified names (`docs-skills:docs-workflow-requirements`) also work since the plugin name is `docs-skills`. Use bare names in workflow YAML step lists and skill-to-skill invocations.
 
 ## Contributing rules
 
