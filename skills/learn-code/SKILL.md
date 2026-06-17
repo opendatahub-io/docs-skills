@@ -12,10 +12,10 @@ Single-skill pipeline that detects language, maps modules, analyzes each module 
 ## Usage
 
 ```
-/code-learner:learn-code /path/to/repo
-/code-learner:learn-code https://github.com/user/repo
-/code-learner:learn-code git@github.com:user/repo.git
-/code-learner:learn-code /path/to/repo --exclude "test/*" "vendor/*"
+/docs-skills:learn-code /path/to/repo
+/docs-skills:learn-code https://github.com/user/repo
+/docs-skills:learn-code git@github.com:user/repo.git
+/docs-skills:learn-code /path/to/repo --exclude "test/*" "vendor/*"
 ```
 
 ## Arguments
@@ -239,7 +239,7 @@ If `module_count` is 0, write an empty registry and step-result, then skip to St
 
 ```
 Agent:
-  subagent_type: code-learner:repo-mapper
+  subagent_type: docs-skills:repo-mapper
   description: "Map modules for <REPO_NAME>"
   prompt: |
     Analyze this <PRIMARY_LANGUAGE> repository and produce a module registry.
@@ -408,7 +408,7 @@ Each agent gets:
 
 ```
 Agent:
-  subagent_type: code-learner:module-analyzer
+  subagent_type: docs-skills:module-analyzer
   description: "Analyze module: <module-name>"
   prompt: |
     Analyze the following <LANGUAGE> module for engineer onboarding.
@@ -604,7 +604,7 @@ Group priority pairs into batches of **max 10 agents per batch**. Dispatch each 
 
 ```
 Agent:
-  subagent_type: code-learner:relationship-analyzer
+  subagent_type: docs-skills:relationship-analyzer
   description: "Analyze relationship: <mod_a> <-> <mod_b>"
   prompt: |
     Analyze the relationship between these two <LANGUAGE> modules.
@@ -760,7 +760,7 @@ The context is always written to a file. The synthesis agent reads it from disk 
 
 ```
 Agent:
-  subagent_type: code-learner:synthesis-writer
+  subagent_type: docs-skills:synthesis-writer
   description: "Write onboarding guide for <REPO_NAME>"
   prompt: |
     Write an engineer onboarding guide for this codebase.
@@ -846,4 +846,4 @@ Workflow:      <BASE_PATH>/workflow/learn-code_<REPO_NAME>.json
 
 - Read the onboarding guide: `cat <BASE_PATH>/synthesis/ONBOARDING.md`
 - View the dependency graph: `cat <BASE_PATH>/relationships/dependency-graph.json`
-- Query the codebase: `/code-learner:query-code "your question" --repo <REPO_PATH>`
+- Query the codebase: `/docs-skills:query-code "your question" --repo <REPO_PATH>`
