@@ -47,8 +47,20 @@ workflow:
       description: Style guide compliance review
       inputs: [writing, technical-review]
 
+    - name: quality-gate
+      skill: docs-workflow-quality-gate
+      description: Score documentation quality and intent alignment
+      when: has_many_requirements
+      inputs: [writing, requirements]
+
+    - name: resolve-feedback
+      skill: docs-workflow-resolve-feedback
+      description: Resolve quality gaps and SME comments
+      when: has_feedback
+      inputs: [quality-gate, writing, requirements, planning]
+
     - name: create-merge-request
-      skill: docs-skills:docs-workflow-create-merge-request
+      skill: docs-workflow-create-merge-request
       description: Commit, push, and create merge request or pull request
       when: create_merge_request
-      inputs: [writing, style-review, technical-review]
+      inputs: [writing, style-review, technical-review, quality-gate]
