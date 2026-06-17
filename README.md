@@ -39,13 +39,28 @@ This plugin provides the documentation automation layer for Claude Code. It incl
 
 ## Installation
 
-```bash
-# From GitHub
-claude plugin install github:opendatahub-io/docs-skills
+### From GitHub (marketplace)
 
-# From local clone
+Add the repo as a marketplace, then install the plugin:
+
+```bash
+claude plugin marketplace add opendatahub-io/docs-skills
+claude plugin install docs-skills@opendatahub-docs
+```
+
+### From local clone
+
+```bash
 git clone git@github.com:opendatahub-io/docs-skills.git
-claude plugin install /path/to/docs-skills
+claude --plugin-dir ./docs-skills
+```
+
+### For development
+
+Use `--plugin-dir` to load the plugin without installing. Run `/reload-plugins` after making changes:
+
+```bash
+claude --plugin-dir /path/to/docs-skills
 ```
 
 ## Prerequisites
@@ -98,7 +113,7 @@ The orchestrator runs a YAML-defined step list. Customize per-repo by placing a 
 ```bash
 mkdir -p .agent_workspace
 # Copy the default workflow and edit it
-cp $(claude plugin path docs-tools)/skills/docs-orchestrator/defaults/docs-workflow.yaml \
+cp $(claude plugin path docs-skills)/skills/docs-orchestrator/defaults/docs-workflow.yaml \
    .agent_workspace/docs-workflow.yaml
 ```
 

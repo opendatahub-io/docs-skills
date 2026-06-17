@@ -1,7 +1,7 @@
 ---
 name: docs-workflow-tech-review
 description: Technical accuracy review of documentation drafts with optional code-learner validation. When code analysis is available, validates documentation claims against learn-code analysis data before dispatching the technical-reviewer agent. Iteration logic is owned by the orchestrator, not this skill.
-argument-hint: <ticket> --base-path <path> [--repo <path>]...
+argument-hint: "<ticket> --base-path <path> [--repo <path>]..."
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, WebSearch, WebFetch
 ---
 

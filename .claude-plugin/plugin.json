@@ -1,6 +1,6 @@
 {
-  "name": "docs-tools",
-  "version": "0.1.0",
+  "name": "docs-skills",
+  "version": "0.2.0",
   "description": "Documentation review, writing, and workflow tools for AsciiDoc and Markdown documentation",
   "author": {
     "name": "opendatahub-io"
