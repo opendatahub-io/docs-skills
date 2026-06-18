@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "test -f ${CLAUDE_PROJECT_DIR}/.claude/hooks/workflow-completion-check.sh && bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/workflow-completion-check.sh",
+            "command": "if [ -f ${CLAUDE_PROJECT_DIR}/.claude/hooks/workflow-completion-check.sh ]; then bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/workflow-completion-check.sh; fi",
             "timeout": 10
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "test -f ${CLAUDE_PROJECT_DIR}/.claude/hooks/post-requirements-source-resolve.sh && bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/post-requirements-source-resolve.sh",
+            "command": "if [ -f ${CLAUDE_PROJECT_DIR}/.claude/hooks/post-requirements-source-resolve.sh ]; then bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/post-requirements-source-resolve.sh; fi",
             "timeout": 120
           }
         ]
