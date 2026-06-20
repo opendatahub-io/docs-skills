@@ -424,6 +424,7 @@ Build the args string for the step skill. The orchestrator maps its user-facing 
    - `technical-review`: `[--repo <repo_path>]...` — pass `--repo` for the primary source repo AND for each entry in `options.additional_sources` (in order)
    - `style-review`: `--format <adoc|mkdocs>`
    - `create-merge-request`: `[--draft] [--repo-path <path>]`
+   - `action-comments`: `[--pr <url>] [--include-resolved]` — pass `--pr` from `options.pr_urls[0]` or from `steps.create-merge-request.result.url` if available
 
 Step skills derive their own output folder and input folders from `--base-path` and step name conventions. No per-input flag wiring needed.
 
@@ -550,9 +551,9 @@ The quality gate step runs in a loop until scores are acceptable or two iteratio
 3. If `intent_alignment >= 4` → mark completed, proceed to create-merge-request. If `doc_quality < 4`, log a warning: "doc_quality=N/5 is below threshold — manual review recommended." (doc_quality is informational only)
 4. If `intent_alignment < 4` and fewer than 2 iterations completed → dispatch the writer in fix mode using the feedback brief produced by the quality-gate skill:
    ```
-   Skill: docs-workflow-writing, args: "<ticket> --base-path <base_path> [--repo <repo_path>]... --fix-from <BASE_PATH>/quality-gate/feedback-brief.md"
+   Skill: docs-workflow-writing, args: "<ticket> --base-path <base_path> [--repo <repo_path>]... --fix-from <BASE_PATH>/quality-gate/feedback-brief-<iteration>.md"
    ```
-   The quality-gate skill writes `feedback-brief.md` when `passed = false` — the orchestrator does not build this file. Pass `--repo` for the primary source repo and each additional source (same as the writing step's initial invocation) so the fix agent can verify against source code.
+   The quality-gate skill writes `feedback-brief-<iteration>.md` (e.g., `feedback-brief-1.md`) when `passed = false` — the orchestrator does not build this file. The iteration number comes from `steps.quality-gate.result.iteration`. Pass `--repo` for the primary source repo and each additional source (same as the writing step's initial invocation) so the fix agent can verify against source code.
    Then re-run the quality gate (go to step 1).
 5. After 2 iterations with `intent_alignment` still below 4:
    - If `intent_alignment >= 3` → accept with warning: "Quality gate marginal (intent_alignment=N). Manual review recommended."

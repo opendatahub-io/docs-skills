@@ -1,7 +1,7 @@
 ---
 name: action-comments
 description: Fetch unresolved review comments from GitHub PRs or GitLab MRs and interactively action them on local files. Works standalone or as a workflow step (with --base-path). MUST BE USED when the user asks to action, address, or process review comments on a PR/MR, or when the docs-review-comments workflow is running.
-argument-hint: "[url] [--include-resolved] [--base-path <path>]"
+argument-hint: "[url] [--include-resolved] | <ticket> --base-path <path> [url]"
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Agent, AskUserQuestion
 ---
 
@@ -11,13 +11,34 @@ Fetch unresolved review comments from a GitHub PR or GitLab MR and interactively
 
 ## Arguments
 
+### Standalone mode
+
 | Argument | Description |
 |----------|-------------|
 | `$1` (positional) | PR/MR URL (optional — auto-detects from current branch if omitted) |
 | `--include-resolved` | Include resolved comments in addition to unresolved |
-| `--base-path <path>` | Workflow step mode: write `step-result.json` sidecar to this path |
 
-## Step 0: Load workspace context (if available)
+### Workflow step mode
+
+| Argument | Description |
+|----------|-------------|
+| `$1` (positional) | Ticket ID (required, e.g., `PROJ-123`) |
+| `--base-path <path>` | Base output path (required). Used to **read** workspace artifacts from prior workflow steps (code-analysis, requirements, etc.) and to **write** `step-result.json` sidecar to `${BASE_PATH}/action-comments/` |
+| `--pr <url>` | PR/MR URL (optional — auto-detects from current branch if omitted) |
+| `--include-resolved` | Include resolved comments in addition to unresolved |
+
+## Step 1: Resolve PR/MR URL
+
+If a URL was provided (positional `$1` in standalone mode, or `--pr` in workflow step mode), use it directly. If omitted, auto-detect:
+```bash
+PR_URL=$(python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py detect 2>/dev/null)
+```
+
+If detection fails, stop with:
+
+> Could not detect a PR/MR for the current branch. Please provide a URL and try again.
+
+## Step 2: Load workspace context (if available)
 
 Check whether a `.agent_workspace/` directory exists in the current repository root with artifacts from a prior docs-workflow run. This step is **automatic** — no user input required.
 
@@ -25,14 +46,15 @@ Check whether a `.agent_workspace/` directory exists in the current repository r
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 ```
 
-If `--base-path` was provided, use that directly as `WORKSPACE`. Otherwise, probe for a workspace:
+**Resolve `WORKSPACE`:**
 
-1. Look for `.agent_workspace/` under `REPO_ROOT`
-2. If it exists, list ticket directories inside it. If exactly one exists, use it. If multiple exist, pick the one whose `create-merge-request/step-result.json` contains a `url` matching `PR_URL` (resolved in Step 1). If no match or PR_URL is not yet known, defer selection until after Step 1 and re-check.
+- If `--base-path` was provided, use that directly as `WORKSPACE`.
+- Otherwise, look for `.agent_workspace/` under `REPO_ROOT`:
+  - If it does not exist → set `WORKSPACE = null`.
+  - If it contains exactly one ticket directory → use it.
+  - If it contains multiple ticket directories → pick the one whose `create-merge-request/step-result.json` contains a `url` matching `PR_URL` (resolved in Step 1). If no match, set `WORKSPACE = null`.
 
-Set `WORKSPACE` to the matched ticket directory (e.g., `.agent_workspace/proj-123/`), or `null` if no workspace is found.
-
-When `WORKSPACE` is set, read the following artifacts if they exist — do not fail if any are missing:
+**Load artifacts** (when `WORKSPACE` is set) — read each if it exists, do not fail if missing:
 
 | Artifact | Path | Use |
 |----------|------|-----|
@@ -50,18 +72,7 @@ Log what was loaded:
 
 If no workspace is found, log nothing and proceed without grounding — the skill works standalone.
 
-## Step 1: Resolve PR/MR URL
-
-If URL provided, use directly. If omitted, auto-detect:
-```bash
-PR_URL=$(python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py detect 2>/dev/null)
-```
-
-If detection fails, stop with:
-
-> Could not detect a PR/MR for the current branch. Please provide a URL and try again.
-
-## Step 2: Get PR info and check out the branch locally
+## Step 3: Get PR info and check out the branch locally
 
 Fetch PR metadata to determine the source branch:
 
@@ -103,7 +114,7 @@ Report to the user:
 
 > Checked out branch `{HEAD_REF}` for PR: {title}
 
-## Step 3: Fetch review comments
+## Step 4: Fetch review comments
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py comments "${PR_URL}" --json
@@ -117,9 +128,9 @@ If no comments are returned, report:
 
 > No unresolved review comments found on this PR/MR.
 
-And stop. If in workflow step mode, write a minimal step-result.json (see Step 6).
+And stop. If in workflow step mode, write a minimal step-result.json (see Step 7).
 
-## Step 4: Categorize comments
+## Step 5: Categorize comments
 
 Before presenting comments, categorize each one:
 
@@ -132,7 +143,7 @@ Before presenting comments, categorize each one:
 
 For **Outdated** detection: read the file at the comment's `path` and `line`. If the content no longer matches what the comment references, mark as outdated. Extract the reviewer's quoted text from markdown blockquotes (`>` lines) in the `body` field. If no blockquotes are present, fall back to comparing against the line context.
 
-## Step 5: Process each comment interactively
+## Step 6: Process each comment interactively
 
 For each non-outdated comment, present:
 
@@ -181,7 +192,7 @@ Apply the user's text using Edit tool, confirm, move to next.
 
 **When Skip is selected**: Move to next comment.
 
-## Step 6: Summary
+## Step 7: Summary
 
 After all comments are processed, present:
 

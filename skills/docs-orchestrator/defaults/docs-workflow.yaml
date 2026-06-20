@@ -57,4 +57,4 @@ workflow:
       skill: docs-workflow-create-merge-request
       description: Commit, push, and create merge request or pull request
       when: create_merge_request
-      inputs: [writing, style-review, technical-review, quality-gate]
+      inputs: [writing, style-review, technical-review]
