@@ -301,7 +301,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/parse_title.py "<OUTPUT_FILE>"
 
 The script prints `{"title": "..."}` to stdout. If it exits non-zero, report the stderr message as an error.
 
-Use the `title` value from the script's JSON output to write the sidecar to `<OUTPUT_DIR>/step-result.json`:
+Use the `title` value from the script's JSON output to write the sidecar to `<OUTPUT_DIR>/step-result.json`. Include `requirement_count` from the discovery output parsed in step 4:
 
 ```json
 {
@@ -309,7 +309,8 @@ Use the `title` value from the script's JSON output to write the sidecar to `<OU
   "step": "requirements",
   "ticket": "<TICKET>",
   "completed_at": "<current ISO 8601 timestamp>",
-  "title": "<first heading, max 80 chars>"
+  "title": "<first heading, max 80 chars>",
+  "requirement_count": 8
 }
 ```
 
