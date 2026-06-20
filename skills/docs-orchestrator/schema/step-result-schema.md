@@ -322,42 +322,42 @@ When an existing linked ticket is found:
 | `intent_alignment` | integer | Intent alignment score (1-5) from Opus judge agent | Orchestrator — iteration logic |
 | `passed` | boolean | Whether intent_alignment >= 4 (doc_quality is informational only) | Orchestrator — iteration logic |
 | `iteration` | integer | Which iteration of the quality gate loop (1-based) | Orchestrator |
-| `gaps` | array | Identified gaps with evidence status and recommended action | resolve-feedback step |
-| `gaps[].ac_item` | string | The acceptance criteria item that was missed | resolve-feedback |
+| `gaps` | array | Identified gaps with evidence status and recommended action | Quality gate iteration — inline fix dispatch |
+| `gaps[].ac_item` | string | The acceptance criteria item that was missed | Quality gate iteration |
 | `gaps[].judge` | string | Which judge flagged the gap (e.g., `"intent_alignment"`) | Informational |
-| `gaps[].evidence_status` | string | Cross-referenced against scope-req-audit: `"grounded"`, `"partial"`, `"absent"`, or `"unknown"` | resolve-feedback — determines fix strategy |
-| `gaps[].action` | string | Recommended action: `"document_as_unsupported"`, `"expand_with_evidence"`, `"add_missing_section"`, or `"investigate"` | resolve-feedback |
-| `gaps[].file` | string\|null | AsciiDoc filename where the fix should be applied | resolve-feedback — targeted file edits |
-| `gaps[].section` | string\|null | Section heading or insertion point within the file | resolve-feedback — targeted section edits |
-| `rationales` | object | Full judge rationale texts for the feedback brief | resolve-feedback |
-| `rationales.doc_quality` | string | Complete doc_quality judge rationale | resolve-feedback — included verbatim in feedback brief |
-| `rationales.intent_alignment` | string | Complete intent_alignment judge rationale with per-AC coverage assessments, missing artifacts, scope analysis | resolve-feedback — included verbatim in feedback brief |
+| `gaps[].evidence_status` | string | Cross-referenced against scope-req-audit: `"grounded"`, `"partial"`, `"absent"`, or `"unknown"` | Quality gate iteration — determines fix strategy |
+| `gaps[].action` | string | Recommended action: `"document_as_unsupported"`, `"expand_with_evidence"`, `"add_missing_section"`, or `"investigate"` | Quality gate iteration |
+| `gaps[].file` | string\|null | AsciiDoc filename where the fix should be applied | Quality gate iteration — targeted file edits |
+| `gaps[].section` | string\|null | Section heading or insertion point within the file | Quality gate iteration — targeted section edits |
+| `rationales` | object | Full judge rationale texts for the feedback brief | Quality gate iteration |
+| `rationales.doc_quality` | string | Complete doc_quality judge rationale | Quality gate iteration — included verbatim in feedback brief |
+| `rationales.intent_alignment` | string | Complete intent_alignment judge rationale with per-AC coverage assessments, missing artifacts, scope analysis | Quality gate iteration — included verbatim in feedback brief |
 
-### resolve-feedback
+### action-comments
+
+Used by the `docs-review-comments` workflow and the standalone `action-comments` skill.
 
 ```json
 {
   "schema_version": 1,
-  "step": "resolve-feedback",
+  "step": "action-comments",
   "ticket": "PROJ-123",
   "completed_at": "2026-04-23T16:00:00Z",
-  "gaps_resolved": 1,
-  "gaps_deferred": 0,
-  "sme_comments_resolved": 2,
-  "sme_comments_deferred": 1,
-  "files_modified": ["modules/proc-installing-operator.adoc"],
-  "sources": ["quality-gate", "sme-comments"]
+  "comments_resolved": 3,
+  "comments_deferred": 0,
+  "comments_skipped": 2,
+  "comments_outdated": 1,
+  "files_modified": ["modules/proc-installing-operator.adoc"]
 }
 ```
 
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
-| `gaps_resolved` | integer | Number of quality-gate gaps addressed | Informational |
-| `gaps_deferred` | integer | Number of gaps deferred (requires SME input) | Informational |
-| `sme_comments_resolved` | integer | Number of SME review comments addressed | Informational |
-| `sme_comments_deferred` | integer | Number of SME comments not addressable automatically | Informational |
-| `files_modified` | string[] | Absolute paths of files modified by the fix | Informational |
-| `sources` | string[] | Which input sources were used: `"quality-gate"`, `"sme-comments"`, or both | Informational |
+| `comments_resolved` | integer | Number of review comments applied or edited | Informational |
+| `comments_deferred` | integer | Number of comments not addressable automatically | Informational |
+| `comments_skipped` | integer | Number of comments skipped by user | Informational |
+| `comments_outdated` | integer | Number of comments auto-skipped as outdated | Informational |
+| `files_modified` | string[] | Paths of files modified | Informational |
 
 ## Backward compatibility
 

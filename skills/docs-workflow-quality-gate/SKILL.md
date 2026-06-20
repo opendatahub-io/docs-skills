@@ -9,7 +9,7 @@ allowed-tools: Read, Write, Bash, Glob, Grep, Agent
 
 Score the pipeline's documentation output before creating a merge request. This skill dispatches two judge agents in parallel — one for doc_quality, one for intent_alignment — using the same model as the eval harness (Opus). The agents return structured JSON via schema validation.
 
-The quality gate produces a pass/fail verdict and, when intent alignment is below threshold, a structured list of gaps with recommended actions. The orchestrator uses these gaps to drive the resolve-feedback step.
+The quality gate produces a pass/fail verdict and, when intent alignment is below threshold, a structured list of gaps with recommended actions. The orchestrator uses these gaps to build a feedback brief and dispatch the writer in fix mode inline.
 
 ## Arguments
 
@@ -178,8 +178,8 @@ Human-readable summary with rationales from both judges and the gap list.
 ## Thresholds
 
 - `intent_alignment >= 4` → `passed = true`
-- `doc_quality` is reported but does **not** trigger resolve-feedback. If `doc_quality < 4`, the orchestrator logs a warning ("manual review recommended") but proceeds. Only intent_alignment gaps — specific missed AC items — are actionable via targeted rewrites
-- The orchestrator decides what to do when `passed = false` (run resolve-feedback, or accept with warning after max iterations)
+- `doc_quality` is reported but does **not** trigger a fix pass. If `doc_quality < 4`, the orchestrator logs a warning ("manual review recommended") but proceeds. Only intent_alignment gaps — specific missed AC items — are actionable via targeted rewrites
+- The orchestrator decides what to do when `passed = false` (build a feedback brief and dispatch the writer in fix mode, or accept with warning after max iterations)
 
 ## Model
 
