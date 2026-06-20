@@ -548,17 +548,12 @@ The quality gate step runs in a loop until scores are acceptable or two iteratio
 2. Read `quality-gate/step-result.json`. Extract `doc_quality`, `intent_alignment`, and `passed`
    - Also update `steps.quality-gate.result` from the sidecar
 3. If `intent_alignment >= 4` → mark completed, proceed to create-merge-request. If `doc_quality < 4`, log a warning: "doc_quality=N/5 is below threshold — manual review recommended." (doc_quality is informational only)
-4. If `intent_alignment < 4` and fewer than 2 iterations completed → build a feedback brief and dispatch the writer in fix mode:
-   1. Create `${BASE_PATH}/quality-gate/feedback-brief.md` containing:
-      - `rationales.intent_alignment` from the quality-gate sidecar (verbatim)
-      - `rationales.doc_quality` from the quality-gate sidecar (verbatim)
-      - The classified `gaps` array, each with its `evidence_status` and `action` mapped to fix instructions (same mapping as the quality-gate skill: `document_as_unsupported`, `expand_with_evidence`, `add_missing_section`, `investigate`)
-   2. Dispatch the writing skill in fix mode:
-      ```
-      Skill: docs-workflow-writing, args: "<ticket> --base-path <base_path> [--repo <repo_path>]... --fix-from <BASE_PATH>/quality-gate/feedback-brief.md"
-      ```
-      Pass `--repo` for the primary source repo and each additional source (same as the writing step's initial invocation) so the fix agent can verify against source code.
-   3. Re-run the quality gate (go to step 1)
+4. If `intent_alignment < 4` and fewer than 2 iterations completed → dispatch the writer in fix mode using the feedback brief produced by the quality-gate skill:
+   ```
+   Skill: docs-workflow-writing, args: "<ticket> --base-path <base_path> [--repo <repo_path>]... --fix-from <BASE_PATH>/quality-gate/feedback-brief.md"
+   ```
+   The quality-gate skill writes `feedback-brief.md` when `passed = false` — the orchestrator does not build this file. Pass `--repo` for the primary source repo and each additional source (same as the writing step's initial invocation) so the fix agent can verify against source code.
+   Then re-run the quality gate (go to step 1).
 5. After 2 iterations with `intent_alignment` still below 4:
    - If `intent_alignment >= 3` → accept with warning: "Quality gate marginal (intent_alignment=N). Manual review recommended."
    - If `intent_alignment < 3` → ask the user whether to proceed or stop
