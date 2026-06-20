@@ -17,6 +17,39 @@ Fetch unresolved review comments from a GitHub PR or GitLab MR and interactively
 | `--include-resolved` | Include resolved comments in addition to unresolved |
 | `--base-path <path>` | Workflow step mode: write `step-result.json` sidecar to this path |
 
+## Step 0: Load workspace context (if available)
+
+Check whether a `.agent_workspace/` directory exists in the current repository root with artifacts from a prior docs-workflow run. This step is **automatic** — no user input required.
+
+```bash
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+```
+
+If `--base-path` was provided, use that directly as `WORKSPACE`. Otherwise, probe for a workspace:
+
+1. Look for `.agent_workspace/` under `REPO_ROOT`
+2. If it exists, list ticket directories inside it. If exactly one exists, use it. If multiple exist, pick the one whose `create-merge-request/step-result.json` contains a `url` matching `PR_URL` (resolved in Step 1). If no match or PR_URL is not yet known, defer selection until after Step 1 and re-check.
+
+Set `WORKSPACE` to the matched ticket directory (e.g., `.agent_workspace/proj-123/`), or `null` if no workspace is found.
+
+When `WORKSPACE` is set, read the following artifacts if they exist — do not fail if any are missing:
+
+| Artifact | Path | Use |
+|----------|------|-----|
+| Code analysis | `${WORKSPACE}/code-analysis/ONBOARDING.md` | API surfaces, module maps, code structure — verify reviewer claims about APIs, configs, commands |
+| Requirements | `${WORKSPACE}/requirements/requirements.md` | Original ticket requirements — check whether a reviewer's suggestion is in scope |
+| Technical review | `${WORKSPACE}/technical-review/review.md` | Prior validated claims — avoid re-introducing issues the tech review already flagged |
+| Scope audit | `${WORKSPACE}/scope-req-audit/step-result.json` | Evidence classification per requirement — know which features are grounded vs absent in code |
+| Source config | `${WORKSPACE}/source.yaml` | Source repo path — if the cloned repo still exists locally, use it for direct code verification |
+
+If `source.yaml` exists and its `repo_path` points to a valid local directory, set `SOURCE_REPO` to that path. This enables direct code lookups when verifying reviewer comments about specific APIs, flags, or config options.
+
+Log what was loaded:
+
+> Workspace context loaded from `{WORKSPACE}`: code-analysis: {yes/no}, requirements: {yes/no}, technical-review: {yes/no}, scope-audit: {yes/no}, source-repo: {yes/no}
+
+If no workspace is found, log nothing and proceed without grounding — the skill works standalone.
+
 ## Step 1: Resolve PR/MR URL
 
 If URL provided, use directly. If omitted, auto-detect:
@@ -112,8 +145,20 @@ For each non-outdated comment, present:
 {relevant lines from the local file around the comment's line}
 
 ### Suggested change
-{your analysis and proposed edit}
+{your analysis and proposed edit, grounded in workspace context if available}
 ```
+
+### Grounding fixes with workspace context
+
+When `WORKSPACE` is set and the comment references technical content (API fields, commands, config options, prerequisites), use the loaded artifacts to verify and inform your suggested change:
+
+- **Code analysis available**: Check `ONBOARDING.md` for the API surface, module map, or code structure relevant to the comment. If the reviewer says "this flag doesn't exist", verify against the code analysis before agreeing or pushing back.
+- **Source repo available** (`SOURCE_REPO` is set): Read the actual source file to verify claims about specific APIs, config keys, default values, or command syntax. Use `grep` or `Read` against the source repo — do not guess.
+- **Requirements available**: If the reviewer suggests adding content, check whether it falls within the original ticket scope. If out of scope, note this when presenting the suggested change.
+- **Technical review available**: Cross-reference with prior review findings. If the tech review already validated a claim the reviewer is questioning, cite the validation.
+- **Scope audit available**: Check evidence status for the requirement the comment relates to. If the feature is classified as `absent` in the code, the reviewer's request to add documentation may need a "not supported" note instead.
+
+If workspace context contradicts the reviewer's comment, present both perspectives and let the user decide. Do not silently override the reviewer.
 
 Call AskUserQuestion with these options:
 
@@ -145,6 +190,7 @@ After all comments are processed, present:
 
 **PR/MR**: {PR_URL}
 **Branch**: {HEAD_REF}
+**Workspace grounding**: {WORKSPACE path | "none"}
 
 | Metric | Count |
 |--------|-------|
