@@ -41,7 +41,7 @@ If detection fails, stop with:
 **Validate the URL format** — after `PR_URL` is set (whether from direct input or auto-detection), verify it matches a supported forge:
 
 ```regex
-^https://(github\.com/.+/pull/\d+|gitlab\.com/.+/merge_requests/\d+)
+^https://[^/]+/.+/(pull/\d+|merge_requests/\d+)
 ```
 
 If `PR_URL` does not match, stop with:
@@ -49,8 +49,10 @@ If `PR_URL` does not match, stop with:
 > Invalid PR/MR URL: `{PR_URL}`
 >
 > Expected format:
-> - GitHub: `https://github.com/{owner}/{repo}/pull/{number}`
-> - GitLab: `https://gitlab.com/{group}/{project}/merge_requests/{number}`
+> - GitHub: `https://{host}/{owner}/{repo}/pull/{number}`
+> - GitLab: `https://{host}/{group}/{project}/merge_requests/{number}`
+>
+> Both public (github.com, gitlab.com) and self-hosted instances are supported.
 
 ## Step 2: Load workspace context (if available)
 
@@ -92,17 +94,16 @@ Fetch PR metadata to determine the source branch:
 
 ```bash
 HEAD_REF=$(python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info "${PR_URL}" --field head_ref)
-BASE_REF=$(python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info "${PR_URL}" --field base_ref)
 TITLE=$(python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info "${PR_URL}" --field title)
 ```
 
-**Validate ref names** — before using `HEAD_REF` or `BASE_REF` in any git command, verify they contain only safe characters:
+**Validate ref name** — before using `HEAD_REF` in any git command, verify it contains only safe characters:
 
 ```regex
 ^[A-Za-z0-9._/-]+$
 ```
 
-If either ref does not match, stop with:
+If it does not match, stop with:
 
 > Unsafe branch ref detected: `{ref}`. Branch names must contain only alphanumeric characters, dots, hyphens, underscores, and forward slashes.
 
@@ -112,7 +113,7 @@ Check whether the current branch matches `head_ref`:
 CURRENT_BRANCH=$(git branch --show-current)
 ```
 
-**If already on the correct branch**: proceed to Step 3.
+**If already on the correct branch**: proceed to Step 4.
 
 **If on a different branch**:
 
@@ -169,7 +170,7 @@ Before presenting comments, categorize each one:
 
 1. Extract the reviewer's quoted text from markdown blockquotes (`>` lines) in the comment's `body` field. If no blockquotes are present, use the comment's `line` content as the search text.
 2. Read the file at the comment's `path`. If the file no longer exists, mark as outdated.
-3. Compute a bounded search range: `start = max(1, line - 5)`, `end = min(file_length, line + 5)`. Extract lines `start` through `end`.
+3. Compute a bounded search range: `start = max(1, line - 20)`, `end = min(file_length, line + 20)`. Extract lines `start` through `end`.
 4. Check whether the quoted text appears verbatim within the extracted range. Mark the comment as outdated only if the text is **not found** in that range.
 
 ## Step 6: Process each comment interactively
@@ -243,7 +244,6 @@ After all comments are processed, present:
 | Edited | Z |
 | Skipped | S |
 | Outdated (auto-skipped) | O |
-| Bot comments (filtered) | B |
 
 ### Changes applied
 
@@ -270,7 +270,6 @@ When `--base-path` is provided, write `${BASE_PATH}/action-comments/step-result.
   "ticket": "<TICKET>",
   "completed_at": "<ISO 8601>",
   "comments_resolved": <count of applied + edited>,
-  "comments_deferred": 0,
   "comments_skipped": <count of user-skipped>,
   "comments_outdated": <count of auto-skipped outdated>,
   "files_modified": ["<list of files modified>"]

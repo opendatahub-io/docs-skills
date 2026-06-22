@@ -344,7 +344,6 @@ Used by the `docs-review-comments` workflow and the standalone `action-comments`
   "ticket": "PROJ-123",
   "completed_at": "2026-04-23T16:00:00Z",
   "comments_resolved": 3,
-  "comments_deferred": 0,
   "comments_skipped": 2,
   "comments_outdated": 1,
   "files_modified": ["modules/proc-installing-operator.adoc"]
@@ -354,7 +353,6 @@ Used by the `docs-review-comments` workflow and the standalone `action-comments`
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
 | `comments_resolved` | integer | Number of review comments applied or edited | Informational |
-| `comments_deferred` | integer | Number of comments not addressable automatically | Informational |
 | `comments_skipped` | integer | Number of comments skipped by user | Informational |
 | `comments_outdated` | integer | Number of comments auto-skipped as outdated | Informational |
 | `files_modified` | string[] | Paths of files modified | Informational |
