@@ -58,12 +58,6 @@ workflow:
       when: has_many_requirements
       inputs: [writing, requirements]
 
-    - name: resolve-feedback
-      skill: docs-workflow-resolve-feedback
-      description: Resolve quality gaps and SME comments
-      when: has_feedback
-      inputs: [quality-gate, writing, requirements, planning]
-
     - name: create-merge-request
       skill: docs-workflow-create-merge-request
       description: Commit, push, and create merge request or pull request

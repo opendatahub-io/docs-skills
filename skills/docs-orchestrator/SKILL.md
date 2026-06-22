@@ -424,6 +424,7 @@ Build the args string for the step skill. The orchestrator maps its user-facing 
    - `technical-review`: `[--repo <repo_path>]...` — pass `--repo` for the primary source repo AND for each entry in `options.additional_sources` (in order)
    - `style-review`: `--format <adoc|mkdocs>`
    - `create-merge-request`: `[--draft] [--repo-path <path>]`
+   - `action-comments`: `[--pr <url>] [--include-resolved]` — pass `--pr` from `options.pr_urls[0]` or from `steps.create-merge-request.result.url` if available
 
 Step skills derive their own output folder and input folders from `--base-path` and step name conventions. No per-input flag wiring needed.
 
@@ -488,9 +489,6 @@ After each step completes, apply the rules below. When rules reference sidecar f
 - Log: `"Quality gate: doc_quality=<N>/5, intent_alignment=<N>/5, passed=<true|false>, gaps=<N>"`
 - If `passed` is false → enter [Quality gate iteration](#quality-gate-iteration) loop
 
-**resolve-feedback**
-- Log: `"Resolve feedback: <N> gaps resolved, <N> deferred, <N> SME comments resolved"`
-
 ## Post-requirements source resolution
 
 This section triggers **only** when the `requirements` step completes AND `options.source` is still `null` (i.e., no source was resolved pre-flight).
@@ -548,15 +546,15 @@ The technical review step runs in a loop until confidence is acceptable or three
 The quality gate step runs in a loop until scores are acceptable or two iterations are exhausted:
 
 1. Invoke `docs-workflow-quality-gate` with the standard args
-2. Read `quality-gate/step-result.json`. Extract `doc_quality`, `intent_alignment`, and `passed`
+2. Read `quality-gate/step-result.json`. If the file does not exist, stop with: "Quality-gate sidecar missing — expected at `{BASE_PATH}/quality-gate/step-result.json`." Extract `doc_quality`, `intent_alignment`, and `passed`. If any of these fields are missing, stop with: "Quality-gate sidecar is missing required fields (need: doc_quality, intent_alignment, passed)."
    - Also update `steps.quality-gate.result` from the sidecar
-3. If `intent_alignment >= 4` → mark completed, proceed to create-merge-request. If `doc_quality < 4`, log a warning: "doc_quality=N/5 is below threshold — manual review recommended." (doc_quality does not trigger resolve-feedback; it is informational only)
-4. If `intent_alignment < 4` and fewer than 2 iterations completed → run the resolve-feedback skill:
+3. If `intent_alignment >= 4` → mark completed, proceed to create-merge-request. If `doc_quality < 4`, log a warning: "doc_quality=N/5 is below threshold — manual review recommended." (doc_quality is informational only)
+4. If `intent_alignment < 4` and fewer than 2 iterations completed → dispatch the writer in fix mode using the feedback brief produced by the quality-gate skill:
    ```
-   Skill: docs-workflow-resolve-feedback, args: "<ticket> --base-path <base_path> [--repo <repo_path>]..."
+   Skill: docs-workflow-writing, args: "<ticket> --base-path <base_path> [--repo <repo_path>]... --fix-from <BASE_PATH>/quality-gate/feedback-brief-<iteration>.md"
    ```
-   Pass `--repo` for the primary source repo and each additional source (same as the writing step's initial invocation) so the fix agent can verify against source code.
-   Then re-run the quality gate (go to step 1)
+   The quality-gate skill writes `feedback-brief-<iteration>.md` (e.g., `feedback-brief-1.md`) when `passed = false` — the orchestrator does not build this file. The iteration number comes from `steps.quality-gate.result.iteration`. Before dispatching the writer, verify that `<BASE_PATH>/quality-gate/feedback-brief-<iteration>.md` exists and is readable. If it is missing, stop with: "Quality-gate did not produce feedback-brief-{iteration}.md — cannot dispatch fix." Pass `--repo` for the primary source repo and each additional source (same as the writing step's initial invocation) so the fix agent can verify against source code.
+   Then re-run the quality gate (go to step 1).
 5. After 2 iterations with `intent_alignment` still below 4:
    - If `intent_alignment >= 3` → accept with warning: "Quality gate marginal (intent_alignment=N). Manual review recommended."
    - If `intent_alignment < 3` → ask the user whether to proceed or stop
@@ -583,16 +581,6 @@ The `quality-gate` step uses `when: has_many_requirements`. This condition is ev
 **Rationale:** The quality gate checks intent alignment — "did we write what was asked for?" — which is orthogonal to the tech review's accuracy check. However, both accuracy and completeness tend to follow from the same upstream quality: clear requirements, good code-analysis, and strong writer comprehension. When the tech review reaches HIGH, it signals that the writer had a solid grasp of the material, making coverage gaps less likely. Combining the requirement-count threshold (complexity filter) with the confidence signal (quality filter) skips the gate only when both indicators suggest it is unlikely to find gaps.
 
 The threshold and confidence logic can be overridden by using a custom workflow YAML that either always includes or always excludes quality-gate.
-
-When quality-gate is skipped, resolve-feedback may still run if SME review comments are present (see `when: has_feedback` below).
-
-### `when: has_feedback` condition
-
-The `resolve-feedback` step uses `when: has_feedback`. Evaluate this condition **after** the quality-gate step completes (or is skipped):
-
-- If quality-gate completed with `intent_alignment < 4` → `has_feedback` is true, mark resolve-feedback as `pending`
-- If quality-gate completed with `intent_alignment >= 4` → check for unresolved SME review comments on the MR/PR (if one exists). If comments exist, `has_feedback` is true; otherwise mark resolve-feedback as `skipped`
-- If quality-gate was skipped → check for unresolved SME review comments on the MR/PR (if one exists). If comments exist, `has_feedback` is true and resolve-feedback runs with `sources: ["sme-comments"]` only; otherwise mark resolve-feedback as `skipped`
 
 ## Commit confirmation gate
 

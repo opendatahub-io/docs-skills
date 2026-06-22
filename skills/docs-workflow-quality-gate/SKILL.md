@@ -9,7 +9,7 @@ allowed-tools: Read, Write, Bash, Glob, Grep, Agent
 
 Score the pipeline's documentation output before creating a merge request. This skill dispatches two judge agents in parallel — one for doc_quality, one for intent_alignment — using the same model as the eval harness (Opus). The agents return structured JSON via schema validation.
 
-The quality gate produces a pass/fail verdict and, when intent alignment is below threshold, a structured list of gaps with recommended actions. The orchestrator uses these gaps to drive the resolve-feedback step.
+The quality gate produces a pass/fail verdict and, when intent alignment is below threshold, a structured list of gaps with recommended actions and a feedback brief (`feedback-brief.md`) ready for the orchestrator to dispatch the writer in fix mode.
 
 ## Arguments
 
@@ -124,7 +124,61 @@ The script:
 3. Writes `quality-gate/step-result.json` and `quality-gate/judge-results.md`
 4. Outputs the step-result JSON to stdout
 
-### 6. Verify output
+### 6. Build feedback brief (when `passed = false`)
+
+If `passed` is false, build `${BASE_PATH}/quality-gate/feedback-brief-<iteration>.md` (e.g., `feedback-brief-1.md`) so the orchestrator can dispatch the writer in fix mode. Read the `iteration` value from the step-result.json written in step 5. Skip this step if `passed` is true.
+
+```markdown
+# Feedback Brief for <TICKET> (iteration <N>)
+
+## Intent Alignment Judge Assessment
+
+[Insert rationales.intent_alignment from step-result.json verbatim.
+This contains per-AC-item coverage assessments with severity levels, specific missing
+artifacts, scope balance analysis, and audience alignment — all directly actionable.]
+
+## Doc Quality Judge Assessment
+
+[Insert rationales.doc_quality from step-result.json verbatim.]
+
+## Classified Gaps with Recommended Actions
+
+[For each gap in the gaps array:]
+
+### Gap: <ac_item>
+- **File**: <file>
+- **Section**: <section>
+- **Evidence status**: <evidence_status>
+- **Action**: <action description>
+
+[Map action codes to instructions:]
+- `document_as_unsupported` → "Add a note stating that this capability is not supported in this release. Place it in the most relevant existing module — do not create a new module."
+- `expand_with_evidence` → "Expand the existing content with available code evidence. Check the source repo for relevant API fields, flags, or config options."
+- `add_missing_section` → "This content was in the plan but was not included in the writing output. Add the missing section based on the requirements and plan."
+- `investigate` → "This gap could not be classified. Review the requirements and determine whether to document it or note it as out of scope."
+
+## Prior attempts
+
+[If iteration > 1:]
+This is iteration <N>. A previous fix pass was attempted but did not resolve these gaps.
+The writer must try a DIFFERENT approach — do not repeat the same fix. Consider:
+- Adding more concrete detail (specific API fields, config values, command examples)
+- Restructuring the section rather than appending
+- Checking source code for evidence that was missed in the first attempt
+
+[If iteration == 1, omit this section.]
+
+## Priority
+
+Address gaps in this order:
+1. Items the judge flagged as "missing" or "barely covered" — these are the largest scoring deductions
+2. Items flagged as "weakly covered" or "partially covered" — expand existing content
+3. Scope rebalancing — if the judge flagged over-indexing on one area, tighten that section rather than expanding others
+```
+
+Include the **full judge rationale text**, not just the classified gap list. The rationale contains per-AC-item severity assessments ("partially covered", "weakly covered", "barely covered", "mostly missing"), names specific missing artifacts, identifies scope imbalance, and diagnoses audience gaps. This gives the fix agent precise, nuanced instructions instead of flat action codes.
+
+### 7. Verify output (always runs)
 
 Read `${BASE_PATH}/quality-gate/step-result.json` and verify it contains:
 - `doc_quality` (integer 1-5)
@@ -134,7 +188,7 @@ Read `${BASE_PATH}/quality-gate/step-result.json` and verify it contains:
 
 If the file is missing or malformed, report the error.
 
-### 7. Report results
+### 8. Report results
 
 Report the scores and pass/fail status:
 - "Quality gate: doc_quality=N/5, intent_alignment=N/5, passed=true/false, gaps=N"
@@ -175,11 +229,15 @@ Report the scores and pass/fail status:
 
 Human-readable summary with rationales from both judges and the gap list.
 
+### `feedback-brief-<iteration>.md` (when `passed = false`)
+
+Structured feedback document containing full judge rationales and classified gaps with fix instructions. Iteration-numbered (e.g., `feedback-brief-1.md`, `feedback-brief-2.md`) so prior briefs are preserved for debugging. Iteration 2+ briefs include a "Prior attempts" section instructing the writer to try a different approach. Consumed by the orchestrator's quality gate iteration loop via `docs-workflow-writing --fix-from`.
+
 ## Thresholds
 
 - `intent_alignment >= 4` → `passed = true`
-- `doc_quality` is reported but does **not** trigger resolve-feedback. If `doc_quality < 4`, the orchestrator logs a warning ("manual review recommended") but proceeds. Only intent_alignment gaps — specific missed AC items — are actionable via targeted rewrites
-- The orchestrator decides what to do when `passed = false` (run resolve-feedback, or accept with warning after max iterations)
+- `doc_quality` is reported but does **not** trigger a fix pass. If `doc_quality < 4`, the orchestrator logs a warning ("manual review recommended") but proceeds. Only intent_alignment gaps — specific missed AC items — are actionable via targeted rewrites
+- When `passed = false`, this skill produces `feedback-brief-<iteration>.md` alongside the sidecar. The orchestrator dispatches the writer in fix mode with this file, or accepts with warning after max iterations
 
 ## Model
 
