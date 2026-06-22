@@ -72,7 +72,7 @@ def _is_ip_allowed(ip):
 
 # ── URL/domain detection ──────────────────────────────────────────────────────
 
-_URL_RE = re.compile(r"\b(?:https?://)?(?:www\.)?[^\s]+\.[a-zA-Z]{2,3}\b")
+_URL_RE = re.compile(r"\b(?:https?://)?(?:www\.)?[^\s]+\.[a-zA-Z]{2,}\b")
 
 _ALLOWED_URLS_EXACT = {
     "redhat.com",
@@ -283,14 +283,38 @@ def _is_credential_placeholder(value):
 
 
 def _is_comment_line(line, filename):
-    """Check if a line is a comment based on file type."""
+    """Check if a line is a single-line comment based on file type."""
     stripped = line.lstrip()
     ext = Path(filename).suffix.lower() if filename else ""
     if ext in (".adoc",):
-        return stripped.startswith("//")
+        return stripped.startswith("//") and not stripped.startswith("////")
     if ext in (".md", ".dita", ".ditamap", ".xml", ".html"):
-        return stripped.startswith("<!--")
+        return stripped.startswith("<!--") and "-->" in stripped
     return False
+
+
+def _track_block_comment(line, in_block, block_type, filename):
+    """Track multi-line block comment state.
+
+    Returns (skip_line, in_block, block_type).
+    """
+    stripped = line.lstrip()
+    ext = Path(filename).suffix.lower() if filename else ""
+
+    if not in_block:
+        if ext == ".adoc" and stripped.startswith("////"):
+            return True, True, "adoc"
+        if ext in (".md", ".dita", ".ditamap", ".xml", ".html"):
+            if "<!--" in stripped and "-->" not in stripped:
+                return True, True, "html"
+        return False, False, None
+
+    # Inside a block — check for closing delimiter
+    if block_type == "adoc" and stripped.startswith("////"):
+        return True, False, None
+    if block_type == "html" and "-->" in stripped:
+        return True, False, None
+    return True, True, block_type
 
 
 # ── Core scanning ─────────────────────────────────────────────────────────────
@@ -481,7 +505,14 @@ def scan_file(filepath):
                 "suggestion": "File contains non-UTF-8 bytes — scan may miss content",
             }
         )
+    in_block = False
+    block_type = None
     for i, line in enumerate(text.splitlines(), start=1):
+        skip, in_block, block_type = _track_block_comment(
+            line, in_block, block_type, filepath
+        )
+        if skip:
+            continue
         all_findings.extend(scan_line(line, i, filepath))
     return all_findings
 
