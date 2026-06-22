@@ -11,8 +11,8 @@ Produce a post-run summary of the docs-orchestrator workflow. Reads step results
 
 ## Arguments
 
-- `$1` — Ticket ID (required)
-- `--base-path <path>` — Base output path (required, e.g., `.agent_workspace/proj-123`)
+- `$1` — Ticket ID (required). Must contain only alphanumeric characters, hyphens, and underscores (`[A-Za-z0-9_-]+`). Reject values containing path separators, `..`, or whitespace.
+- `--base-path <path>` — Base output path (required, e.g., `.agent_workspace/proj-123`). Must be an absolute path containing no `..` sequences. Must not traverse symlinks outside the workspace root.
 
 ## Inputs
 
@@ -22,6 +22,8 @@ Reads from the workspace by convention:
 |--------|------|----------|
 | Progress file | `<base-path>/workflow/*_<ticket>.json` | Yes |
 | Step result sidecars | `<base-path>/*/step-result.json` | Yes (at least one) |
+
+**Path safety:** Validate both `--base-path` and the ticket ID against the constraints above before constructing any glob pattern or file path. This prevents path traversal outside the intended workspace directory.
 
 ## Execution
 
@@ -39,7 +41,13 @@ Read the progress file from `<BASE_PATH>/workflow/`. Extract:
 
 ### 3. Read step sidecars
 
-For each step with status `completed`, read its `step-result.json` from `<BASE_PATH>/<step-name>/step-result.json`. Collect key metrics:
+For each step with status `completed`, read its `step-result.json` from `<BASE_PATH>/<step-name>/step-result.json`. Collect key metrics.
+
+**Missing or malformed sidecars:** If a completed step's `step-result.json` does not exist or fails to parse as valid JSON, skip metric extraction for that step and record its key metric as `"unavailable (missing sidecar)"` in the Metrics table. Do not fail the review — this is the final pipeline step and must produce output even with partial data. Log each missing sidecar in the Observations section under "Issues and iterations."
+
+**Field validation:** Before extracting per-step fields, verify that `schema_version`, `step`, and `ticket` are present and that `schema_version` equals `1`. If any common field is missing or has the wrong type, treat the sidecar as malformed (same handling as above). For the expected per-step fields and types, see `skills/docs-orchestrator/schema/step-result-schema.md`.
+
+Per-step metrics to collect:
 
 - **requirements**: `title`, `requirement_count`
 - **code-analysis**: `module_count`, `relationship_count`, `languages_detected`
@@ -56,13 +64,19 @@ For each step with status `completed`, read its `step-result.json` from `<BASE_P
 
 Think about the full workflow run and note:
 
-- **Steps that iterated** — technical-review or quality-gate that ran more than once (iteration > 1). What caused the iteration?
+- **Steps that iterated** — any step that ran more than once (iteration > 1 in its sidecar). What caused the iteration?
 - **Steps that were skipped** — why (condition not met, no source repo, user declined)
 - **Steps that failed** — what went wrong
 - **Patterns worth noting** — recurring review findings, markup issues, requirement gaps, domain knowledge that was missing
 - **What went well** — high-confidence reviews, clean first-pass writing, smooth source resolution
 
 ### 5. Write review.md
+
+Create the output directory before writing:
+
+```bash
+mkdir -p "${BASE_PATH}/workflow-review"
+```
 
 Write the summary to `<BASE_PATH>/workflow-review/review.md`:
 
@@ -108,8 +122,7 @@ Write the sidecar to `<BASE_PATH>/workflow-review/step-result.json`:
   "steps_skipped": <count>,
   "steps_failed": <count>,
   "iterations": {
-    "technical_review": <iteration count or 0>,
-    "quality_gate": <iteration count or 0>
+    "<step_name>": <iteration count>
   },
   "observation_count": <total bullet points in Observations>
 }

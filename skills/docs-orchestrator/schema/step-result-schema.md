@@ -371,8 +371,7 @@ When an existing linked ticket is found:
   "steps_skipped": 2,
   "steps_failed": 0,
   "iterations": {
-    "technical_review": 2,
-    "quality_gate": 0
+    "technical_review": 2
   },
   "observation_count": 5
 }
@@ -383,9 +382,7 @@ When an existing linked ticket is found:
 | `steps_completed` | integer | Number of steps that completed successfully | Informational |
 | `steps_skipped` | integer | Number of steps skipped (condition not met, user declined) | Informational |
 | `steps_failed` | integer | Number of steps that failed | Informational |
-| `iterations` | object | Iteration counts for looping steps | Informational |
-| `iterations.technical_review` | integer | Technical review iteration count (0 if not run) | Informational |
-| `iterations.quality_gate` | integer | Quality gate iteration count (0 if not run) | Informational |
+| `iterations` | object | Iteration counts for steps that ran more than once. Keys are step names (underscore-separated); only steps with `iteration > 1` in their sidecar are included | Informational |
 | `observation_count` | integer | Total observations noted in review.md | Informational |
 
 ## Backward compatibility
