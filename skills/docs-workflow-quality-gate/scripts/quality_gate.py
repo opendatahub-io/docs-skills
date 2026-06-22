@@ -107,7 +107,8 @@ def read_ticket_context(base_path):
     """Read requirements/discovery.json and format as ticket context."""
     discovery = Path(base_path) / "requirements" / "discovery.json"
     if not discovery.exists():
-        print(f"ERROR: {discovery} not found — required for intent-alignment judge", file=sys.stderr)
+        msg = f"ERROR: {discovery} not found — required for intent-alignment judge"
+        print(msg, file=sys.stderr)
         sys.exit(1)
 
     data = json.loads(discovery.read_text())
