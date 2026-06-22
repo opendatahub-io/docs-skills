@@ -34,7 +34,7 @@ For actioning unresolved review comments on a PR/MR, use the `action-comments` s
 
 ## Interactive mode — no arguments provided
 
-**STOP. Follow steps 1-3 IN ORDER. Do not start the review pipeline until all inputs are gathered.**
+**STOP. You MUST follow steps 1-3 IN ORDER. Call AskUserQuestion at each step — do not skip or infer answers. Do not start the review pipeline until all inputs are gathered.**
 
 ### Step 1: Mode selection (AskUserQuestion)
 

@@ -207,9 +207,11 @@ Before `create-merge-request`, ask user to confirm. Show: branch name (from tick
 
 Set progress `status → "completed"`, delete `.agent_workspace/.active-workflow`. Display summary: output folder paths, warnings, MR/PR URL, JIRA URL, module/file counts from step results.
 
+For SME review comments on an existing MR/PR, use the standalone `action-comments` skill after the workflow completes. It can also be added to a custom workflow YAML as a step.
+
 ## Resume behavior
 
-On resume (same or new session), read the progress file and skip completed steps. Resume from the first `pending` or `failed` step. Before running it, validate input dependencies — every upstream step must have `status: "completed"` and its output folder on disk. If a dependency is missing, re-run it first. Additional flags provided on resume (e.g., `--create-jira`) update the progress file options.
+On resume (same or new session), read the progress file and skip completed steps. Resume from the first `pending` or `failed` step. Before running it, validate input dependencies — every upstream step must have `status: "completed"` and its output folder on disk. For each upstream dependency, verify the output folder still exists on disk. If an output folder was deleted, mark that step as `pending` and re-run it. Additional flags provided on resume (e.g., `--create-jira`) update the progress file options.
 
 ### Context management
 

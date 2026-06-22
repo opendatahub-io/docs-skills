@@ -509,9 +509,7 @@ def scan_file(filepath):
     in_block = False
     block_type = None
     for i, line in enumerate(text.splitlines(), start=1):
-        skip, in_block, block_type = _track_block_comment(
-            line, in_block, block_type, filepath
-        )
+        skip, in_block, block_type = _track_block_comment(line, in_block, block_type, filepath)
         if skip:
             continue
         all_findings.extend(scan_line(line, i, filepath))

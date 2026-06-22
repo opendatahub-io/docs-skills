@@ -1,5 +1,28 @@
 # Report Format and Templates
 
+## Terminal Summary
+
+Output this summary to the terminal after generating the full report:
+
+```
+## Technical Review
+
+**Source**: <branch vs base | PR/MR URL>
+**Files reviewed**: X documentation files
+**Issues found**: Y (Z above confidence threshold)
+
+### Issues
+
+1. **file.adoc:23** [confidence: 95] — Flag `--enable-feature` renamed to `--feature-enable` in v2.3 (code-scan)
+2. **file.adoc:67** [confidence: 88] — Default `pool_size` is 5, not 10 (technical-review)
+
+### Skipped (below threshold)
+
+- **file.adoc:91** [confidence: 55] — Config key `max_retries` not found in source
+
+Full report saved to: /tmp/docs-review-technical-report.md
+```
+
 ## Fix-Mode Report Sections
 
 When `--fix` is used, the report at `/tmp/docs-review-technical-report.md` includes additional sections:

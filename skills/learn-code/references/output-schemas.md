@@ -189,3 +189,30 @@ For non-priority pairs, generate directly without agent dispatch:
 ```
 
 Scan ONBOARDING.md for level-2 headings (`## `) to determine sections.
+
+## Progress File
+
+Written to `${BASE_PATH}/workflow/learn-code_${REPO_NAME}.json`.
+
+```json
+{
+  "workflow_type": "learn-code",
+  "target": "<REPO_NAME>",
+  "repo_path": "<absolute REPO_PATH>",
+  "base_path": "<absolute BASE_PATH>",
+  "status": "in_progress",
+  "created_at": "<current ISO 8601 UTC>",
+  "updated_at": "<current ISO 8601 UTC>",
+  "options": {
+    "exclude_patterns": ["<patterns>"]
+  },
+  "step_order": ["detection", "module-registry", "module-analysis", "relationships", "synthesis"],
+  "steps": {
+    "detection": { "status": "pending", "output": null, "result": null },
+    "module-registry": { "status": "pending", "output": null, "result": null },
+    "module-analysis": { "status": "pending", "output": null, "result": null },
+    "relationships": { "status": "pending", "output": null, "result": null },
+    "synthesis": { "status": "pending", "output": null, "result": null }
+  }
+}
+```

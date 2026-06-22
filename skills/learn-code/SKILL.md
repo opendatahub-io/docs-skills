@@ -9,6 +9,14 @@ allowed-tools: Read, Write, Bash, Glob, Grep, Agent
 
 Single-skill pipeline that detects language, maps modules, analyzes each module in parallel via fan-out agents, discovers cross-module relationships, and produces a structured onboarding guide.
 
+## Usage
+
+```
+/docs-skills:learn-code /path/to/repo
+/docs-skills:learn-code https://github.com/user/repo
+/docs-skills:learn-code /path/to/repo --exclude "test/*" "vendor/*"
+```
+
 ## Arguments
 
 - `$1` — Path or URL of the repository to analyze (required). Local path or git URL. URLs are cloned to `.agent_workspace/<repo-name>/_clone/`
@@ -22,7 +30,7 @@ Extract the repo path from the first positional argument. Extract any `--exclude
 
 ### 2. Resolve repo path
 
-**Git URL** (matches `https://`, `http://`, `git@`, `git://`): Derive `REPO_NAME` from the last path segment (strip `.git`). Clone to `${GIT_ROOT}/.agent_workspace/${REPO_NAME}/_clone` via `git_pr_reader.py clone`. If clone dir exists, ask user to pull or use as-is. STOP on clone failure.
+**Git URL** (matches `https://`, `http://`, `git@`, `git://`): Derive `REPO_NAME` from the last path segment (strip `.git`). Set `GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"`. Clone to `${GIT_ROOT}/.agent_workspace/${REPO_NAME}/_clone` via `git_pr_reader.py clone`. If clone dir exists, ask user to pull or use as-is. STOP on clone failure.
 
 **Local path**: Validate it exists, is a directory, and has files. Resolve to absolute. Derive `REPO_NAME` from basename. STOP if path not found.
 
@@ -40,7 +48,7 @@ Check for `${BASE_PATH}/workflow/learn-code_${REPO_NAME}.json`. If found and `in
 
 ### 5. Create progress file
 
-Write to `${BASE_PATH}/workflow/learn-code_${REPO_NAME}.json`. Fields: `workflow_type` ("learn-code"), `target`, `repo_path`, `base_path` (all absolute), `status` ("in_progress"), `created_at`/`updated_at` (ISO 8601 UTC), `options.exclude_patterns`, `step_order` (["detection", "module-registry", "module-analysis", "relationships", "synthesis"]), `steps` (each with `status: "pending"`, `output: null`, `result: null`).
+Write to `${BASE_PATH}/workflow/learn-code_${REPO_NAME}.json`. See [output schemas](references/output-schemas.md#progress-file) for the JSON structure.
 
 ### 6. Show analysis plan
 
