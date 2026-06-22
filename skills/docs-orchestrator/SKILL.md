@@ -257,6 +257,9 @@ Use this absolute `BASE_PATH` for the progress file's `base_path` field and for 
     step-result.json                 (sidecar: common fields only)
   create-merge-request/
     step-result.json                 (sidecar: commit_sha, branch, pushed, url, action, platform, skipped)
+  workflow-review/
+    review.md
+    step-result.json                 (sidecar: steps_completed, steps_skipped, steps_failed, iterations, observation_count)
   workflow/
     docs-workflow_proj-123.json
 ```

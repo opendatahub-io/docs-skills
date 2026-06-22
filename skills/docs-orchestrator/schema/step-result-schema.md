@@ -359,6 +359,35 @@ When an existing linked ticket is found:
 | `files_modified` | string[] | Absolute paths of files modified by the fix | Informational |
 | `sources` | string[] | Which input sources were used: `"quality-gate"`, `"sme-comments"`, or both | Informational |
 
+### workflow-review
+
+```json
+{
+  "schema_version": 1,
+  "step": "workflow-review",
+  "ticket": "PROJ-123",
+  "completed_at": "2026-04-23T16:15:00Z",
+  "steps_completed": 8,
+  "steps_skipped": 2,
+  "steps_failed": 0,
+  "iterations": {
+    "technical_review": 2,
+    "quality_gate": 0
+  },
+  "observation_count": 5
+}
+```
+
+| Field | Type | Description | Consumed by |
+|---|---|---|---|
+| `steps_completed` | integer | Number of steps that completed successfully | Informational |
+| `steps_skipped` | integer | Number of steps skipped (condition not met, user declined) | Informational |
+| `steps_failed` | integer | Number of steps that failed | Informational |
+| `iterations` | object | Iteration counts for looping steps | Informational |
+| `iterations.technical_review` | integer | Technical review iteration count (0 if not run) | Informational |
+| `iterations.quality_gate` | integer | Quality gate iteration count (0 if not run) | Informational |
+| `observation_count` | integer | Total observations noted in review.md | Informational |
+
 ## Backward compatibility
 
 Downstream consumers use a sidecar-first pattern: read from `step-result.json` when present, fall back to parsing the markdown output when absent. This ensures in-flight workflows from before sidecar adoption continue to work.

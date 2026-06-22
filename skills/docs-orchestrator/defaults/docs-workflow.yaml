@@ -64,3 +64,7 @@ workflow:
       description: Commit, push, and create merge request or pull request
       when: create_merge_request
       inputs: [writing, style-review, technical-review, quality-gate]
+
+    - name: workflow-review
+      skill: docs-workflow-review
+      description: Reflect on the workflow run and write a summary to the workspace
