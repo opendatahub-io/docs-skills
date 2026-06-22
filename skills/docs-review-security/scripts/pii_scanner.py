@@ -185,11 +185,12 @@ def _is_url_allowed(url):
     for prefix in _ALLOWED_URL_PREFIXES:
         if url.startswith(prefix):
             return True
+    bare = re.sub(r"^https?://", "", url)
+    host = bare.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
     for suffix in _ALLOWED_DOMAIN_SUFFIXES:
-        if url.endswith(suffix):
+        if host.endswith(suffix):
             return True
     # node*.example.com
-    bare = re.sub(r"^https?://", "", url)
     if bare.startswith("node") and bare.endswith(".example.com"):
         return True
     for ext in _ALLOWED_FILE_EXTENSIONS:
@@ -522,10 +523,12 @@ def scan_file(filepath):
 
 def collect_files(docs_dir, scan_dirs, file_types):
     """Collect files matching extensions under scan directories."""
-    root = Path(docs_dir)
+    root = Path(docs_dir).resolve()
     files = []
     for scan_dir in scan_dirs:
-        d = root / scan_dir
+        d = (root / scan_dir).resolve()
+        if not str(d).startswith(str(root)):
+            continue
         if not d.is_dir():
             continue
         for ext in file_types:

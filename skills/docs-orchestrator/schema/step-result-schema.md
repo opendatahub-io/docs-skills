@@ -208,6 +208,7 @@ No extra fields. Common schema only.
   "completed_at": "2026-04-23T15:50:00Z",
   "scanner_findings": 7,
   "critical_findings": 1,
+  "agent_findings": 2,
   "categories": {
     "ip": 3,
     "email": 2,
@@ -224,6 +225,7 @@ No extra fields. Common schema only.
 |---|---|---|---|
 | `scanner_findings` | integer | Total findings from the deterministic PII scanner | Orchestrator — iteration logic |
 | `critical_findings` | integer | Critical-severity findings (credentials, private keys) | Orchestrator — iteration logic |
+| `agent_findings` | integer | Findings from the Layer 2 agent analysis checklist | Informational |
 | `categories` | object | Finding counts by category | Informational |
 | `context_size_bytes` | integer | Total bytes of step output files | Orchestrator — size logging |
 

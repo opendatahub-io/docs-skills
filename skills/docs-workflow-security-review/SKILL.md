@@ -61,6 +61,25 @@ Set `DRAFTS_DIR="${BASE_PATH}/writing"` and glob for `.adoc`, `.md`, `.dita`, an
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-review-security/scripts/pii_scanner.py scan <file1> <file2> ... > "$SCANNER_FILE"
 ```
 
+Check the exit code. If the scanner failed (non-zero exit), write an error to the report and exit with a non-zero status:
+
+```bash
+if [ $? -ne 0 ]; then
+  echo "ERROR: PII scanner failed. See output above." >&2
+  exit 1
+fi
+```
+
+Validate the JSON output is well-formed before parsing:
+
+```bash
+jq empty "$SCANNER_FILE" 2>/dev/null
+if [ $? -ne 0 ]; then
+  echo "ERROR: Scanner produced invalid JSON output." >&2
+  exit 1
+fi
+```
+
 Read and parse the JSON output. Note the total findings count and whether any are `critical`.
 
 ### 4. Build report header
@@ -101,18 +120,21 @@ Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
   "step": "security-review",
   "ticket": "<TICKET>",
   "completed_at": "<current ISO 8601 timestamp>",
-  "scanner_findings": "<total_findings>",
-  "critical_findings": "<critical_count>",
+  "scanner_findings": 0,
+  "critical_findings": 0,
+  "agent_findings": 0,
   "categories": {
-    "ip": "<N>",
-    "email": "<N>",
-    "credential": "<N>",
-    "url": "<N>",
-    "mac": "<N>",
-    "internal_hostname": "<N>"
+    "ip": 0,
+    "email": 0,
+    "credential": 0,
+    "url": 0,
+    "mac": 0,
+    "internal_hostname": 0
   },
-  "context_size_bytes": "<total_bytes>"
+  "context_size_bytes": 0
 }
 ```
+
+Replace the `0` placeholders with actual counts from the scanner results and agent analysis. All numeric fields must be integers, not strings.
 
 After writing the sidecar, sum the byte sizes of all output files in the step's output folder and add `context_size_bytes` to the sidecar.
