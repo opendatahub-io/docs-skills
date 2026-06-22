@@ -198,6 +198,37 @@ All sidecars share these fields:
 
 No extra fields. Common schema only.
 
+### security-review
+
+```json
+{
+  "schema_version": 1,
+  "step": "security-review",
+  "ticket": "PROJ-123",
+  "completed_at": "2026-04-23T15:50:00Z",
+  "scanner_findings": 7,
+  "critical_findings": 1,
+  "agent_findings": 2,
+  "categories": {
+    "ip": 3,
+    "email": 2,
+    "credential": 1,
+    "url": 1,
+    "mac": 0,
+    "internal_hostname": 0
+  },
+  "context_size_bytes": 4096
+}
+```
+
+| Field | Type | Description | Consumed by |
+|---|---|---|---|
+| `scanner_findings` | integer | Total findings from the deterministic PII scanner | Orchestrator — iteration logic |
+| `critical_findings` | integer | Critical-severity findings (credentials, private keys) | Orchestrator — iteration logic |
+| `agent_findings` | integer | Findings from the Layer 2 agent analysis checklist | Informational |
+| `categories` | object | Finding counts by category | Informational |
+| `context_size_bytes` | integer | Total bytes of step output files | Orchestrator — size logging |
+
 ### create-merge-request
 
 ```json
