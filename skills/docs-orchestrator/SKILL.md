@@ -546,14 +546,14 @@ The technical review step runs in a loop until confidence is acceptable or three
 The quality gate step runs in a loop until scores are acceptable or two iterations are exhausted:
 
 1. Invoke `docs-workflow-quality-gate` with the standard args
-2. Read `quality-gate/step-result.json`. Extract `doc_quality`, `intent_alignment`, and `passed`
+2. Read `quality-gate/step-result.json`. If the file does not exist, stop with: "Quality-gate sidecar missing — expected at `{BASE_PATH}/quality-gate/step-result.json`." Extract `doc_quality`, `intent_alignment`, and `passed`. If any of these fields are missing, stop with: "Quality-gate sidecar is missing required fields (need: doc_quality, intent_alignment, passed)."
    - Also update `steps.quality-gate.result` from the sidecar
 3. If `intent_alignment >= 4` → mark completed, proceed to create-merge-request. If `doc_quality < 4`, log a warning: "doc_quality=N/5 is below threshold — manual review recommended." (doc_quality is informational only)
 4. If `intent_alignment < 4` and fewer than 2 iterations completed → dispatch the writer in fix mode using the feedback brief produced by the quality-gate skill:
    ```
    Skill: docs-workflow-writing, args: "<ticket> --base-path <base_path> [--repo <repo_path>]... --fix-from <BASE_PATH>/quality-gate/feedback-brief-<iteration>.md"
    ```
-   The quality-gate skill writes `feedback-brief-<iteration>.md` (e.g., `feedback-brief-1.md`) when `passed = false` — the orchestrator does not build this file. The iteration number comes from `steps.quality-gate.result.iteration`. Pass `--repo` for the primary source repo and each additional source (same as the writing step's initial invocation) so the fix agent can verify against source code.
+   The quality-gate skill writes `feedback-brief-<iteration>.md` (e.g., `feedback-brief-1.md`) when `passed = false` — the orchestrator does not build this file. The iteration number comes from `steps.quality-gate.result.iteration`. Before dispatching the writer, verify that `<BASE_PATH>/quality-gate/feedback-brief-<iteration>.md` exists and is readable. If it is missing, stop with: "Quality-gate did not produce feedback-brief-{iteration}.md — cannot dispatch fix." Pass `--repo` for the primary source repo and each additional source (same as the writing step's initial invocation) so the fix agent can verify against source code.
    Then re-run the quality gate (go to step 1).
 5. After 2 iterations with `intent_alignment` still below 4:
    - If `intent_alignment >= 3` → accept with warning: "Quality gate marginal (intent_alignment=N). Manual review recommended."

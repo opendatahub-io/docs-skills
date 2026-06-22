@@ -38,6 +38,20 @@ If detection fails, stop with:
 
 > Could not detect a PR/MR for the current branch. Please provide a URL and try again.
 
+**Validate the URL format** — after `PR_URL` is set (whether from direct input or auto-detection), verify it matches a supported forge:
+
+```regex
+^https://(github\.com/.+/pull/\d+|gitlab\.com/.+/merge_requests/\d+)
+```
+
+If `PR_URL` does not match, stop with:
+
+> Invalid PR/MR URL: `{PR_URL}`
+>
+> Expected format:
+> - GitHub: `https://github.com/{owner}/{repo}/pull/{number}`
+> - GitLab: `https://gitlab.com/{group}/{project}/merge_requests/{number}`
+
 ## Step 2: Load workspace context (if available)
 
 Check whether a `.agent_workspace/` directory exists in the current repository root with artifacts from a prior docs-workflow run. This step is **automatic** — no user input required.
@@ -81,6 +95,16 @@ HEAD_REF=$(python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_rea
 BASE_REF=$(python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info "${PR_URL}" --field base_ref)
 TITLE=$(python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info "${PR_URL}" --field title)
 ```
+
+**Validate ref names** — before using `HEAD_REF` or `BASE_REF` in any git command, verify they contain only safe characters:
+
+```regex
+^[A-Za-z0-9._/-]+$
+```
+
+If either ref does not match, stop with:
+
+> Unsafe branch ref detected: `{ref}`. Branch names must contain only alphanumeric characters, dots, hyphens, underscores, and forward slashes.
 
 Check whether the current branch matches `head_ref`:
 
@@ -141,7 +165,12 @@ Before presenting comments, categorize each one:
 | **Question** | Requests for clarification, questions from reviewer | Present but do not auto-suggest a fix |
 | **Outdated** | Already addressed by subsequent commits | Skip automatically |
 
-For **Outdated** detection: read the file at the comment's `path` and `line`. If the content no longer matches what the comment references, mark as outdated. Extract the reviewer's quoted text from markdown blockquotes (`>` lines) in the `body` field. If no blockquotes are present, fall back to comparing against the line context.
+**Outdated detection algorithm:**
+
+1. Extract the reviewer's quoted text from markdown blockquotes (`>` lines) in the comment's `body` field. If no blockquotes are present, use the comment's `line` content as the search text.
+2. Read the file at the comment's `path`. If the file no longer exists, mark as outdated.
+3. Compute a bounded search range: `start = max(1, line - 5)`, `end = min(file_length, line + 5)`. Extract lines `start` through `end`.
+4. Check whether the quoted text appears verbatim within the extracted range. Mark the comment as outdated only if the text is **not found** in that range.
 
 ## Step 6: Process each comment interactively
 
@@ -180,13 +209,17 @@ Call AskUserQuestion with these options:
 | Skip | Skip this comment |
 | View context | Show more surrounding lines, then re-ask |
 
-**When Apply is selected**: Read the target file, apply the edit using Edit tool, confirm the change was applied, move to next comment.
+**When Apply is selected**: Read the target file, apply the edit using Edit tool. After the edit, read back the changed lines and verify the expected text is present. If the Edit tool errors or the verification shows unexpected content, report:
+
+> Failed to apply edit to `{path}:{line}`.
+
+Then call AskUserQuestion with options: **Retry** (re-read the file and attempt the edit again) or **Skip** (move to next comment).
 
 **When Edit is selected**: Call AskUserQuestion with `textInput: true`:
 
 > Enter the text you'd like to use instead:
 
-Apply the user's text using Edit tool, confirm, move to next.
+Apply the user's text using Edit tool. Read back the changed lines and verify the expected text is present. If the edit fails or verification shows unexpected content, offer the same **Retry** / **Skip** options as above.
 
 **When View context is selected**: Read 20 lines before and after the comment's line from the local file, display them, then re-present the same options.
 
