@@ -111,29 +111,7 @@ ${BASE_PATH}/workflow/understand-pr_${REPO_NAME}_${PR_NUMBER}.json
 
 ### 7. Create progress file
 
-```json
-{
-  "workflow_type": "understand-pull-request",
-  "target": "<REPO_NAME>",
-  "pr_number": "<PR_NUMBER>",
-  "platform": "<PLATFORM>",
-  "repo_path": "<absolute REPO_PATH>",
-  "base_path": "<absolute BASE_PATH>",
-  "pr_base": "<absolute PR_BASE>",
-  "status": "in_progress",
-  "created_at": "<current ISO 8601 UTC>",
-  "updated_at": "<current ISO 8601 UTC>",
-  "step_order": ["pr-metadata", "repo-context", "change-analysis", "synthesis"],
-  "steps": {
-    "pr-metadata": { "status": "pending", "output": null, "result": null },
-    "repo-context": { "status": "pending", "output": null, "result": null },
-    "change-analysis": { "status": "pending", "output": null, "result": null },
-    "synthesis": { "status": "pending", "output": null, "result": null }
-  }
-}
-```
-
-Write to `${BASE_PATH}/workflow/understand-pr_${REPO_NAME}_${PR_NUMBER}.json`.
+Write to `${BASE_PATH}/workflow/understand-pr_${REPO_NAME}_${PR_NUMBER}.json`. Fields: `workflow_type` ("understand-pull-request"), `target`, `pr_number`, `platform`, `repo_path`, `base_path`, `pr_base` (all absolute paths), `status` ("in_progress"), `created_at`/`updated_at` (ISO 8601 UTC), `step_order` (["pr-metadata", "repo-context", "change-analysis", "synthesis"]), `steps` (each with `status: "pending"`, `output: null`, `result: null`).
 
 ### 8. Show analysis plan
 
@@ -176,22 +154,7 @@ Write the JSON output to `${OUTPUT_DIR}/metadata.json`.
 
 ### 1.4 Write step-result.json
 
-```json
-{
-  "schema_version": 1,
-  "step": "pr-metadata",
-  "target": "<REPO_NAME>",
-  "pr_number": "<PR_NUMBER>",
-  "completed_at": "<current ISO 8601 UTC>",
-  "title": "<PR title>",
-  "author": "<PR author>",
-  "state": "<PR state>",
-  "files_changed": "<count of changed files>",
-  "commits": "<count of commits>"
-}
-```
-
-Write to `${OUTPUT_DIR}/step-result.json`.
+Write to `${OUTPUT_DIR}/step-result.json` with: `schema_version: 1`, `step: "pr-metadata"`, `target`, `pr_number`, `completed_at` (ISO 8601 UTC), `title`, `author`, `state`, `files_changed`, `commits`.
 
 ### 1.5 Update progress
 
@@ -257,26 +220,7 @@ Log: `"Reusing repo overview from existing learn-code analysis"`.
 
 **If `${ONBOARDING_FILE}` does not exist:**
 
-Dispatch the pr-repo-summarizer agent:
-
-```
-Agent:
-  subagent_type: docs-skills:pr-repo-summarizer
-  description: "Summarize repo: <REPO_NAME>"
-  prompt: |
-    Produce a brief overview of this repository.
-
-    DETECTION_DATA:
-    <JSON detection data — include primary_language, modules, module_count>
-
-    CONFIG_CONTENTS:
-    <Text of each config file, prefixed with filename headers>
-
-    REPO_PATH: <absolute repo path>
-    OUTPUT_FILE: <OUTPUT_DIR>/repo-overview.md
-
-    Write a concise 2-3 paragraph overview to OUTPUT_FILE.
-```
+Dispatch `subagent_type: docs-skills:pr-repo-summarizer`. Include in the prompt: DETECTION_DATA (primary_language, modules, module_count as JSON), CONFIG_CONTENTS (each config file with headers), REPO_PATH, and OUTPUT_FILE (`<OUTPUT_DIR>/repo-overview.md`). Request a 2-3 paragraph overview.
 
 Verify `${OUTPUT_DIR}/repo-overview.md` was written. If the agent failed, create a minimal overview:
 
@@ -290,19 +234,7 @@ No detailed overview available. Run /docs-skills:learn-code for a full analysis.
 
 ### 2.7 Write step-result.json
 
-```json
-{
-  "schema_version": 1,
-  "step": "repo-context",
-  "target": "<REPO_NAME>",
-  "completed_at": "<current ISO 8601 UTC>",
-  "primary_language": "<detected language>",
-  "module_count": "<count>",
-  "overview_source": "learn-code|pr-repo-summarizer|fallback"
-}
-```
-
-Write to `${OUTPUT_DIR}/step-result.json`.
+Write to `${OUTPUT_DIR}/step-result.json` with: `schema_version: 1`, `step: "repo-context"`, `target`, `completed_at`, `primary_language`, `module_count`, `overview_source` (one of "learn-code", "pr-repo-summarizer", "fallback").
 
 ### 2.8 Update progress
 
@@ -366,66 +298,15 @@ node ${LEARN_CODE_SCRIPTS}/extract_public_api_treesitter.mjs \
 
 Group affected modules into batches of **max 10 agents per batch**. Dispatch each batch as a single message for parallel execution. Wait for the batch to complete before dispatching the next.
 
-Each agent gets:
+Each agent uses `subagent_type: docs-skills:pr-change-analyzer`. Include in the prompt: MODULE name, LANGUAGE, SOURCE (concatenated with `### FILE:` headers or API surface), DIFFS (filtered hunks), PR_METADATA (title, description, commits), a note to trust code changes over descriptions, REPO_PATH, and OUTPUT_FILE (`<OUTPUT_DIR>/<safe-module-name>.json`). For large modules (>3000 lines), note that source is API-only.
 
-```
-Agent:
-  subagent_type: docs-skills:pr-change-analyzer
-  description: "Analyze PR changes in: <module-name>"
-  prompt: |
-    Analyze the changes this pull request makes to the following module.
-
-    MODULE: <module-name>
-    LANGUAGE: <primary_language>
-
-    SOURCE:
-    <concatenated source with ### FILE: headers, or API surface for large modules>
-
-    DIFFS:
-    <filtered diff hunks for this module's files>
-
-    PR_METADATA:
-    Title: <title>
-    Description: <description>
-    Commits:
-    <list of commit sha + message>
-
-    NOTE: The PR description and commit messages may be outdated or inaccurate.
-    Always trust the actual code changes (DIFFS and SOURCE) over what the
-    description says.
-
-    REPO_PATH: <absolute path>
-    OUTPUT_FILE: <OUTPUT_DIR>/<safe-module-name>.json
-
-    Write your JSON result to OUTPUT_FILE.
-```
-
-For large modules (> 3000 lines), add:
-
-```
-    NOTE: Module source is provided as API surface only. Read files from
-    REPO_PATH as needed for additional context.
-```
-
-**Critical**: All Agent tool calls within a single batch MUST be in a single message so they execute in parallel.
+**Critical**: All Agent tool calls within a single batch MUST be in a single message for parallel execution.
 
 ### 3.5 Collect and merge results
 
 After all batches complete, read each `<OUTPUT_DIR>/<module-name>.json` file.
 
-For modules where the agent failed or produced invalid JSON, create a fallback entry:
-
-```json
-{
-  "module": "<module-name>",
-  "change_purpose": "Analysis failed — review changes manually",
-  "files_analyzed": [],
-  "impact": "Unknown",
-  "risks": ["Automated analysis failed for this module"],
-  "breaking_changes": [],
-  "depends_on_modules": []
-}
-```
+For modules where the agent failed or produced invalid JSON, create a fallback entry with `module`, `change_purpose: "Analysis failed — review changes manually"`, empty arrays for `files_analyzed`, `breaking_changes`, `depends_on_modules`, `impact: "Unknown"`, and `risks: ["Automated analysis failed for this module"]`.
 
 ### 3.6 Write change-summary.json
 
@@ -433,22 +314,7 @@ Combine all module change results into a single JSON array. Write to `${OUTPUT_D
 
 ### 3.7 Write step-result.json
 
-```json
-{
-  "schema_version": 1,
-  "step": "change-analysis",
-  "target": "<REPO_NAME>",
-  "pr_number": "<PR_NUMBER>",
-  "completed_at": "<current ISO 8601 UTC>",
-  "modules_analyzed": "<count>",
-  "modules_failed": "<count>",
-  "unmatched_files": "<count>",
-  "total_risks": "<sum of risks across all modules>",
-  "breaking_changes": "<count of modules with breaking changes>"
-}
-```
-
-Write to `${OUTPUT_DIR}/step-result.json`.
+Write to `${OUTPUT_DIR}/step-result.json` with: `schema_version: 1`, `step: "change-analysis"`, `target`, `pr_number`, `completed_at`, `modules_analyzed`, `modules_failed`, `unmatched_files`, `total_risks`, `breaking_changes`.
 
 ### 3.8 Update progress
 
@@ -481,23 +347,7 @@ Log: `"Synthesis context: <context_size_bytes> bytes (truncated: <yes|no>)"`.
 
 ### 4.3 Dispatch pr-synthesis-writer agent
 
-The context is written to a file. The synthesis agent reads it from disk.
-
-```
-Agent:
-  subagent_type: docs-skills:pr-synthesis-writer
-  description: "Write PR analysis for <REPO_NAME> PR #<PR_NUMBER>"
-  prompt: |
-    Write a comprehensive PR analysis document.
-
-    Read the full context from: ${OUTPUT_DIR}/context.json
-
-    OUTPUT_DIR: <OUTPUT_DIR>
-    PR_NUMBER: <PR_NUMBER>
-
-    Write PR-<PR_NUMBER>-ANALYSIS.md to the output directory.
-    Follow the template from ${CLAUDE_PLUGIN_ROOT}/reference/pr-analysis-template.md.
-```
+Dispatch `subagent_type: docs-skills:pr-synthesis-writer`. The context is at `${OUTPUT_DIR}/context.json` — the agent reads it from disk. Tell the agent to write `PR-<PR_NUMBER>-ANALYSIS.md` to OUTPUT_DIR, following `${CLAUDE_PLUGIN_ROOT}/reference/pr-analysis-template.md`.
 
 ### 4.4 Verify output
 
@@ -505,19 +355,7 @@ Confirm `${OUTPUT_DIR}/PR-${PR_NUMBER}-ANALYSIS.md` exists. If it does not, STOP
 
 ### 4.5 Write step-result.json
 
-```json
-{
-  "schema_version": 1,
-  "step": "synthesis",
-  "target": "<REPO_NAME>",
-  "pr_number": "<PR_NUMBER>",
-  "completed_at": "<current ISO 8601 UTC>",
-  "output_file": "PR-<PR_NUMBER>-ANALYSIS.md",
-  "context_size_bytes": "<from context builder>"
-}
-```
-
-Write to `${OUTPUT_DIR}/step-result.json`.
+Write to `${OUTPUT_DIR}/step-result.json` with: `schema_version: 1`, `step: "synthesis"`, `target`, `pr_number`, `completed_at`, `output_file` ("PR-<PR_NUMBER>-ANALYSIS.md"), `context_size_bytes`.
 
 ### 4.6 Update progress
 
@@ -539,29 +377,4 @@ If any step fails (script error, agent failure, missing output):
 
 ## Completion
 
-After all steps complete:
-
-### Update workflow status
-
-Set `status` to `completed`. Update `updated_at`. Write progress file.
-
-### Print completion summary
-
-```
-PR Analysis Complete
-================================
-Repository:      <REPO_NAME>
-PR:              #<PR_NUMBER> — <title>
-Platform:        <github|gitlab>
-Modules affected: <count>
-Files changed:   <count>
-
-Output:          <PR_BASE>/synthesis/PR-<PR_NUMBER>-ANALYSIS.md
-Workflow:        <BASE_PATH>/workflow/understand-pr_<REPO_NAME>_<PR_NUMBER>.json
-```
-
-### Suggest next steps
-
-- Read the analysis: `cat <PR_BASE>/synthesis/PR-<PR_NUMBER>-ANALYSIS.md`
-- Query the codebase: `/docs-skills:query-code "your question" --repo <REPO_PATH>`
-- Full codebase analysis: `/docs-skills:learn-code <REPO_PATH>`
+After all steps complete, set `status` to `completed`, update `updated_at`, write the progress file, and display the completion summary. See [completion template](references/completion-template.md) for the exact output format and suggested next steps.
