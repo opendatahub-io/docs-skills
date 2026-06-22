@@ -57,6 +57,10 @@ def extract_repos_from_graph(graph_data):
             child_key = child.get("key")
             if child_key:
                 tickets[child_key] = child
+                for child_link in child.get("issue_links", {}).get("links", []):
+                    cl_key = child_link.get("key")
+                    if cl_key and cl_key not in tickets:
+                        tickets[cl_key] = child_link
         for link in graph_data.get("issue_links", {}).get("links", []):
             link_key = link.get("key")
             if link_key:

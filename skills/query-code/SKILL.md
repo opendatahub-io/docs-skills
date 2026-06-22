@@ -12,10 +12,10 @@ Takes a natural-language question about a codebase, loads the analysis data prod
 ## Usage
 
 ```
-/code-learner:query-code "How does authentication work?" --repo /path/to/repo
-/code-learner:query-code "How does authentication work?" --repo https://github.com/user/repo
-/code-learner:query-code "What modules depend on the database layer?"
-/code-learner:query-code "Where is the HTTP routing configured?" --repo /path/to/my-api
+/docs-skills:query-code "How does authentication work?" --repo /path/to/repo
+/docs-skills:query-code "How does authentication work?" --repo https://github.com/user/repo
+/docs-skills:query-code "What modules depend on the database layer?"
+/docs-skills:query-code "Where is the HTTP routing configured?" --repo /path/to/my-api
 ```
 
 ## Arguments
@@ -87,7 +87,7 @@ Check if `${BASE_PATH}/workflow/` contains a progress file.
 If the user agrees to run learn-code:
 
 ```
-Skill: code-learner:learn-code
+Skill: docs-skills:learn-code
 args: <repo-path>
 ```
 
@@ -153,7 +153,7 @@ Set `OUTPUT_FILE="${OUTPUT_DIR}/<slug>.md"`.
 
 ```
 Agent:
-  subagent_type: code-learner:code-questioner
+  subagent_type: docs-skills:code-questioner
   description: "Answer: <question truncated to 60 chars>"
   prompt: |
     Answer this question about the <REPO_NAME> codebase:

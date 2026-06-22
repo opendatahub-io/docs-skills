@@ -12,10 +12,10 @@ Fetches PR/MR metadata, identifies affected modules, analyzes changes in each mo
 ## Usage
 
 ```
-/code-learner:understand-pull-request 42
-/code-learner:understand-pull-request 42 --repo /path/to/repo
-/code-learner:understand-pull-request https://github.com/org/repo/pull/42
-/code-learner:understand-pull-request https://gitlab.com/org/repo/-/merge_requests/42
+/docs-skills:understand-pull-request 42
+/docs-skills:understand-pull-request 42 --repo /path/to/repo
+/docs-skills:understand-pull-request https://github.com/org/repo/pull/42
+/docs-skills:understand-pull-request https://gitlab.com/org/repo/-/merge_requests/42
 ```
 
 ## Arguments
@@ -261,7 +261,7 @@ Dispatch the pr-repo-summarizer agent:
 
 ```
 Agent:
-  subagent_type: code-learner:pr-repo-summarizer
+  subagent_type: docs-skills:pr-repo-summarizer
   description: "Summarize repo: <REPO_NAME>"
   prompt: |
     Produce a brief overview of this repository.
@@ -285,7 +285,7 @@ Repository: <REPO_NAME>
 Language: <primary_language>
 Modules: <module_count>
 
-No detailed overview available. Run /code-learner:learn-code for a full analysis.
+No detailed overview available. Run /docs-skills:learn-code for a full analysis.
 ```
 
 ### 2.7 Write step-result.json
@@ -370,7 +370,7 @@ Each agent gets:
 
 ```
 Agent:
-  subagent_type: code-learner:pr-change-analyzer
+  subagent_type: docs-skills:pr-change-analyzer
   description: "Analyze PR changes in: <module-name>"
   prompt: |
     Analyze the changes this pull request makes to the following module.
@@ -485,7 +485,7 @@ The context is written to a file. The synthesis agent reads it from disk.
 
 ```
 Agent:
-  subagent_type: code-learner:pr-synthesis-writer
+  subagent_type: docs-skills:pr-synthesis-writer
   description: "Write PR analysis for <REPO_NAME> PR #<PR_NUMBER>"
   prompt: |
     Write a comprehensive PR analysis document.
@@ -563,5 +563,5 @@ Workflow:        <BASE_PATH>/workflow/understand-pr_<REPO_NAME>_<PR_NUMBER>.json
 ### Suggest next steps
 
 - Read the analysis: `cat <PR_BASE>/synthesis/PR-<PR_NUMBER>-ANALYSIS.md`
-- Query the codebase: `/code-learner:query-code "your question" --repo <REPO_PATH>`
-- Full codebase analysis: `/code-learner:learn-code <REPO_PATH>`
+- Query the codebase: `/docs-skills:query-code "your question" --repo <REPO_PATH>`
+- Full codebase analysis: `/docs-skills:learn-code <REPO_PATH>`
