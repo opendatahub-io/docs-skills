@@ -123,8 +123,11 @@ See the workflow YAML for available steps, conditional execution (`when:` field)
 
 | Flag | Description |
 |------|-------------|
-| `--repo <url-or-path>` | Source code repository for code-learner analysis |
+| `--repo <url-or-path>` | Source code repository for learn-code analysis |
 | `--pr <url>` | PR/MR URL to include in requirements analysis (repeatable) |
+| `--no-source-repo` | Skip source resolution and all source-dependent steps |
+| `--auto-discover-repos` | Skip confirmation when secondary repos are discovered |
+| `--max-secondary-repos <N>` | Maximum secondary repos to clone (default: 3) |
 | `--mkdocs` | Generate Material for MkDocs Markdown instead of AsciiDoc |
 | `--create-merge-request` | Create branch, commit, push, and open MR/PR |
 | `--workflow <name>` | Use a named workflow variant |

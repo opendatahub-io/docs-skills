@@ -299,6 +299,7 @@ class JiraReader:
         self._epic_link_field = None
         self._parent_link_field = None
         self._custom_fields_discovered = False
+        self._remote_links_cache = {}
 
     def process_comments(self, comments):
         """
@@ -718,13 +719,24 @@ class JiraReader:
             item["auto_discovered_urls"] = auto_discovered
             errors.extend(link_errors)
 
+    def _enrich_with_issue_links(self, child_infos, raw_issues, errors, max_links=5):
+        """Extract issue links from raw issue objects and attach to child info dicts."""
+        for info, raw in zip(child_infos, raw_issues):
+            try:
+                links_result, link_errors = self._extract_issue_links(raw, max_links)
+                info["issue_links"] = links_result
+                errors.extend(link_errors)
+            except Exception as e:
+                errors.append(f"Issue links for {info['key']}: {e}")
+
     def _fetch_children(self, ticket_key, max_children=25):
         """
         Fetch children via parent = KEY and "Epic Link" = KEY JQL queries.
 
-        Also fetches remote links for each child and grandchild to populate
-        git_links and auto_discovered_urls, so downstream consumers
-        (extract_discovered_repos) can find PRs attached to child tickets.
+        Also fetches remote links and issue links for each child and
+        grandchild to populate git_links and auto_discovered_urls, so
+        downstream consumers (extract_discovered_repos) can find PRs
+        attached to child tickets or their linked issues.
 
         Returns:
             Dictionary with total, showing, skipped, and issues list.
@@ -732,6 +744,7 @@ class JiraReader:
         errors = []
         seen_keys = set()
         issues = []
+        raw_issues = []
 
         # Query 1: Standard parent field
         jql1 = f"parent = {ticket_key} ORDER BY status ASC, key ASC"
@@ -741,6 +754,7 @@ class JiraReader:
                 if issue.key not in seen_keys:
                     seen_keys.add(issue.key)
                     issues.append(self._build_child_info(issue))
+                    raw_issues.append(issue)
         except Exception as e:
             errors.append(f"Children query (parent field): {e}")
 
@@ -753,10 +767,12 @@ class JiraReader:
                     if issue.key not in seen_keys:
                         seen_keys.add(issue.key)
                         issues.append(self._build_child_info(issue))
+                        raw_issues.append(issue)
             except Exception as e:
                 errors.append(f"Children query (Epic Link): {e}")
 
         self._enrich_with_remote_links(issues, errors)
+        self._enrich_with_issue_links(issues, raw_issues, errors)
 
         # Fetch grandchildren (children of children) with remote links
         child_keys = [c["key"] for c in issues]
@@ -766,12 +782,15 @@ class JiraReader:
             try:
                 gc_results = self.jira.search_issues(jql_gc, maxResults=max_children * 3)
                 grandchildren = []
+                gc_raw = []
                 for issue in gc_results:
                     if issue.key not in seen_keys:
                         seen_keys.add(issue.key)
                         gc_info = self._build_child_info(issue)
                         grandchildren.append(gc_info)
+                        gc_raw.append(issue)
                 self._enrich_with_remote_links(grandchildren, errors)
+                self._enrich_with_issue_links(grandchildren, gc_raw, errors)
                 issues.extend(grandchildren)
             except Exception as e:
                 errors.append(f"Grandchildren query: {e}")
@@ -902,9 +921,16 @@ class JiraReader:
         """
         Fetch remote/web links from the ticket and classify URLs.
 
+        Results are cached per ticket_key to avoid duplicate API calls
+        when the same linked ticket appears across multiple children.
+
         Returns:
             Tuple of (web_links_dict, auto_discovered_urls_dict, errors).
         """
+        if ticket_key in self._remote_links_cache:
+            web_links, auto_discovered = self._remote_links_cache[ticket_key]
+            return web_links, auto_discovered, []
+
         errors = []
         try:
             remote_links = self.jira.remote_links(ticket_key)
@@ -931,6 +957,7 @@ class JiraReader:
 
         web_links = {"total": len(links), "links": links}
         auto_discovered = {"pull_requests": pull_requests, "google_docs": google_docs}
+        self._remote_links_cache[ticket_key] = (web_links, auto_discovered)
         return web_links, auto_discovered, errors
 
     def save_comments_to_disk(self, jira_id, output_path):
