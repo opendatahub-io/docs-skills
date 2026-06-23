@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "PyGithub",
+#     "python-gitlab",
+#     "pyyaml",
+# ]
+# ///
 """
 Git PR Reader - Unified Python library and CLI for GitHub PRs and GitLab MRs.
 
@@ -61,21 +69,9 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
-try:
-    import yaml
-except ImportError:
-    yaml = None  # type: ignore[assignment]
-
-try:
-    from github import Auth, Github
-except ImportError:
-    Github = None  # type: ignore[assignment,misc]
-    Auth = None  # type: ignore[assignment,misc]
-
-try:
-    from gitlab import Gitlab
-except ImportError:
-    Gitlab = None  # type: ignore[assignment,misc]
+import yaml
+from github import Auth, Github
+from gitlab import Gitlab
 
 
 # =============================================================================
@@ -229,8 +225,6 @@ def _redact_token(arg: str) -> str:
 
 def load_ignore_config(path: str) -> List[re.Pattern]:
     """Load ignore patterns from a YAML file with a `git_ignore_list` key."""
-    if yaml is None:
-        raise ImportError("PyYAML required for --ignore-config. Run: pip install pyyaml")
     with open(path) as f:
         config = yaml.safe_load(f)
     raw = config.get("git_ignore_list", [])
@@ -321,10 +315,6 @@ def load_filters(config_path: Optional[str] = None) -> List[re.Pattern]:
         resolved_path = config_path
 
     if not os.path.exists(resolved_path):
-        return []
-
-    if yaml is None:
-        print("Warning: PyYAML not installed; file filtering disabled.", file=sys.stderr)
         return []
 
     with open(resolved_path) as f:
@@ -758,12 +748,9 @@ class GitHubReviewAPI(GitReviewAPI):
             config_path: Optional path to git_filters.yaml.
 
         Raises:
-            ImportError: If PyGithub is not installed.
             RuntimeError: If GITHUB_TOKEN is not set.
         """
         super().__init__(url, config_path=config_path)
-        if Github is None or Auth is None:
-            raise ImportError("PyGithub not installed. Run: python3 -m pip install PyGithub")
         self._parse_url()
         self._init_client()
 
@@ -1232,14 +1219,9 @@ class GitLabReviewAPI(GitReviewAPI):
             config_path: Optional path to git_filters.yaml.
 
         Raises:
-            ImportError: If python-gitlab is not installed.
             RuntimeError: If GITLAB_TOKEN is not set.
         """
         super().__init__(url, config_path=config_path)
-        if Gitlab is None:
-            raise ImportError(
-                "python-gitlab not installed. Run: python3 -m pip install python-gitlab"
-            )
         self._parse_url()
         self._init_client()
 

@@ -31,7 +31,7 @@ Fetch unresolved review comments from a GitHub PR or GitLab MR and interactively
 
 If a URL was provided (positional `$1` in standalone mode, or `--pr` in workflow step mode), use it directly. If omitted, auto-detect:
 ```bash
-PR_URL=$(python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py detect 2>/dev/null)
+PR_URL=$(uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- detect 2>/dev/null)
 ```
 
 If detection fails, stop with:
@@ -93,8 +93,8 @@ If no workspace is found, log nothing and proceed without grounding — the skil
 Fetch PR metadata to determine the source branch:
 
 ```bash
-HEAD_REF=$(python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info "${PR_URL}" --field head_ref)
-TITLE=$(python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info "${PR_URL}" --field title)
+HEAD_REF=$(uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- info "${PR_URL}" --field head_ref)
+TITLE=$(uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- info "${PR_URL}" --field title)
 ```
 
 **Validate ref name** — before using `HEAD_REF` in any git command, verify it contains only safe characters:
@@ -142,7 +142,7 @@ Report to the user:
 ## Step 4: Fetch review comments
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py comments "${PR_URL}" --json
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- comments "${PR_URL}" --json
 ```
 
 Add `--include-resolved` if the `--include-resolved` flag was passed.

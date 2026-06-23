@@ -35,64 +35,64 @@ Unified interface for GitHub Pull Requests and GitLab Merge Requests — read, r
 #### read — Read PR/MR data with diffs and file filtering
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py read --url "https://github.com/owner/repo/pull/123"
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py read --url "https://gitlab.com/group/project/-/merge_requests/456" --format markdown
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py read --url "https://github.com/owner/repo/pull/123" --no-filter
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- read --url "https://github.com/owner/repo/pull/123"
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- read --url "https://gitlab.com/group/project/-/merge_requests/456" --format markdown
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- read --url "https://github.com/owner/repo/pull/123" --no-filter
 ```
 
 #### info — Get PR/MR information
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py info https://github.com/owner/repo/pull/123 --json
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- info https://github.com/owner/repo/pull/123 --json
 ```
 
 #### files — List changed files
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py files https://github.com/owner/repo/pull/123
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py files https://github.com/owner/repo/pull/123 --filter "*.adoc" --json
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- files https://github.com/owner/repo/pull/123
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- files https://github.com/owner/repo/pull/123 --filter "*.adoc" --json
 ```
 
 #### comments — List review comments
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py comments https://github.com/owner/repo/pull/123
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py comments https://github.com/owner/repo/pull/123 --include-resolved --json
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- comments https://github.com/owner/repo/pull/123
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- comments https://github.com/owner/repo/pull/123 --include-resolved --json
 ```
 
 #### diff — Get unified diff
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py diff https://github.com/owner/repo/pull/123
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- diff https://github.com/owner/repo/pull/123
 ```
 
 #### post — Post review comments
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py post https://github.com/owner/repo/pull/123 comments.json
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py post https://github.com/owner/repo/pull/123 comments.json --review-type technical
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py post https://github.com/owner/repo/pull/123 comments.json --review-type style --dry-run
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- post https://github.com/owner/repo/pull/123 comments.json
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- post https://github.com/owner/repo/pull/123 comments.json --review-type technical
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- post https://github.com/owner/repo/pull/123 comments.json --review-type style --dry-run
 ```
 
 #### extract — Extract line numbers from diff
 
 ```bash
 # Find line number for a pattern
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py extract https://github.com/owner/repo/pull/123 path/to/file.adoc "pattern"
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- extract https://github.com/owner/repo/pull/123 path/to/file.adoc "pattern"
 
 # Dump all added/modified lines
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py extract --dump https://github.com/owner/repo/pull/123 path/to/file.adoc
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- extract --dump https://github.com/owner/repo/pull/123 path/to/file.adoc
 
 # Validate a comments JSON file against the diff
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py extract --validate https://github.com/owner/repo/pull/123 comments.json
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- extract --validate https://github.com/owner/repo/pull/123 comments.json
 ```
 
 #### metadata — Get combined PR/MR metadata
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py metadata https://github.com/owner/repo/pull/123
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py metadata https://gitlab.com/group/project/-/merge_requests/456
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py metadata https://github.com/owner/repo/pull/123 --diff-output /path/to/diff.patch
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- metadata https://github.com/owner/repo/pull/123
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- metadata https://gitlab.com/group/project/-/merge_requests/456
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- metadata https://github.com/owner/repo/pull/123 --diff-output /path/to/diff.patch
 ```
 
 Returns combined metadata: platform, pr_number, title, description, state, author, base_branch, head_branch, labels, commits, changed_files, and url. With `--diff-output`, also saves the unified diff to the specified file.
@@ -100,8 +100,8 @@ Returns combined metadata: platform, pr_number, title, description, state, autho
 #### detect — Auto-detect PR/MR for current branch
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py detect
-python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py detect --json
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- detect
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- detect --json
 ```
 
 ### Authentication
@@ -164,11 +164,7 @@ File filtering patterns are defined in `config/git_filters.yaml`. You can custom
 
 ## Dependencies
 
-Install required Python packages:
-
-```bash
-python3 -m pip install PyGithub python-gitlab pyyaml pip-system-certs
-```
+Dependencies (`PyGithub`, `python-gitlab`, `pyyaml`) are declared via PEP 723 inline metadata and installed automatically by `uv run --script`.
 
 ## Integration with Other Skills
 
