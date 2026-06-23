@@ -107,7 +107,13 @@ If `ONBOARDING.md` is not found at either location after the agent completes, ma
 
 ### 4. Write step-result.json
 
-Read the analysis data and write the sidecar:
+Extract metrics from the copied analysis files:
+
+- **module_count**: `registry.json` is a JSON **array** — the count is its length (e.g. `len(json.load(f))` or `jq length`).
+- **relationship_count**: count of `.json` files in `relationships/`.
+- **languages_detected**: read `detection.json` (a JSON object) — use the keys of `language_counts`, or fall back to `primary_language` as a single-element list.
+
+Write the sidecar:
 
 ```json
 {
@@ -115,9 +121,9 @@ Read the analysis data and write the sidecar:
   "step": "code-analysis",
   "ticket": "<TICKET>",
   "completed_at": "<ISO 8601>",
-  "module_count": "<count from registry.json>",
-  "relationship_count": "<count from relationships/>",
-  "languages_detected": ["<from detection.json>"],
+  "module_count": "<length of registry.json array>",
+  "relationship_count": "<count of .json files in relationships/>",
+  "languages_detected": ["<keys from detection.json language_counts>"],
   "repo_path": "<absolute path to repo>"
 }
 ```
