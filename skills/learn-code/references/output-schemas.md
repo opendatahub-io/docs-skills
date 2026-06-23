@@ -196,7 +196,7 @@ Written to `${BASE_PATH}/workflow/learn-code_${REPO_NAME}.json`.
 
 ```json
 {
-  "workflow_type": "learn-code",
+  "workflow": "learn-code",
   "target": "<REPO_NAME>",
   "repo_path": "<absolute REPO_PATH>",
   "base_path": "<absolute BASE_PATH>",

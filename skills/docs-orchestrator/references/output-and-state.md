@@ -100,13 +100,13 @@ Claude writes the progress file directly using the Write tool. Create it after p
 
 **Location**: `.agent_workspace/<ticket>/workflow/<workflow-type>_<ticket>.json`
 
-The `workflow_type` field and filename prefix match the YAML's `workflow.name`. This allows multiple workflow types to run against the same ticket without conflict.
+The `workflow` field and filename prefix match the YAML's `workflow.name`. This allows multiple workflow types to run against the same ticket without conflict.
 
 ### Schema
 
 ```json
 {
-  "workflow_type": "<workflow.name from YAML>",
+  "workflow": "<workflow.name from YAML>",
   "ticket": "<TICKET>",
   "base_path": "/absolute/path/to/.agent_workspace/<ticket>",
   "status": "in_progress",
@@ -168,7 +168,7 @@ Write the marker file using the Write tool at the same time as creating or updat
 ```json
 {
   "ticket": "<TICKET>",
-  "workflow_type": "<workflow.name from YAML>",
+  "workflow": "<workflow.name from YAML>",
   "progress_file": ".agent_workspace/<ticket-lower>/workflow/<workflow-type>_<ticket-lower>.json"
 }
 ```

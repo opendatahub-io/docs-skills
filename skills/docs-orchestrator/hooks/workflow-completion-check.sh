@@ -67,7 +67,7 @@ if [ "$WORKFLOW_STATUS" != "in_progress" ]; then
   exit 0
 fi
 
-WORKFLOW_TYPE=$(jq -r '.workflow_type' "$PROGRESS_FILE" 2>/dev/null)
+WORKFLOW_TYPE=$(jq -r '.workflow' "$PROGRESS_FILE" 2>/dev/null)
 
 # Anti-loop guard: per-workflow counter prevents infinite blocking
 COUNTER_FILE="${PROGRESS_FILE}.stop_count"

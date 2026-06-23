@@ -111,7 +111,7 @@ ${BASE_PATH}/workflow/understand-pr_${REPO_NAME}_${PR_NUMBER}.json
 
 ### 7. Create progress file
 
-Write to `${BASE_PATH}/workflow/understand-pr_${REPO_NAME}_${PR_NUMBER}.json`. Fields: `workflow_type` ("understand-pull-request"), `target`, `pr_number`, `platform`, `repo_path`, `base_path`, `pr_base` (all absolute paths), `status` ("in_progress"), `created_at`/`updated_at` (ISO 8601 UTC), `step_order` (["pr-metadata", "repo-context", "change-analysis", "synthesis"]), `steps` (each with `status: "pending"`, `output: null`, `result: null`).
+Write to `${BASE_PATH}/workflow/understand-pr_${REPO_NAME}_${PR_NUMBER}.json`. Fields: `workflow` ("understand-pull-request"), `target`, `pr_number`, `platform`, `repo_path`, `base_path`, `pr_base` (all absolute paths), `status` ("in_progress"), `created_at`/`updated_at` (ISO 8601 UTC), `step_order` (["pr-metadata", "repo-context", "change-analysis", "synthesis"]), `steps` (each with `status: "pending"`, `output: null`, `result: null`).
 
 ### 8. Show analysis plan
 

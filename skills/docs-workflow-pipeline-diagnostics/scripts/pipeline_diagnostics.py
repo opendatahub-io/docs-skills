@@ -704,7 +704,7 @@ def analyze(progress_path: str) -> dict:
     step_order = progress.get("step_order", [])
     steps = progress.get("steps", {})
     status = progress.get("status", "unknown")
-    workflow_type = progress.get("workflow_type", "unknown")
+    workflow_type = progress.get("workflow", "unknown")
     created_at = parse_iso(progress.get("created_at"))
     updated_at = parse_iso(progress.get("updated_at"))  # noqa: F841
 
@@ -730,7 +730,7 @@ def analyze(progress_path: str) -> dict:
     return {
         "summary": {
             "ticket": ticket,
-            "workflow_type": workflow_type,
+            "workflow": workflow_type,
             "status": status,
             "started_at": first_mtime.isoformat() if first_mtime else progress.get("created_at"),
             "finished_at": last_mtime.isoformat() if last_mtime else progress.get("updated_at"),
@@ -832,7 +832,7 @@ def print_summary(data: dict):
             continue
 
         s = run["summary"]
-        print(f"=== Pipeline Diagnostic: {s['ticket']} ({s['workflow_type']}) ===")
+        print(f"=== Pipeline Diagnostic: {s['ticket']} ({s['workflow']}) ===")
         print(f"Status: {s['status']}")
         if s.get("total_duration_min"):
             print(f"Duration: {s['total_duration_min']} min (from file mtimes)")
