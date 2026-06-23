@@ -128,7 +128,7 @@ Follow the output folder structures and workflows described in the "Draft mode o
 
 Apply JTBD principles to documentation writing. Before writing, read the JTBD framework reference:
 
-```
+```text
 Read: ${CLAUDE_PLUGIN_ROOT}/reference/jtbd-framework.md
 ```
 

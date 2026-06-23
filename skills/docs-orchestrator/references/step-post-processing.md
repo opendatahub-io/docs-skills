@@ -13,11 +13,11 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 - Log: `"Code analysis completed: N modules, N relationships, languages: <languages_detected>"`
 - Record `repo_path` from the sidecar for downstream steps
-- **Multi-repo code analysis**: If `options.additional_sources` is non-empty, run code-analysis for each additional repo sequentially. For each additional source entry:
+- **Multi-repo code analysis**: If `options.additional_sources` is non-empty, run code-analysis for each additional repo sequentially. For each additional source entry (indexed starting at 1):
   1. Derive the repo name: `basename(additional_source.repo_path)`
-  2. Invoke the code-analysis step skill with a custom output dir:
+  2. Invoke the code-analysis step skill with a custom output dir that includes the index to avoid name collisions:
      ```
-     Skill: docs-workflow-code-analysis, args: "--repo <additional_source.repo_path> --ticket <ticket> --output-dir <base_path>/code-analysis-<repo-name>"
+     Skill: docs-workflow-code-analysis, args: "--repo <additional_source.repo_path> --ticket <ticket> --output-dir <base_path>/code-analysis-<index>-<repo-name>"
      ```
   3. Log: `"Additional code analysis completed for <repo-name>"`
   These additional analyses are sub-tasks of the primary code-analysis step — do not create separate progress file entries. If an additional repo analysis fails, log a warning and continue (do not fail the entire code-analysis step)

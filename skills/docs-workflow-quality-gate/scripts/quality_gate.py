@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 PASS_THRESHOLD_INTENT = 4
+PASS_THRESHOLD_DOC_QUALITY = 3
 
 DOC_QUALITY_PROMPT = """\
 You are evaluating AI-generated AsciiDoc documentation for a Red Hat product feature.
@@ -149,14 +150,18 @@ def classify_gaps(missed_items, evidence_status):
     for item in missed_items:
         ac_text = item.get("ac_item", "")
         ac_lower = ac_text.lower()
+        req_id = item.get("id", "")
 
         ev_status = "unknown"
         action = "investigate"
 
-        for key, req in req_statuses.items():
-            if isinstance(key, str) and (ac_lower in key or key in ac_lower):
-                ev_status = req.get("status", "unknown")
-                break
+        if req_id and req_id in req_statuses:
+            ev_status = req_statuses[req_id].get("status", "unknown")
+        else:
+            for key, req in req_statuses.items():
+                if isinstance(key, str) and key == ac_lower:
+                    ev_status = req.get("status", "unknown")
+                    break
 
         if ev_status == "absent":
             action = "document_as_unsupported"
@@ -186,7 +191,7 @@ def write_results(output_dir, ticket, doc_quality_result, intent_result, gaps, i
 
     dq_score = doc_quality_result.get("score", 0)
     ia_score = intent_result.get("score", 0)
-    passed = ia_score >= PASS_THRESHOLD_INTENT
+    passed = ia_score >= PASS_THRESHOLD_INTENT and dq_score >= PASS_THRESHOLD_DOC_QUALITY
 
     sidecar = {
         "schema_version": 1,
@@ -238,10 +243,13 @@ def cmd_prepare(args):
     doc_content = read_doc_content(base_path)
     ticket_context = read_ticket_context(base_path)
 
-    dq_prompt = DOC_QUALITY_PROMPT.format(doc_content=doc_content)
+    safe_doc = doc_content.replace("{", "{{").replace("}", "}}")
+    safe_ticket = ticket_context.replace("{", "{{").replace("}", "}}")
+
+    dq_prompt = DOC_QUALITY_PROMPT.format(doc_content=safe_doc)
     ia_prompt = INTENT_ALIGNMENT_PROMPT.format(
-        ticket_context=ticket_context,
-        doc_content=doc_content,
+        ticket_context=safe_ticket,
+        doc_content=safe_doc,
     )
 
     (output_dir / "dq-prompt.md").write_text(dq_prompt)

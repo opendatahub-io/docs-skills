@@ -127,7 +127,7 @@ See [output and state reference](references/output-and-state.md#progress-file) f
 
 Check for a progress file at `.agent_workspace/<ticket>/workflow/<workflow-type>_<ticket>.json`.
 
-**If found**: Read it. Verify each `completed` step's output folder exists on disk — if missing, reset it and all downstream steps to `pending`. If `options.source` is null, rehydrate via `resolve_source.py --base-path <base_path> --progress-file <progress_file>` (add `--scan-requirements --skip-deferred-on-no-source` if requirements already completed). Resume from the first `pending` or `failed` step after validating input dependencies.
+**If found**: Read it. Verify each `completed` step's output folder exists on disk — if missing, reset it and all downstream steps to `pending` and clear `steps.<step>.result` for the rewound step and all its downstream dependents (prevents stale sidecar data from being reused). If `options.source` is null, rehydrate via `resolve_source.py --base-path <base_path> --progress-file <progress_file>` (add `--scan-requirements --skip-deferred-on-no-source` if requirements already completed). Resume from the first `pending` or `failed` step after validating input dependencies.
 
 **If not found**: Create a new progress file and start from step 1.
 
@@ -157,7 +157,7 @@ Skill: <step.skill>, args: "<constructed args>"
 ### After the step
 
 1. Verify output folder exists — if missing, mark `failed` and **STOP**
-2. Read `step-result.json` sidecar if present; store fields in `steps.<step-name>.result`. Log warning if missing (step still counts as completed)
+2. Read `step-result.json` sidecar if present; store fields in `steps.<step-name>.result`. If missing, log warning and store default result: `{"module_count": 0, "files": [], "passed": true}` — downstream post-processing must handle these defaults gracefully
 3. Set status to `completed` with output path. Update `updated_at`
 4. Do NOT read step output files into orchestrator context — read only sidecars
 5. Run [step-specific post-processing](#step-specific-post-processing)

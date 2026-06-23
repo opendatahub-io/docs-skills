@@ -4,7 +4,7 @@
 
 Output this summary to the terminal after generating the full report:
 
-```
+```text
 ## Technical Review
 
 **Source**: <branch vs base | PR/MR URL>
@@ -136,15 +136,6 @@ Entities found in API surface but not referenced in reviewed documentation:
 |------|------|-------------|-----------|
 | function | list_resources | src/app.py:12 | def list_resources() |
 | class | ExampleClient | src/client.py:2 | class ExampleClient |
-
-## Out-of-Scope References
-
-| Tool | Count |
-|------|-------|
-| sudo | X |
-| kubectl | Y |
-
----
 
 *Generated with [Claude Code](https://claude.com/claude-code)*
 ```

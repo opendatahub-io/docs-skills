@@ -1,6 +1,6 @@
 # Agent Prompt Templates
 
-#### Mode: `update-in-place`, format: `adoc`
+## Mode: `update-in-place`, format: `adoc`
 
 **Description:** `Write adoc documentation for <TICKET>`
 
@@ -42,7 +42,7 @@
 
 ---
 
-#### Mode: `update-in-place`, format: `mkdocs`
+## Mode: `update-in-place`, format: `mkdocs`
 
 **Description:** `Write mkdocs documentation for <TICKET>`
 
@@ -84,7 +84,7 @@
 
 ---
 
-#### Mode: `draft`, format: `adoc`
+## Mode: `draft`, format: `adoc`
 
 **Description:** `Write adoc documentation for <TICKET>`
 
@@ -114,7 +114,7 @@
 > Save files to the staging area. Do not modify any existing repository files.
 >
 > Output folder structure:
-> ```
+> ```text
 > <OUTPUT_DIR>/
 > ├── _index.md                     # Index of all modules
 > ├── assembly_<name>.adoc          # Assembly files at root
@@ -130,7 +130,7 @@
 
 ---
 
-#### Mode: `draft`, format: `mkdocs`
+## Mode: `draft`, format: `mkdocs`
 
 **Description:** `Write mkdocs documentation for <TICKET>`
 
@@ -160,7 +160,7 @@
 > Save files to the staging area. Do not modify any existing repository files.
 >
 > Output folder structure:
-> ```
+> ```text
 > <OUTPUT_DIR>/
 > ├── _index.md                     # Index of all pages
 > ├── mkdocs-nav.yml                # Suggested nav tree fragment
@@ -176,7 +176,7 @@
 
 ---
 
-#### Mode: `fix`
+## Mode: `fix`
 
 **Description:** `Fix documentation for <TICKET>`
 

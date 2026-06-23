@@ -63,7 +63,7 @@ For modules in the `api-only` tier, generate directly without agent dispatch:
   "module": "<module-name>",
   "language": "<primary_language>",
   "purpose": "<purpose from registry>",
-  "public_api": "<from pre-extracted API, or empty>",
+  "public_api": [],
   "dependencies": "<likely_imports from registry>",
   "external_libs": [],
   "data_flow": "See source for details",

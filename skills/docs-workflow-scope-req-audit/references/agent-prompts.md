@@ -8,7 +8,7 @@ Each agent reads the analysis data from disk and writes its result to a per-requ
 
 For each requirement, use:
 
-```
+```text
 Agent:
   subagent_type: requirement-classifier
   description: "Classify REQ-NNN: <title truncated to 40 chars>"
@@ -48,7 +48,7 @@ Where `<NNN>` is the zero-padded requirement number extracted from the REQ-NNN i
 
 Delegate the assembly of `evidence-status.json` and `summary.md` to a merge subagent. This keeps the full classification data (~20-50KB) out of the orchestrator's context.
 
-```
+```text
 Agent:
   description: "Merge evidence classifications for <TICKET>"
   prompt: |

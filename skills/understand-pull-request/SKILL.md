@@ -304,7 +304,7 @@ Each agent uses `subagent_type: docs-skills:pr-change-analyzer`. Include in the 
 
 ### 3.5 Collect and merge results
 
-After all batches complete, read each `<OUTPUT_DIR>/<module-name>.json` file.
+After all batches complete, read each `<OUTPUT_DIR>/<safe-module-name>.json` file.
 
 For modules where the agent failed or produced invalid JSON, create a fallback entry with `module`, `change_purpose: "Analysis failed — review changes manually"`, empty arrays for `files_analyzed`, `breaking_changes`, `depends_on_modules`, `impact: "Unknown"`, and `risks: ["Automated analysis failed for this module"]`.
 

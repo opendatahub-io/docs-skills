@@ -208,13 +208,13 @@ For `full` and `api-guided` tiers, concatenate source files with `### FILE: <rel
 
 Group `full` and `api-guided` modules into batches of **max 10 agents per batch**. Dispatch each batch as a single message for parallel execution. Wait for the batch to complete before dispatching the next.
 
-Each agent uses `subagent_type: docs-skills:module-analyzer`. Include in the prompt: MODULE name, LANGUAGE, QUESTION from registry, PUBLIC_API (pre-extracted AST JSON or "Not available"), SOURCE (concatenated with `### FILE:` headers), and output path `<OUTPUT_DIR>/<module-name>.json`. For `api-guided` modules, add REPO_PATH and a note that source is truncated.
+Each agent uses `subagent_type: docs-skills:module-analyzer`. Include in the prompt: MODULE name, LANGUAGE, QUESTION from registry, PUBLIC_API (pre-extracted AST JSON or "Not available"), SOURCE (concatenated with `### FILE:` headers), and output path `<OUTPUT_DIR>/<safe-module-name>.json`. For `api-guided` modules, add REPO_PATH and a note that source is truncated.
 
 **Critical**: All Agent tool calls within a single batch MUST be in a single message for parallel execution.
 
 ### 3.8 Collect and merge results
 
-After all batches complete, read each `<OUTPUT_DIR>/<module-name>.json` file.
+After all batches complete, read each `<OUTPUT_DIR>/<safe-module-name>.json` file.
 
 For modules where the agent failed or produced invalid JSON, create a fallback entry. See [output schemas](references/output-schemas.md#agent-failure-fallback-entry) for the JSON structure.
 
@@ -347,7 +347,7 @@ Confirm `${OUTPUT_DIR}/ONBOARDING.md` exists. If it does not, STOP and report th
 
 ### 5.5 Write step-result.json
 
-Scan ONBOARDING.md for level-2 headings (`## `) to determine sections. Write to `${OUTPUT_DIR}/step-result.json`. See [output schemas](references/output-schemas.md#step-resultjson-synthesis) for the JSON structure.
+Scan ONBOARDING.md for level-2 headings (`##`) to determine sections. Write to `${OUTPUT_DIR}/step-result.json`. See [output schemas](references/output-schemas.md#step-resultjson-synthesis) for the JSON structure.
 
 ### 5.6 Update progress
 

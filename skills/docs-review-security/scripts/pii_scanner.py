@@ -525,7 +525,7 @@ def collect_files(docs_dir, scan_dirs, file_types):
     files = []
     for scan_dir in scan_dirs:
         d = (root / scan_dir).resolve()
-        if not str(d).startswith(str(root)):
+        if not d.is_relative_to(root):
             continue
         if not d.is_dir():
             continue
@@ -568,7 +568,14 @@ def run(args):
     """Execute the scan command and return exit code."""
     # Collect files from paths or docs-dir
     if args.paths:
-        files = [Path(p) for p in args.paths if Path(p).is_file()]
+        invalid = [p for p in args.paths if not Path(p).is_file()]
+        if invalid:
+            print(
+                json.dumps({"error": f"Paths not found or not files: {invalid}"}),
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        files = [Path(p) for p in args.paths]
     elif args.docs_dir:
         docs_dir = args.docs_dir
         if not Path(docs_dir).is_dir():
