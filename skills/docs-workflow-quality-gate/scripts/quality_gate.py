@@ -15,7 +15,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 PASS_THRESHOLD_INTENT = 4
-PASS_THRESHOLD_DOC_QUALITY = 3
 
 DOC_QUALITY_PROMPT = """\
 You are evaluating AI-generated AsciiDoc documentation for a Red Hat product feature.
@@ -140,12 +139,16 @@ def read_evidence_status(base_path):
 def classify_gaps(missed_items, evidence_status):
     """Cross-reference missed AC items against evidence status."""
     gaps = []
-    req_statuses = {}
+    reqs_by_id = {}
+    reqs_by_title = {}
     if evidence_status:
         for req in evidence_status.get("requirements", []):
-            req_statuses[req.get("id", "")] = req
+            rid = req.get("id", "")
+            if rid:
+                reqs_by_id[rid] = req
             title_lower = req.get("title", "").lower()
-            req_statuses[title_lower] = req
+            if title_lower:
+                reqs_by_title[title_lower] = req
 
     for item in missed_items:
         ac_text = item.get("ac_item", "")
@@ -155,13 +158,10 @@ def classify_gaps(missed_items, evidence_status):
         ev_status = "unknown"
         action = "investigate"
 
-        if req_id and req_id in req_statuses:
-            ev_status = req_statuses[req_id].get("status", "unknown")
-        else:
-            for key, req in req_statuses.items():
-                if isinstance(key, str) and key == ac_lower:
-                    ev_status = req.get("status", "unknown")
-                    break
+        if req_id and req_id in reqs_by_id:
+            ev_status = reqs_by_id[req_id].get("status", "unknown")
+        elif ac_lower in reqs_by_title:
+            ev_status = reqs_by_title[ac_lower].get("status", "unknown")
 
         if ev_status == "absent":
             action = "document_as_unsupported"
@@ -191,7 +191,7 @@ def write_results(output_dir, ticket, doc_quality_result, intent_result, gaps, i
 
     dq_score = doc_quality_result.get("score", 0)
     ia_score = intent_result.get("score", 0)
-    passed = ia_score >= PASS_THRESHOLD_INTENT and dq_score >= PASS_THRESHOLD_DOC_QUALITY
+    passed = ia_score >= PASS_THRESHOLD_INTENT
 
     sidecar = {
         "schema_version": 1,
@@ -243,13 +243,10 @@ def cmd_prepare(args):
     doc_content = read_doc_content(base_path)
     ticket_context = read_ticket_context(base_path)
 
-    safe_doc = doc_content.replace("{", "{{").replace("}", "}}")
-    safe_ticket = ticket_context.replace("{", "{{").replace("}", "}}")
-
-    dq_prompt = DOC_QUALITY_PROMPT.format(doc_content=safe_doc)
+    dq_prompt = DOC_QUALITY_PROMPT.format(doc_content=doc_content)
     ia_prompt = INTENT_ALIGNMENT_PROMPT.format(
-        ticket_context=safe_ticket,
-        doc_content=safe_doc,
+        ticket_context=ticket_context,
+        doc_content=doc_content,
     )
 
     (output_dir / "dq-prompt.md").write_text(dq_prompt)

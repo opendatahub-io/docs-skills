@@ -526,7 +526,7 @@ def collect_files(docs_dir, scan_dirs, file_types):
     for scan_dir in scan_dirs:
         d = (root / scan_dir).resolve()
         if not d.is_relative_to(root):
-            continue
+            raise ValueError(f"Path traversal blocked: {d} escapes root {root}")
         if not d.is_dir():
             continue
         for ext in file_types:

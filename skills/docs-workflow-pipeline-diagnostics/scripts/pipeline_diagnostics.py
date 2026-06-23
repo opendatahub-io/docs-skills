@@ -113,10 +113,7 @@ def estimate_context_pressure(
         per_step_kb[name] = round(stats.size_kb, 1)
         total_artifact_kb += stats.size_kb
 
-    weighted_load = sum(
-        CONTEXT_HEAVY_STEPS.get(s, 0.5)
-        for s in completed
-    )
+    weighted_load = sum(CONTEXT_HEAVY_STEPS.get(s, 0.5) for s in completed)
 
     iterations = 0
     for name in ["technical-review", "quality-gate"]:
@@ -347,7 +344,8 @@ def detect_loop_groups(
             continue
 
         members = [
-            m for m in loop_def["members"]
+            m
+            for m in loop_def["members"]
             if steps.get(m, {}).get("status") in ("completed", "skipped")
         ]
         if not members:
@@ -395,37 +393,40 @@ def detect_loop_groups(
             self_s = None
             if earliest and latest:
                 self_s = round((latest - earliest).total_seconds())
-            step_breakdown.append({
-                "step": member,
-                "self_duration_s": self_s,
-                "self_duration_min": round(self_s / 60, 1) if self_s else None,
-                "earliest_file": earliest.isoformat() if earliest else None,
-                "latest_file": latest.isoformat() if latest else None,
-            })
+            step_breakdown.append(
+                {
+                    "step": member,
+                    "self_duration_s": self_s,
+                    "self_duration_min": round(self_s / 60, 1) if self_s else None,
+                    "earliest_file": earliest.isoformat() if earliest else None,
+                    "latest_file": latest.isoformat() if latest else None,
+                }
+            )
 
         # Attribute remaining loop time not covered by member file spans.
         # This is orchestrator overhead, progress file writes, skill
         # loading, and gaps between steps.
         member_self_total = sum(
-            sb["self_duration_s"] for sb in step_breakdown
-            if sb["self_duration_s"] is not None
+            sb["self_duration_s"] for sb in step_breakdown if sb["self_duration_s"] is not None
         )
         overhead_s = None
         if combined_s is not None:
             overhead_s = max(0, combined_s - member_self_total)
 
-        groups.append({
-            "name": loop_def["name"],
-            "label": loop_def["label"],
-            "steps": members,
-            "iterations": iteration,
-            "combined_duration_s": combined_s,
-            "combined_duration_min": round(combined_s / 60, 1) if combined_s else None,
-            "overhead_s": overhead_s,
-            "started_at": loop_start.isoformat() if loop_start else None,
-            "finished_at": latest_mtime.isoformat() if latest_mtime else None,
-            "step_breakdown": step_breakdown,
-        })
+        groups.append(
+            {
+                "name": loop_def["name"],
+                "label": loop_def["label"],
+                "steps": members,
+                "iterations": iteration,
+                "combined_duration_s": combined_s,
+                "combined_duration_min": round(combined_s / 60, 1) if combined_s else None,
+                "overhead_s": overhead_s,
+                "started_at": loop_start.isoformat() if loop_start else None,
+                "finished_at": latest_mtime.isoformat() if latest_mtime else None,
+                "step_breakdown": step_breakdown,
+            }
+        )
 
     return groups
 
@@ -443,83 +444,107 @@ def detect_failures(
         status = info.get("status", "unknown")
 
         if status == "failed":
-            issues.append({
-                "type": "step_failed",
-                "step": name,
-                "severity": "high",
-                "detail": f"Step '{name}' has status 'failed' in progress file",
-            })
+            issues.append(
+                {
+                    "type": "step_failed",
+                    "step": name,
+                    "severity": "high",
+                    "detail": f"Step '{name}' has status 'failed' in progress file",
+                }
+            )
 
         if status == "completed":
             output = info.get("output")
             if output and not os.path.isdir(output):
-                issues.append({
-                    "type": "missing_output",
-                    "step": name,
-                    "severity": "high",
-                    "detail": f"Step '{name}' marked completed but output dir missing: {output}",
-                })
+                issues.append(
+                    {
+                        "type": "missing_output",
+                        "step": name,
+                        "severity": "high",
+                        "detail": (
+                            f"Step '{name}' marked completed but output dir missing: {output}"
+                        ),
+                    }
+                )
 
             sidecar = os.path.join(base_path, name, "step-result.json")
             if not os.path.isfile(sidecar):
-                issues.append({
-                    "type": "missing_sidecar",
-                    "step": name,
-                    "severity": "low",
-                    "detail": f"Step '{name}' has no step-result.json sidecar",
-                })
+                issues.append(
+                    {
+                        "type": "missing_sidecar",
+                        "step": name,
+                        "severity": "low",
+                        "detail": f"Step '{name}' has no step-result.json sidecar",
+                    }
+                )
 
         if status == "deferred":
-            issues.append({
-                "type": "step_deferred",
-                "step": name,
-                "severity": "medium",
-                "detail": f"Step '{name}' is still deferred — upstream condition never resolved",
-            })
+            issues.append(
+                {
+                    "type": "step_deferred",
+                    "step": name,
+                    "severity": "medium",
+                    "detail": (
+                        f"Step '{name}' is still deferred — upstream condition never resolved"
+                    ),
+                }
+            )
 
     result = steps.get("technical-review", {}).get("result") or {}
     if result.get("confidence") == "LOW":
-        issues.append({
-            "type": "low_confidence",
-            "step": "technical-review",
-            "severity": "high",
-            "detail": f"Technical review ended with LOW confidence (iteration {result.get('iteration', '?')})",
-        })
+        issues.append(
+            {
+                "type": "low_confidence",
+                "step": "technical-review",
+                "severity": "high",
+                "detail": (
+                    "Technical review ended with LOW confidence"
+                    f" (iteration {result.get('iteration', '?')})"
+                ),
+            }
+        )
 
     severity = result.get("severity_counts") or {}
     critical = severity.get("critical", 0)
     significant = severity.get("significant", 0)
     if (
-        isinstance(critical, int) and isinstance(significant, int)
+        isinstance(critical, int)
+        and isinstance(significant, int)
         and (critical >= 3 or critical + significant >= 8)
     ):
-        issues.append({
-            "type": "high_severity_count",
-            "step": "technical-review",
-            "severity": "high",
-            "detail": (
-                f"Technical review has {critical} critical + {significant} significant issues"
-            ),
-        })
+        issues.append(
+            {
+                "type": "high_severity_count",
+                "step": "technical-review",
+                "severity": "high",
+                "detail": (
+                    f"Technical review has {critical} critical + {significant} significant issues"
+                ),
+            }
+        )
 
     result = steps.get("quality-gate", {}).get("result") or {}
     ia = result.get("intent_alignment")
     if isinstance(ia, (int, float)) and ia < 3:
-        issues.append({
-            "type": "quality_gate_low",
-            "step": "quality-gate",
-            "severity": "high",
-            "detail": f"Quality gate intent_alignment={ia}/5 (below acceptable threshold)",
-        })
+        issues.append(
+            {
+                "type": "quality_gate_low",
+                "step": "quality-gate",
+                "severity": "high",
+                "detail": f"Quality gate intent_alignment={ia}/5 (below acceptable threshold)",
+            }
+        )
 
     result = steps.get("planning", {}).get("result") or {}
     if result.get("module_count") == 0 and steps.get("planning", {}).get("status") == "completed":
-        issues.append({
-            "type": "empty_plan",
-            "step": "planning",
-            "severity": "high",
-            "detail": "Planning produced 0 modules",
-        })
+        issues.append(
+            {
+                "type": "empty_plan",
+                "step": "planning",
+                "severity": "high",
+                "detail": "Planning produced 0 modules",
+            }
+        )
 
     result = steps.get("writing", {}).get("result") or {}
     if (
@@ -527,12 +552,14 @@ def detect_failures(
         and isinstance(result.get("files"), list)
         and len(result["files"]) == 0
     ):
-        issues.append({
-            "type": "no_files_written",
-            "step": "writing",
-            "severity": "high",
-            "detail": "Writing step completed but produced 0 files",
-        })
+        issues.append(
+            {
+                "type": "no_files_written",
+                "step": "writing",
+                "severity": "high",
+                "detail": "Writing step completed but produced 0 files",
+            }
+        )
 
     return issues
 
@@ -568,30 +595,36 @@ def detect_bottlenecks(timeline: list[dict]) -> list[dict]:
         ratio = dur / avg if avg > 0 else float("inf")
         expected = EXPECTED_DURATION_S.get(name)
         if dur > 300 and ratio > 2.0:
-            bottlenecks.append({
-                "step": name,
-                "duration_s": dur,
-                "duration_min": round(dur / 60, 1),
-                "ratio_to_avg": round(ratio, 1),
-                "severity": "high" if ratio > 3.0 else "medium",
-            })
+            bottlenecks.append(
+                {
+                    "step": name,
+                    "duration_s": dur,
+                    "duration_min": round(dur / 60, 1),
+                    "ratio_to_avg": round(ratio, 1),
+                    "severity": "high" if ratio > 3.0 else "medium",
+                }
+            )
         elif dur > 600:
-            bottlenecks.append({
-                "step": name,
-                "duration_s": dur,
-                "duration_min": round(dur / 60, 1),
-                "ratio_to_avg": round(ratio, 1),
-                "severity": "medium",
-            })
+            bottlenecks.append(
+                {
+                    "step": name,
+                    "duration_s": dur,
+                    "duration_min": round(dur / 60, 1),
+                    "ratio_to_avg": round(ratio, 1),
+                    "severity": "medium",
+                }
+            )
         elif expected and dur > expected * 2:
-            bottlenecks.append({
-                "step": name,
-                "duration_s": dur,
-                "duration_min": round(dur / 60, 1),
-                "ratio_to_avg": round(ratio, 1),
-                "expected_s": expected,
-                "severity": "medium" if dur > expected * 3 else "low",
-            })
+            bottlenecks.append(
+                {
+                    "step": name,
+                    "duration_s": dur,
+                    "duration_min": round(dur / 60, 1),
+                    "ratio_to_avg": round(ratio, 1),
+                    "expected_s": expected,
+                    "severity": "medium" if dur > expected * 3 else "low",
+                }
+            )
 
     return sorted(bottlenecks, key=lambda b: b["duration_s"], reverse=True)
 
@@ -673,7 +706,7 @@ def analyze(progress_path: str) -> dict:
     status = progress.get("status", "unknown")
     workflow_type = progress.get("workflow_type", "unknown")
     created_at = parse_iso(progress.get("created_at"))
-    updated_at = parse_iso(progress.get("updated_at"))
+    updated_at = parse_iso(progress.get("updated_at"))  # noqa: F841
 
     dir_cache: dict[str, DirStats] = {}
     timeline, loop_groups = build_timeline(step_order, steps, base_path, created_at, dir_cache)
@@ -852,13 +885,17 @@ def print_summary(data: dict):
                 extra += f" [skip: {t['skip_reason']}]"
             if t["step"] in loop_steps:
                 extra += " *"
-            print(f"  {t['status']:>12}  {t['step']}{dur}{extra}  ({t['artifact_kb']} KB, {t['file_count']} files)")
+            print(
+                f"  {t['status']:>12}  {t['step']}{dur}{extra}"
+                f"  ({t['artifact_kb']} KB, {t['file_count']} files)"
+            )
 
         if run.get("loop_groups"):
             print()
             print("Iteration loops:")
             for lg in run["loop_groups"]:
-                dur_str = f"{lg['combined_duration_min']} min" if lg.get("combined_duration_min") else "unknown"
+                cdm = lg.get("combined_duration_min")
+                dur_str = f"{cdm} min" if cdm else "unknown"
                 print(f"  {lg['label']} ({lg['iterations']} iterations): {dur_str} total")
                 for sb in lg.get("step_breakdown", []):
                     sd = sb.get("self_duration_min")
