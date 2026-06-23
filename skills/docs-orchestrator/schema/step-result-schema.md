@@ -402,6 +402,7 @@ Used by the `docs-review-comments` workflow and the standalone `action-comments`
   "failure_count": 1,
   "high_severity_failure_count": 0,
   "bottleneck_count": 1,
+  "orchestrator_issue_count": 2,
   "recommendation_count": 3,
   "total_duration_min": 25.3
 }
@@ -415,6 +416,7 @@ Used by the `docs-review-comments` workflow and the standalone `action-comments`
 | `failure_count` | integer | Total failures detected across all steps | Orchestrator (final summary) |
 | `high_severity_failure_count` | integer | High-severity failures only | Orchestrator (final summary) |
 | `bottleneck_count` | integer | Number of steps flagged as bottlenecks | Informational |
+| `orchestrator_issue_count` | integer | Number of orchestrator-level problems found by self-introspection | Informational |
 | `recommendation_count` | integer | Number of actionable recommendations generated | Informational |
 | `total_duration_min` | number | Total pipeline duration in minutes (from file mtimes) | Informational |
 

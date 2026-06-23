@@ -102,7 +102,25 @@ rg -n 'compact|context.*limit|token.*limit' <ci-log-path>
 
 Check for: error patterns, session aborts, context compaction markers, stop hook blocks.
 
-### 6. Write the diagnostic report
+### 6. Orchestrator self-introspection
+
+Analyze the workflow run for orchestrator-level problems — not content quality, but the docs-orchestrator machinery itself. Read the progress file and each step's sidecar, then check for the issues below.
+
+| Check | How to detect | Severity |
+|---|---|---|
+| **Progress file schema drift** | Fields the orchestrator wrote that hooks/scripts don't expect (e.g., `workflow` vs `workflow_type`), or required fields that are `null` | high |
+| **Missing step-result sidecar** | Step status is `completed` but `<base-path>/<step>/step-result.json` does not exist | high |
+| **Null result in progress** | Step is `completed` but `.steps[name].result` is `null` — downstream steps lose structured context | medium |
+| **Step stuck in `in_progress`** | A step never transitioned to `completed`/`failed` — suggests agent crash or context compaction mid-step | high |
+| **Step order vs YAML mismatch** | Compare `step_order` array against the workflow YAML's step list. Missing or extra entries indicate manual edits or schema rot | medium |
+| **Deferred step never resolved** | A `deferred` step remained deferred at workflow end — its `when` condition was never evaluated | medium |
+| **Hook errors during run** | If `--ci-log` was provided, grep for `Stop hook error:` or `hook.*error` lines | high |
+| **Active-workflow marker left behind** | `.agent_workspace/.active-workflow` still exists after workflow completed — will block future sessions | low |
+| **Timestamp gaps** | File mtime gap > 10 min between consecutive steps suggests context compaction or manual intervention | low |
+
+Tabulate every problem found. For each, record: step name (if applicable), check name, severity, and a one-line description.
+
+### 7. Write the diagnostic report
 
 Write `$REPORT_FILE` using this template:
 
@@ -130,12 +148,21 @@ Write `$REPORT_FILE` using this template:
 - **Risk factors**: ...
 - **Symptoms observed**: ...
 
+## Orchestrator health
+
+| Step | Check | Severity | Detail |
+|---|---|---|---|
+| — | example: active-workflow marker left behind | low | `.active-workflow` still present after status=completed |
+
+<!-- If no problems found: -->
+No orchestrator issues detected.
+
 ## Recommendations
 1. ...
 2. ...
 ```
 
-### 7. Write step-result.json
+### 8. Write step-result.json
 
 Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
 
@@ -151,6 +178,7 @@ Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
   "failure_count": 0,
   "high_severity_failure_count": 0,
   "bottleneck_count": 0,
+  "orchestrator_issue_count": 0,
   "recommendation_count": 0,
   "total_duration_min": 0
 }
