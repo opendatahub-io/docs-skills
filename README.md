@@ -100,6 +100,7 @@ GITLAB_TOKEN=your_gitlab_pat
 | `gh` | `dnf install gh` / [cli.github.com](https://cli.github.com/) | GitHub PR/issue workflows |
 | `glab` | `dnf install glab` / [gitlab.com](https://gitlab.com/gitlab-org/cli) | GitLab MR workflows |
 | `gcloud` | [cloud.google.com/sdk](https://cloud.google.com/sdk/docs/install) | Google Docs export (`docs-convert-gdoc-md`) |
+| [Vale](https://vale.sh/) | `dnf copr enable mczernek/vale && dnf install vale` / `brew install vale` | `lint-with-vale` style linting |
 
 #### Development / linting
 
