@@ -388,6 +388,36 @@ Used by the `docs-review-comments` workflow and the standalone `action-comments`
 | `comments_outdated` | integer | Number of comments auto-skipped as outdated | Informational |
 | `files_modified` | string[] | Paths of files modified | Informational |
 
+### pipeline-diagnostics
+
+```json
+{
+  "schema_version": 1,
+  "step": "pipeline-diagnostics",
+  "ticket": "PROJ-123",
+  "completed_at": "2026-04-23T16:15:00Z",
+  "pipeline_status": "completed",
+  "context_pressure_level": "moderate",
+  "context_pressure_score": 4,
+  "failure_count": 1,
+  "high_severity_failure_count": 0,
+  "bottleneck_count": 1,
+  "recommendation_count": 3,
+  "total_duration_min": 25.3
+}
+```
+
+| Field | Type | Description | Consumed by |
+|---|---|---|---|
+| `pipeline_status` | string | Overall pipeline status from the progress file | Orchestrator (final summary) |
+| `context_pressure_level` | string | `"low"`, `"moderate"`, `"high"`, or `"critical"` | Orchestrator (final summary) |
+| `context_pressure_score` | integer | Numeric risk score from the diagnostics heuristic | Informational |
+| `failure_count` | integer | Total failures detected across all steps | Orchestrator (final summary) |
+| `high_severity_failure_count` | integer | High-severity failures only | Orchestrator (final summary) |
+| `bottleneck_count` | integer | Number of steps flagged as bottlenecks | Informational |
+| `recommendation_count` | integer | Number of actionable recommendations generated | Informational |
+| `total_duration_min` | number | Total pipeline duration in minutes (from file mtimes) | Informational |
+
 ## Backward compatibility
 
 Downstream consumers use a sidecar-first pattern: read from `step-result.json` when present, fall back to parsing the markdown output when absent. This ensures in-flight workflows from before sidecar adoption continue to work.

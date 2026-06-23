@@ -63,3 +63,8 @@ workflow:
       description: Commit, push, and create merge request or pull request
       when: create_merge_request
       inputs: [writing, style-review, technical-review, security-review, quality-gate]
+
+    - name: pipeline-diagnostics
+      skill: docs-workflow-pipeline-diagnostics
+      description: Diagnose the pipeline run for failures, bottlenecks, and context pressure
+      inputs: [writing, technical-review, style-review, security-review, quality-gate, create-merge-request]

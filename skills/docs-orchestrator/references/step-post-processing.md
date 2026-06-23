@@ -52,6 +52,12 @@ After each step completes, apply the rules below. When rules reference sidecar f
 - Log: `"Quality gate: doc_quality=<N>/5, intent_alignment=<N>/5, passed=<true|false>, gaps=<N>"`
 - If `passed` is false → enter [Quality gate iteration](../SKILL.md#quality-gate-iteration) loop
 
+## pipeline-diagnostics
+
+- Log: `"Pipeline diagnostics: context_pressure=<level> (score <N>), failures=<N>, bottlenecks=<N>"`
+- If `high_severity_failure_count > 0`, **warn**: `"Pipeline had <N> high-severity failure(s). Review the diagnostic report at <base-path>/pipeline-diagnostics/report.md"`
+- If `context_pressure_level` is `"high"` or `"critical"`, **warn**: `"Context pressure is <level>. Consider workflow splitting for future runs."`
+
 ## Construct arguments
 
 Build the args string for the step skill. The orchestrator maps its user-facing flags to the internal flags that step skills expect: `--source-code-repo` → `--repo`, `--docs-repo-path` → `--repo-path`.
@@ -67,5 +73,6 @@ Build the args string for the step skill. The orchestrator maps its user-facing 
    - `style-review`: `--format <adoc|mkdocs>`
    - `create-merge-request`: `[--draft] [--repo-path <path>]`
    - `action-comments`: `[--pr <url>] [--include-resolved]` — pass `--pr` from `options.pr_urls[0]` or from `steps.create-merge-request.result.url` if available
+   - `pipeline-diagnostics`: `[--ci-log <path>]` — pass `--ci-log` if `options.ci_log` is set
 
 Step skills derive their own output folder and input folders from `--base-path` and step name conventions. No per-input flag wiring needed.
