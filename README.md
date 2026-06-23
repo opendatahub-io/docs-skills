@@ -82,11 +82,44 @@ GITLAB_TOKEN=your_gitlab_pat
 
 ### Software dependencies
 
-- Python 3.10+
-- [uv](https://docs.astral.sh/uv/) (for PEP 723 script execution)
-- Node.js (for tree-sitter code analysis)
-- `gh` CLI (for GitHub integration)
-- `glab` CLI (for GitLab integration, optional)
+#### Required
+
+| Tool | Min version | Install | Purpose |
+|------|-------------|---------|---------|
+| Python | 3.10+ | [python.org](https://www.python.org/) | Script execution |
+| [uv](https://docs.astral.sh/uv/) | — | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | Runs PEP 723 scripts with auto-managed deps |
+| git | 2.0+ | System package manager | Version control |
+| jq | — | System package manager | JSON processing in shell scripts |
+| curl | — | System package manager | HTTP requests |
+
+#### Conditional (per-feature)
+
+| Tool | Install | Required for |
+|------|---------|--------------|
+| Node.js 18+ / npm | [nodejs.org](https://nodejs.org/) | `learn-code` tree-sitter AST parsing |
+| `gh` | `dnf install gh` / [cli.github.com](https://cli.github.com/) | GitHub PR/issue workflows |
+| `glab` | `dnf install glab` / [gitlab.com](https://gitlab.com/gitlab-org/cli) | GitLab MR workflows |
+| `gcloud` | [cloud.google.com/sdk](https://cloud.google.com/sdk/docs/install) | Google Docs export (`docs-convert-gdoc-md`) |
+
+#### Development / linting
+
+| Tool | Install | Used by |
+|------|---------|---------|
+| [ruff](https://docs.astral.sh/ruff/) | `uv tool install ruff` | `make lint` |
+| [shellcheck](https://www.shellcheck.net/) | `dnf install shellcheck` | `make lint` |
+
+#### Python packages (auto-managed by uv)
+
+These are declared as PEP 723 inline metadata in their scripts and installed automatically by `uv run --script` — no manual `pip install` needed:
+
+| Script | Packages |
+|--------|----------|
+| `jira-reader/scripts/jira_reader.py` | `jira`, `urllib3`, `ratelimit` |
+| `jira-writer/scripts/jira_writer.py` | `jira`, `ratelimit` |
+| `git-pr-reader/scripts/git_pr_reader.py` | `PyGithub`, `python-gitlab`, `pyyaml` |
+| `article-extractor/scripts/article_extractor.py` | `requests`, `beautifulsoup4`, `html2text` |
+| `redhat-docs-toc/scripts/toc_extractor.py` | `requests`, `beautifulsoup4` |
+| `docs-convert-gdoc-md/scripts/gdoc2md.py` | `python-pptx` |
 
 ## Quick Start
 
@@ -145,9 +178,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow.
 
 ### Prerequisites
 
-- Python 3.10+ with [ruff](https://docs.astral.sh/ruff/)
-- [uv](https://docs.astral.sh/uv/)
-- [shellcheck](https://www.shellcheck.net/)
+See [Software dependencies](#software-dependencies) above. For linting, also install `ruff` and `shellcheck`.
 
 ## Evaluation
 
