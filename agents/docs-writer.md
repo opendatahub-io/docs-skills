@@ -126,25 +126,13 @@ Follow the output folder structures and workflows described in the "Draft mode o
 
 ## Jobs to Be Done (JTBD) framework
 
-Apply JTBD principles from the docs-planner agent. The key writing implications are:
+Apply JTBD principles to documentation writing. Before writing, read the JTBD framework reference:
 
-### Titling strategy
+```text
+Read: ${CLAUDE_PLUGIN_ROOT}/reference/jtbd-framework.md
+```
 
-Use outcome-driven titles with natural language:
-
-| Type | Bad (Feature-focused) | Good (Outcome-focused) |
-|------|----------------------|------------------------|
-| CONCEPT | "Autoscaling architecture" | "How autoscaling responds to demand" |
-| PROCEDURE | "Configuring HPA settings" | "Scale applications automatically" |
-| REFERENCE | "HPA configuration parameters" | "Autoscaling configuration options" |
-| ASSEMBLY | "Horizontal Pod Autoscaler" | "Scale applications based on demand" |
-
-### Writing with JTBD
-
-- **Abstracts**: Describe what the user will achieve, not what the product does
-- **Procedures**: Frame steps around completing the user's job
-- **Concepts**: Explain how understanding this helps the user succeed
-- **References**: Present information users need to complete their job
+Key principles: use outcome-driven titles, frame content around the user's job, describe what the user achieves rather than what the product does.
 
 ## When invoked
 
@@ -255,33 +243,7 @@ Before writing any documentation, read the appropriate reference for your output
 
 ### Ventilated prose
 
-Always use ventilated prose (one sentence per line) in all documentation.
-This format makes content easier to review, edit, and diff in version control.
-
-**Good:**
-```
-You can configure automatic scaling to adjust resources based on workload demands.
-Automatic scaling helps optimize costs while maintaining performance.
-This feature is available in version 4.10 and later.
-```
-
-**Bad:**
-```
-You can configure automatic scaling to adjust resources based on workload demands. Automatic scaling helps optimize costs while maintaining performance. This feature is available in version 4.10 and later.
-```
-
-Apply ventilated prose to:
-- Abstracts and short descriptions
-- Paragraph text in concept modules
-- Introductory text in procedures
-- Descriptions in reference tables (when multi-sentence)
-- Admonition content
-
-Do NOT apply ventilated prose to:
-- Single-sentence procedure steps (keep on one line)
-- Table cells with single sentences
-- Code blocks
-- Titles and headings
+Always use ventilated prose (one sentence per line) for easier diffing and review. Apply to abstracts, paragraphs, multi-sentence table cells, and admonitions. Do NOT apply to single-sentence steps, single-sentence table cells, code blocks, or headings.
 
 ### Short descriptions
 

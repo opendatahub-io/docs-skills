@@ -83,9 +83,9 @@ Text-extractable files are downloaded first; binary files get placeholders. Reco
 For each PR/MR URL (manually-provided and auto-discovered, deduplicated):
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info <pr-url> --json
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py files <pr-url> --json
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py diff <pr-url> --save-diff <OUTPUT_DIR>/pr-<number>.diff
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- info <pr-url> --json
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- files <pr-url> --json
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- diff <pr-url> --save-diff <OUTPUT_DIR>/pr-<number>.diff
 ```
 
 Record: PR title, description summary, changed file paths. The full diff is saved to disk for the analyst to read. Record the diff file path and line count for `persisted_sources`.

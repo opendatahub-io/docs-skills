@@ -14,13 +14,12 @@ Single-skill pipeline that detects language, maps modules, analyzes each module 
 ```
 /docs-skills:learn-code /path/to/repo
 /docs-skills:learn-code https://github.com/user/repo
-/docs-skills:learn-code git@github.com:user/repo.git
 /docs-skills:learn-code /path/to/repo --exclude "test/*" "vendor/*"
 ```
 
 ## Arguments
 
-- `$1` — Path or URL of the repository to analyze (required). Accepts a local filesystem path or a git remote URL (`https://`, `git@`, `git://`). Git URLs are cloned to `.agent_workspace/<repo-name>/_clone/`.
+- `$1` — Path or URL of the repository to analyze (required). Local path or git URL. URLs are cloned to `.agent_workspace/<repo-name>/_clone/`
 - `--exclude <glob>...` — Glob patterns to exclude from analysis
 
 ## Pre-flight
@@ -31,40 +30,9 @@ Extract the repo path from the first positional argument. Extract any `--exclude
 
 ### 2. Resolve repo path
 
-**If the argument is a git URL** (matches `https://`, `http://`, `git@`, or `git://`):
+**Git URL** (matches `https://`, `http://`, `git@`, `git://`): Derive `REPO_NAME` from the last path segment (strip `.git`). Set `GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"`. Clone to `${GIT_ROOT}/.agent_workspace/${REPO_NAME}/_clone` via `git_pr_reader.py clone`. If clone dir exists, ask user to pull or use as-is. STOP on clone failure.
 
-1. Derive `REPO_NAME` from the URL: strip any trailing `.git`, then take the last path segment (e.g., `https://github.com/user/my-project.git` → `my-project`, `git@github.com:user/my-project` → `my-project`).
-2. Set the clone destination:
-
-```bash
-GIT_ROOT="$(cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" && pwd)"
-CLONE_DIR="${GIT_ROOT}/.agent_workspace/${REPO_NAME}/_clone"
-```
-
-3. If `${CLONE_DIR}` already exists and is a git repo, ask the user: `"Existing clone found at ${CLONE_DIR}. Pull latest or use as-is?"`. If pull: run `git -C "${CLONE_DIR}" pull`. If as-is: continue.
-4. If `${CLONE_DIR}` does not exist, clone:
-
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py clone "<URL>" --output-dir "${CLONE_DIR}"
-```
-
-If the clone fails (status "error" in JSON output), STOP and report the error.
-
-5. Set `REPO_PATH="${CLONE_DIR}"`.
-
-**If the argument is a local path:**
-
-Validate:
-- The path exists and is a directory
-- The path is not empty (has files)
-
-If the repo path is relative, resolve it to an absolute path.
-
-If the path does not exist, STOP and report: `"Repository path not found: <path>"`.
-
-Derive `REPO_NAME` from the basename of the repo path (e.g., `/home/user/my-project` → `my-project`).
-
-Set `REPO_PATH` to the resolved absolute path.
+**Local path**: Validate it exists, is a directory, and has files. Resolve to absolute. Derive `REPO_NAME` from basename. STOP if path not found.
 
 ### 3. Set base path
 
@@ -76,62 +44,15 @@ mkdir -p "${BASE_PATH}"
 
 ### 4. Check for existing progress (resume)
 
-Look for an existing progress file:
-
-```
-${BASE_PATH}/workflow/learn-code_${REPO_NAME}.json
-```
-
-**If found and status is `in_progress`**:
-- Read the progress file
-- Log: `"Resuming workflow from last checkpoint"`
-- Skip steps whose status is `completed`
-- Start from the first step whose status is `pending` or `in_progress`
-
-**If found and status is `completed`**:
-- Ask the user: `"Previous analysis found. Re-run from scratch?"`
-- If yes: reset all steps to `pending`, update `updated_at`
-- If no: show the completion summary and exit
-
-**If not found**: create a new progress file (see below).
+Check for `${BASE_PATH}/workflow/learn-code_${REPO_NAME}.json`. If found and `in_progress`: resume from first `pending`/`in_progress` step. If `completed`: ask user to re-run or show existing results. If not found: create new progress file.
 
 ### 5. Create progress file
 
-```json
-{
-  "workflow_type": "learn-code",
-  "target": "<REPO_NAME>",
-  "repo_path": "<absolute REPO_PATH>",
-  "base_path": "<absolute BASE_PATH>",
-  "status": "in_progress",
-  "created_at": "<current ISO 8601 UTC>",
-  "updated_at": "<current ISO 8601 UTC>",
-  "options": {
-    "exclude_patterns": ["<patterns>"]
-  },
-  "step_order": ["detection", "module-registry", "module-analysis", "relationships", "synthesis"],
-  "steps": {
-    "detection": { "status": "pending", "output": null, "result": null },
-    "module-registry": { "status": "pending", "output": null, "result": null },
-    "module-analysis": { "status": "pending", "output": null, "result": null },
-    "relationships": { "status": "pending", "output": null, "result": null },
-    "synthesis": { "status": "pending", "output": null, "result": null }
-  }
-}
-```
-
-Write to `${BASE_PATH}/workflow/learn-code_${REPO_NAME}.json`.
+Write to `${BASE_PATH}/workflow/learn-code_${REPO_NAME}.json`. See [output schemas](references/output-schemas.md#progress-file) for the JSON structure.
 
 ### 6. Show analysis plan
 
-Log:
-
-```
-Learn-Code: Analyzing <REPO_NAME>
-  Repository: <absolute-path>
-  Steps:      detection → module-registry → module-analysis → relationships → synthesis
-  Excludes:   <patterns or "none">
-```
+Log the repo name, absolute path, step order, and exclude patterns.
 
 ---
 
@@ -170,42 +91,11 @@ From the module map result, read each file listed in `config_files`. Read the ac
 
 ### 1.5 Write detection.json
 
-Combine all results:
-
-```json
-{
-  "primary_language": "<from detect_language>",
-  "language_counts": "<from detect_language>",
-  "total_files": "<from detect_language>",
-  "total_source_files": "<from detect_language>",
-  "modules": "<from build_module_map>",
-  "module_count": "<from build_module_map>",
-  "config_files": "<list of config file names>",
-  "config_contents": { "<filename>": "<truncated file content>" },
-  "repo_root": "<absolute repo path>",
-  "excluded_patterns": "<from build_module_map>"
-}
-```
-
-Write to `${OUTPUT_DIR}/detection.json`.
+Combine all detection and module map results. Write to `${OUTPUT_DIR}/detection.json`. See [output schemas](references/output-schemas.md#detectionjson) for the JSON structure.
 
 ### 1.6 Write step-result.json
 
-```json
-{
-  "schema_version": 1,
-  "step": "detection",
-  "target": "<repo-name>",
-  "completed_at": "<current ISO 8601 UTC>",
-  "primary_language": "<detected language>",
-  "languages_detected": "<language_counts>",
-  "module_count": "<number of modules>",
-  "total_source_files": "<count>",
-  "config_files_found": ["<list of config files>"]
-}
-```
-
-Write to `${OUTPUT_DIR}/step-result.json`.
+Write to `${OUTPUT_DIR}/step-result.json`. See [output schemas](references/output-schemas.md#step-resultjson-detection) for the JSON structure.
 
 ### 1.7 Update progress
 
@@ -237,24 +127,7 @@ If `module_count` is 0, write an empty registry and step-result, then skip to St
 
 ### 2.3 Dispatch repo-mapper agent
 
-```
-Agent:
-  subagent_type: docs-skills:repo-mapper
-  description: "Map modules for <REPO_NAME>"
-  prompt: |
-    Analyze this <PRIMARY_LANGUAGE> repository and produce a module registry.
-
-    DETECTION_DATA:
-    <JSON of detection data — include modules, module_count, config_files>
-
-    CONFIG_CONTENTS:
-    <Text of each config file, prefixed with filename headers>
-
-    REPO_PATH: <repo-path>
-
-    Produce a JSON array of module entries, one per module in the detection data.
-    Print ONLY the JSON array to stdout.
-```
+Use `subagent_type: docs-skills:repo-mapper`. Include in the prompt: DETECTION_DATA (modules, module_count, config_files as JSON), CONFIG_CONTENTS (each config file with filename header), and REPO_PATH. Request a JSON array of module entries.
 
 ### 2.4 Parse agent response
 
@@ -270,32 +143,11 @@ Write the parsed JSON array to `${OUTPUT_DIR}/registry.json`.
 
 ### 2.6 Write registry.md
 
-Generate a human-readable markdown table:
-
-```markdown
-# Module Registry — <repo-name>
-
-| Module | Purpose | Complexity | Likely Imports | Analysis Question |
-|--------|---------|------------|----------------|-------------------|
-| <module> | <purpose> | <complexity> | <imports> | <question truncated to 80 chars> |
-```
-
-Write to `${OUTPUT_DIR}/registry.md`.
+Generate a human-readable markdown table. Write to `${OUTPUT_DIR}/registry.md`. See [output templates](references/output-templates.md#registrymd-step-2) for the format.
 
 ### 2.7 Write step-result.json
 
-```json
-{
-  "schema_version": 1,
-  "step": "module-registry",
-  "target": "<repo-name>",
-  "completed_at": "<current ISO 8601 UTC>",
-  "module_count": "<number of modules in registry>",
-  "complexity_distribution": { "low": "<count>", "medium": "<count>", "high": "<count>" }
-}
-```
-
-Write to `${OUTPUT_DIR}/step-result.json`.
+Write to `${OUTPUT_DIR}/step-result.json`. See [output schemas](references/output-schemas.md#step-resultjson-module-registry) for the JSON structure.
 
 ### 2.8 Update progress
 
@@ -342,120 +194,29 @@ Log: `"Module tiers: <full_count> full, <api_guided_count> api-guided, <api_only
 
 ### 3.4 Pre-extract public API (AST-aware)
 
-For each module, run the appropriate AST extraction script based on language:
-
-**Python:**
-```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/extract_public_api.py \
-  --files <file1.py> <file2.py> ... \
-  --lang python \
-  --module <module-name>
-```
-
-**Go, JavaScript, TypeScript:**
-```bash
-node ${CLAUDE_SKILL_DIR}/scripts/extract_public_api_treesitter.mjs \
-  --files <file1> <file2> ... \
-  --lang <go|javascript|typescript> \
-  --module <module-name>
-```
-
-Capture the JSON output for each module. If a script fails for a module, log a warning and continue without pre-extracted API data for that module.
+For each module, run the language-appropriate AST extraction: Python uses `extract_public_api.py --files <files> --lang python --module <name>`. Go/JS/TS use `extract_public_api_treesitter.mjs --files <files> --lang <lang> --module <name>`. Log warning and continue if extraction fails for a module.
 
 ### 3.5 Generate api-only entries (no agent dispatch)
 
-For each module in the `api-only` tier, generate a summary entry directly from the pre-extracted API and registry data:
-
-```json
-{
-  "module": "<module-name>",
-  "language": "<primary_language>",
-  "purpose": "<purpose from registry>",
-  "public_api": "<from pre-extracted API, or empty>",
-  "dependencies": "<likely_imports from registry>",
-  "external_libs": [],
-  "data_flow": "See source for details",
-  "implicit_contracts": [],
-  "gotchas": [],
-  "onboarding_priority": "skim",
-  "question_answer": "API-only analysis — not deeply analyzed",
-  "analysis_depth": "api-only"
-}
-```
-
-Write each to `${OUTPUT_DIR}/<safe-module-name>.json`.
+For each module in the `api-only` tier, generate a summary entry directly from the pre-extracted API and registry data. Write each to `${OUTPUT_DIR}/<safe-module-name>.json`. See [output schemas](references/output-schemas.md#api-only-fallback-entry) for the JSON structure.
 
 ### 3.6 Load source for agent-analyzed modules
 
-For each module in the `full` and `api-guided` tiers, concatenate source files with file headers:
-
-```
-### FILE: <relative-path>
-<file contents>
-```
-
-Use absolute paths when reading files. Files are listed in `detection.modules.<module-name>.files`.
-
-**Important**: Keep all import statements — they are the relationship signal consumed by the relationships step.
-
-For `api-guided` modules: truncate the concatenated source to the **first 2000 lines**. Append a note: `### [TRUNCATED — agent may Read additional files from REPO_PATH]`.
+For `full` and `api-guided` tiers, concatenate source files with `### FILE: <relative-path>` headers. Keep all import statements (relationship signal). For `api-guided`: truncate to first 2000 lines with a `### [TRUNCATED]` note.
 
 ### 3.7 Batch dispatch module-analyzer agents
 
 Group `full` and `api-guided` modules into batches of **max 10 agents per batch**. Dispatch each batch as a single message for parallel execution. Wait for the batch to complete before dispatching the next.
 
-Each agent gets:
+Each agent uses `subagent_type: docs-skills:module-analyzer`. Include in the prompt: MODULE name, LANGUAGE, QUESTION from registry, PUBLIC_API (pre-extracted AST JSON or "Not available"), SOURCE (concatenated with `### FILE:` headers), and output path `<OUTPUT_DIR>/<safe-module-name>.json`. For `api-guided` modules, add REPO_PATH and a note that source is truncated.
 
-```
-Agent:
-  subagent_type: docs-skills:module-analyzer
-  description: "Analyze module: <module-name>"
-  prompt: |
-    Analyze the following <LANGUAGE> module for engineer onboarding.
-
-    MODULE: <module-name>
-    LANGUAGE: <primary_language>
-    QUESTION: <question from registry>
-
-    PUBLIC_API (pre-extracted via AST):
-    <JSON output from extract_public_api script, or "Not available" if extraction failed>
-
-    SOURCE:
-    <concatenated source with ### FILE: headers>
-
-    Write your JSON result to: <OUTPUT_DIR>/<module-name>.json
-```
-
-For `api-guided` modules, add to the prompt:
-
-```
-    REPO_PATH: <absolute path to repository>
-    NOTE: Source is truncated. Read additional files from REPO_PATH if needed to answer the question.
-```
-
-**Critical**: All Agent tool calls within a single batch MUST be in a single message so they execute in parallel. Do NOT dispatch agents one at a time within a batch.
+**Critical**: All Agent tool calls within a single batch MUST be in a single message for parallel execution.
 
 ### 3.8 Collect and merge results
 
-After all batches complete, read each `<OUTPUT_DIR>/<module-name>.json` file.
+After all batches complete, read each `<OUTPUT_DIR>/<safe-module-name>.json` file.
 
-For modules where the agent failed or produced invalid JSON, create a fallback entry:
-
-```json
-{
-  "module": "<module-name>",
-  "language": "<primary_language>",
-  "purpose": "Analysis failed — manual review needed",
-  "public_api": [],
-  "dependencies": [],
-  "external_libs": [],
-  "data_flow": "Unknown",
-  "implicit_contracts": [],
-  "gotchas": ["Automated analysis failed for this module"],
-  "onboarding_priority": "read-second",
-  "question_answer": "Analysis failed"
-}
-```
+For modules where the agent failed or produced invalid JSON, create a fallback entry. See [output schemas](references/output-schemas.md#agent-failure-fallback-entry) for the JSON structure.
 
 ### 3.9 Write summary.json
 
@@ -463,53 +224,11 @@ Combine all module results (api-only, agent-analyzed, and fallback) into a singl
 
 ### 3.10 Write summary.md
 
-Generate a human-readable summary:
-
-```markdown
-# Module Analysis Summary — <repo-name>
-
-## Overview
-
-- **Language**: <primary_language>
-- **Modules analyzed**: <count>
-- **Full analysis**: <count>
-- **API-guided**: <count>
-- **API-only**: <count>
-- **Failed**: <count>
-
-## Modules
-
-### <module-name>
-
-**Purpose**: <purpose>
-**Priority**: <onboarding_priority>
-**Analysis depth**: <full | api-guided | api-only>
-**Public API**: <comma-separated list>
-**Dependencies**: <comma-separated list>
-**Key gotcha**: <first gotcha or "None">
-
----
-```
-
-Write to `${OUTPUT_DIR}/summary.md`.
+Generate a human-readable summary. Write to `${OUTPUT_DIR}/summary.md`. See [output templates](references/output-templates.md#summarymd-step-3) for the format.
 
 ### 3.11 Write step-result.json
 
-```json
-{
-  "schema_version": 1,
-  "step": "module-analysis",
-  "target": "<repo-name>",
-  "completed_at": "<current ISO 8601 UTC>",
-  "modules_analyzed": "<successful count>",
-  "modules_failed": "<failed count>",
-  "tiers": { "full": "<count>", "api_guided": "<count>", "api_only": "<count>" },
-  "total_public_api_entries": "<sum of public_api array lengths>",
-  "languages": ["<primary_language>"]
-}
-```
-
-Write to `${OUTPUT_DIR}/step-result.json`.
+Write to `${OUTPUT_DIR}/step-result.json`. See [output schemas](references/output-schemas.md#step-resultjson-module-analysis) for the JSON structure.
 
 ### 3.12 Update progress
 
@@ -547,52 +266,11 @@ Capture JSON output. If `total_pairs` is 0, write empty results and step-result,
 
 ### 4.4 Prioritize pairs
 
-Classify each dependency pair as **priority** or **lightweight**:
-
-**Priority pairs** (max 20): At least one module in the pair has:
-- `complexity` of "high" in the registry, OR
-- `onboarding_priority` of "read-first" in the module analysis summary
-
-AND both modules have `analysis_depth` that is NOT "api-only" in the module analysis summary.
-
-Sort priority pairs by: pairs where both modules are "high" complexity first, then pairs with one "high" module.
-
-**Lightweight pairs**: All remaining pairs. Generate entries directly without agent dispatch:
-
-```json
-{
-  "pair": ["<module_a>", "<module_b>"],
-  "coupling_type": "interface-contract",
-  "description": "<module_a> depends on <module_b> (lightweight analysis)",
-  "shared_types": [],
-  "implicit_assumptions": [],
-  "risk": "See detailed analysis for core modules",
-  "strength": "loose",
-  "analysis_depth": "lightweight"
-}
-```
-
-Log: `"Relationship pairs: <priority_count> priority, <lightweight_count> lightweight (of <total> total)"`.
+**Priority** (max 20): at least one module is "high" complexity or "read-first" priority, AND both have `analysis_depth` != "api-only". Sort by: both "high" first. **Lightweight**: all remaining pairs — generate entries directly (see [output schemas](references/output-schemas.md#lightweight-pair-entry)).
 
 ### 4.5 Prepare source data for priority pairs
 
-For each priority pair `(module_a, module_b)`:
-
-**Module A source**: If module A has `total_lines` ≤ 3000, concatenate all source files with `### FILE:` headers. Otherwise, use the pre-extracted API surface and instruct the agent to read from disk.
-
-**Module B — API surface only**: Run the appropriate AST extraction script:
-
-**Python:**
-```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/extract_public_api.py \
-  --files <b_files...> --lang python --module <module_b>
-```
-
-**Go, JavaScript, TypeScript:**
-```bash
-node ${CLAUDE_SKILL_DIR}/scripts/extract_public_api_treesitter.mjs \
-  --files <b_files...> --lang <go|javascript|typescript> --module <module_b>
-```
+For each pair `(module_a, module_b)`: **Module A**: if ≤3000 lines, concatenate source with `### FILE:` headers; otherwise use pre-extracted API. **Module B**: always API surface only (via `extract_public_api.py` or `extract_public_api_treesitter.mjs`).
 
 ### 4.6 Read language guidance
 
@@ -602,54 +280,13 @@ Read language-specific relationship analysis guidance from `${CLAUDE_PLUGIN_ROOT
 
 Group priority pairs into batches of **max 10 agents per batch**. Dispatch each batch as a single message for parallel execution. Wait for the batch to complete before dispatching the next.
 
-```
-Agent:
-  subagent_type: docs-skills:relationship-analyzer
-  description: "Analyze relationship: <mod_a> <-> <mod_b>"
-  prompt: |
-    Analyze the relationship between these two <LANGUAGE> modules.
-
-    MODULE_A: <mod_a>
-    MODULE_B: <mod_b>
-    LANGUAGE: <primary_language>
-
-    SOURCE_A (full source or API surface):
-    <concatenated source of module A, or API JSON + REPO_PATH for large modules>
-
-    API_B (public API surface only):
-    <JSON output from extract_public_api for module B>
-
-    LANGUAGE_GUIDANCE:
-    <relevant section from language-configs.md>
-
-    REPO_PATH: <absolute path to repository>
-
-    Write your JSON result to: <OUTPUT_DIR>/<mod_a>--<mod_b>.json
-```
-
-For large module A (>3000 lines), add to the prompt:
-
-```
-    NOTE: Module A source is provided as API surface only. Read files from REPO_PATH/<module_a_path>/ as needed.
-```
+Each agent uses `subagent_type: docs-skills:relationship-analyzer`. Include in the prompt: MODULE_A, MODULE_B, LANGUAGE, SOURCE_A (full source or API surface), API_B (public API JSON), LANGUAGE_GUIDANCE (from language-configs.md), REPO_PATH, and output path `<OUTPUT_DIR>/<mod_a>--<mod_b>.json`. For large module A (>3000 lines), note that source is API-only and agent should read from REPO_PATH.
 
 **Critical**: All Agent tool calls within a single batch MUST be in a single message for parallel execution.
 
 ### 4.8 Collect and merge results
 
-After all batches complete, read each `<OUTPUT_DIR>/<mod_a>--<mod_b>.json` file. For failed agents or missing files, create a fallback:
-
-```json
-{
-  "pair": ["<module_a>", "<module_b>"],
-  "coupling_type": "unknown",
-  "description": "Analysis failed — manual review needed",
-  "shared_types": [],
-  "implicit_assumptions": [],
-  "risk": "Unknown",
-  "strength": "unknown"
-}
-```
+After all batches complete, read each `<OUTPUT_DIR>/<mod_a>--<mod_b>.json` file. For failed agents or missing files, create a fallback entry. See [output schemas](references/output-schemas.md#agent-failure-fallback-entry-1) for the JSON structure.
 
 Combine agent results with the lightweight entries from step 4.4.
 
@@ -659,69 +296,15 @@ Write the array of all relationship results (priority + lightweight) to `${OUTPU
 
 ### 4.10 Write dependency-graph.json
 
-Build a graph structure from the summaries and relationships:
-
-```json
-{
-  "nodes": [
-    {"id": "<module>", "purpose": "<purpose>", "priority": "<onboarding_priority>"}
-  ],
-  "edges": [
-    {"from": "<module_a>", "to": "<module_b>", "strength": "<tight|loose|none>", "coupling_type": "<type>"}
-  ]
-}
-```
-
-Write to `${OUTPUT_DIR}/dependency-graph.json`.
+Build a graph structure from the summaries and relationships. Write to `${OUTPUT_DIR}/dependency-graph.json`. See [output schemas](references/output-schemas.md#dependency-graphjson) for the JSON structure.
 
 ### 4.11 Write relationships.md
 
-Generate a human-readable summary:
-
-```markdown
-# Cross-Module Relationships — <repo-name>
-
-## Summary
-
-- **Pairs analyzed (agent)**: <priority_count>
-- **Pairs (lightweight)**: <lightweight_count>
-- **Tight couplings**: <count>
-- **Loose couplings**: <count>
-
-## Tight Couplings
-
-### <module_a> ↔ <module_b>
-
-- **Type**: <coupling_type>
-- **Description**: <description>
-- **Shared types**: <list>
-- **Risk**: <risk>
-
-## Loose Couplings
-
-| Pair | Type | Strength |
-|------|------|----------|
-| <a> ↔ <b> | <type> | loose |
-```
-
-Write to `${OUTPUT_DIR}/relationships.md`.
+Generate a human-readable summary. Write to `${OUTPUT_DIR}/relationships.md`. See [output templates](references/output-templates.md#relationshipsmd-step-4) for the format.
 
 ### 4.12 Write step-result.json
 
-```json
-{
-  "schema_version": 1,
-  "step": "relationships",
-  "target": "<repo-name>",
-  "completed_at": "<current ISO 8601 UTC>",
-  "pairs_analyzed": "<priority count>",
-  "pairs_lightweight": "<lightweight count>",
-  "pairs_failed": "<failed count>",
-  "coupling_distribution": { "tight": "<count>", "loose": "<count>", "none": "<count>" }
-}
-```
-
-Write to `${OUTPUT_DIR}/step-result.json`.
+Write to `${OUTPUT_DIR}/step-result.json`. See [output schemas](references/output-schemas.md#step-resultjson-relationships) for the JSON structure.
 
 ### 4.13 Update progress
 
@@ -756,24 +339,7 @@ Log: `"Synthesis context: <context_size_bytes> bytes (truncated: <truncated or '
 
 ### 5.3 Dispatch synthesis-writer agent
 
-The context is always written to a file. The synthesis agent reads it from disk rather than receiving it inline.
-
-```
-Agent:
-  subagent_type: docs-skills:synthesis-writer
-  description: "Write onboarding guide for <REPO_NAME>"
-  prompt: |
-    Write an engineer onboarding guide for this codebase.
-
-    Read the full context from: ${OUTPUT_DIR}/context.json
-
-    OUTPUT_DIR: <OUTPUT_DIR>
-
-    Write ONBOARDING.md to the output directory.
-    Also write dependency-graph.json if relationship data exists (relationship_count > 0).
-
-    Follow the template from ${CLAUDE_PLUGIN_ROOT}/reference/onboarding-template.md.
-```
+Dispatch `subagent_type: docs-skills:synthesis-writer`. The context is written to `${OUTPUT_DIR}/context.json` — the agent reads it from disk. Tell the agent to write ONBOARDING.md (and dependency-graph.json if relationships exist) to OUTPUT_DIR, following the template from `${CLAUDE_PLUGIN_ROOT}/reference/onboarding-template.md`.
 
 ### 5.4 Verify output
 
@@ -781,21 +347,7 @@ Confirm `${OUTPUT_DIR}/ONBOARDING.md` exists. If it does not, STOP and report th
 
 ### 5.5 Write step-result.json
 
-Scan ONBOARDING.md for level-2 headings (`## `) to determine sections:
-
-```json
-{
-  "schema_version": 1,
-  "step": "synthesis",
-  "target": "<repo-name>",
-  "completed_at": "<current ISO 8601 UTC>",
-  "output_file": "ONBOARDING.md",
-  "sections": ["<list of section names from ## headings>"],
-  "context_size_bytes": "<from context builder>"
-}
-```
-
-Write to `${OUTPUT_DIR}/step-result.json`.
+Scan ONBOARDING.md for level-2 headings (`##`) to determine sections. Write to `${OUTPUT_DIR}/step-result.json`. See [output schemas](references/output-schemas.md#step-resultjson-synthesis) for the JSON structure.
 
 ### 5.6 Update progress
 
@@ -822,28 +374,6 @@ After all steps complete:
 
 Set `status` to `completed`. Update `updated_at`. Write progress file.
 
-### Print completion summary
+### Print completion summary and suggest next steps
 
-```
-Learn-Code Analysis Complete
-================================
-Repository:    <REPO_NAME>
-Language:      <primary_language>
-Modules:       <module_count>
-Relationships: <pairs_analyzed>
-
-Output files:
-  Detection:     <BASE_PATH>/detection/
-  Registry:      <BASE_PATH>/module-registry/
-  Analysis:      <BASE_PATH>/module-analysis/
-  Relationships: <BASE_PATH>/relationships/
-  Onboarding:    <BASE_PATH>/synthesis/ONBOARDING.md
-
-Workflow:      <BASE_PATH>/workflow/learn-code_<REPO_NAME>.json
-```
-
-### Suggest next steps
-
-- Read the onboarding guide: `cat <BASE_PATH>/synthesis/ONBOARDING.md`
-- View the dependency graph: `cat <BASE_PATH>/relationships/dependency-graph.json`
-- Query the codebase: `/docs-skills:query-code "your question" --repo <REPO_PATH>`
+See [output templates](references/output-templates.md#completion-summary) for the summary format and suggested next steps.

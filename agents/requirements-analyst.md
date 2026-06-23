@@ -63,8 +63,8 @@ Read the full description, acceptance criteria, documentation-specific fields, a
 
 **PR/MR sources:**
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info <url> --json
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py diff <url>
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- info <url> --json
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- diff <url>
 ```
 Read the PR description, review the diff to understand what changed and why.
 
@@ -217,9 +217,9 @@ uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py 
 ### Querying GitHub/GitLab PRs
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info <pr-url> --json
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py files <pr-url> --json
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py diff <pr-url>
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- info <pr-url> --json
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- files <pr-url> --json
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- diff <pr-url>
 ```
 
 Requires `GITHUB_TOKEN` (GitHub) or `GITLAB_TOKEN` (GitLab) in `.env` or `~/.env`.

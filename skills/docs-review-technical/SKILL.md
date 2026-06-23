@@ -34,73 +34,19 @@ For actioning unresolved review comments on a PR/MR, use the `action-comments` s
 
 ## Interactive mode — no arguments provided
 
-**STOP. You MUST follow the steps below IN ORDER. Do not skip any step. Do not start the review pipeline until all required inputs are gathered.**
+**STOP. You MUST follow steps 1-3 IN ORDER. Call AskUserQuestion at each step — do not skip or infer answers. Do not start the review pipeline until all inputs are gathered.**
 
-### Step 1: Mode selection — call AskUserQuestion
+### Step 1: Mode selection (AskUserQuestion)
 
-You MUST call the AskUserQuestion tool now. Do not skip this.
+Ask: "What type of technical review?" Options: **Review local branch changes** (→ `--local`, skip to Step 3) | **Review a PR/MR** (→ Step 2A).
 
-**What type of technical review would you like to run?**
+### Step 2A: PR/MR details (AskUserQuestion)
 
-| Option | Description |
-|--------|-------------|
-| Review local branch changes | Review doc changes in current branch vs base branch |
-| Review a PR/MR | Review doc changes in a GitHub PR or GitLab MR |
+Ask (textInput): "Enter the PR/MR URL:" → set `--pr <url>`. Ask: "Post inline comments?" (No/Yes) → if Yes, append `--post-comments`. Ask (textInput): "Source code repo URL for code-aware validation? (blank to skip)" → append `--code <url>`. Ask (textInput): "JIRA ticket for auto-discovering repos? (blank to skip)" → append `--jira <ticket>`.
 
-Wait for the answer before proceeding.
+### Step 3: Fix mode (AskUserQuestion)
 
-- If **"Review local branch changes"**: set mode to `--local`. Proceed to Step 3.
-- If **"Review a PR/MR"**: proceed to Step 2A.
-
-### Step 2A: PR/MR details — call AskUserQuestion
-
-Call AskUserQuestion with `textInput: true`:
-
-> Enter the PR/MR URL (e.g., https://github.com/org/repo/pull/123):
-
-Set mode to `--pr <url>`.
-
-Then call AskUserQuestion:
-
-**Post inline comments to the PR/MR?**
-
-| Option | Description |
-|--------|-------------|
-| No (default) | Review only — results displayed locally |
-| Yes | Post review findings as inline PR/MR comments |
-
-If **"Yes"**: append `--post-comments` to mode.
-
-### Step 2A-ii: Code-aware validation (optional) — call AskUserQuestion
-
-Call AskUserQuestion with `textInput: true`:
-
-> Do you have a source code repo URL for code-aware validation? (leave blank to skip):
-
-If provided: append `--code <url>` to mode.
-
-Call AskUserQuestion with `textInput: true`:
-
-> Do you have a JIRA ticket for auto-discovering code repos? (leave blank to skip):
-
-If provided: append `--jira <ticket>` to mode.
-
-Proceed to Step 3.
-
-### Step 3: Fix mode — call AskUserQuestion
-
-Call AskUserQuestion:
-
-**Apply automatic fixes for high-confidence issues?**
-
-| Option | Description |
-|--------|-------------|
-| No (default) | Report issues only |
-| Yes | Auto-fix issues with confidence >=65%, then walk through the rest interactively |
-
-If **"Yes"**: append `--fix` to mode.
-
-Proceed to the review pipeline with the constructed arguments.
+Ask: "Apply automatic fixes?" (No/Yes) → if Yes, append `--fix`. Proceed to review pipeline.
 
 ## Agent Assumptions
 
@@ -123,8 +69,8 @@ The `--local` and `--pr` modes share the same pipeline. The difference is how fi
 Launch a haiku agent to run pre-flight checks using `git-pr-reader`. Stop if any condition is true (still review Claude-generated PRs):
 
 - **PR/MR is closed or draft**: Check the PR/MR state from the platform API.
-- **No documentation files changed**: Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py files "${PR_URL}" --json` and check if any changed files end with `.adoc` or `.md`.
-- **Claude already commented**: Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py comments "${PR_URL}" --include-resolved --json` and check if any comment `author` matches Claude's username.
+- **No documentation files changed**: Run `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- files "${PR_URL}" --json` and check if any changed files end with `.adoc` or `.md`.
+- **Claude already commented**: Run `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- comments "${PR_URL}" --include-resolved --json` and check if any comment `author` matches Claude's username.
 
 ### For --local mode
 
@@ -160,7 +106,7 @@ DOC_FILES=$(wc -l < /tmp/docs-review-doc-files.txt)
 Use `git-pr-reader` to get changed files:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py files "${PR_URL}" --json | \
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- files "${PR_URL}" --json | \
     python3 -c "import json,sys; files=[f['path'] for f in json.load(sys.stdin) if f['path'].endswith(('.adoc','.md'))]; print('\n'.join(files))" > /tmp/docs-review-doc-files.txt
 ```
 
@@ -183,7 +129,7 @@ git diff "$BASE_BRANCH"...HEAD -- $(cat /tmp/docs-review-doc-files.txt | tr '\n'
 ### For --pr mode
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py diff "${PR_URL}" | \
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- diff "${PR_URL}" | \
   python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/extract_changed_ranges.py \
     --context 3 -o /tmp/docs-review-changed-ranges.json
 ```
@@ -197,7 +143,7 @@ Launch a sonnet agent to view changes and return a summary noting:
 - Whether files appear to be concepts, procedures, references, or assemblies
 - Any structural patterns (modular docs, release notes)
 
-For `--pr` mode: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py diff "${PR_URL}"`
+For `--pr` mode: `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- diff "${PR_URL}"`
 For `--local` mode: `git diff "$BASE_BRANCH"...HEAD -- $(cat /tmp/docs-review-doc-files.txt)`
 
 ## Step 4: Agent 1 — Technical Accuracy and Consistency
@@ -209,7 +155,7 @@ Follow the full technical review process: doc type detection, reviewer persona (
 
 Returns issues with: `file`, `line`, `description`, `reason`, `confidence` (0-100), `severity` (error/warning/suggestion).
 
-For `--pr` mode, use `python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py extract` for deterministic line numbers.
+For `--pr` mode, use `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- extract` for deterministic line numbers.
 
 **Important**: The agent file describes a JIRA-based drafts workflow for standalone use. In this context, ignore JIRA/drafts sections — review changed files from the diff and return issues in the format above.
 
@@ -230,7 +176,7 @@ Workflow:
 1. **Clone repos** to `/tmp/tech-review/<repo-name>/` using full history (needed for `git log` search):
 
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py clone <repo-url> \
+   uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- clone <repo-url> \
      --output-dir /tmp/tech-review/<repo-name>/ --depth 0 [--ref <ref>]
    ```
 
@@ -259,22 +205,7 @@ Workflow:
    - **stale**: referenced symbol exists but has changed (renamed, deprecated, different signature)
    - **unverifiable**: cannot determine from available sources
 
-4. **Extract API surface** — For each cloned repo:
-
-   **If learn-code analysis exists** (`.code-learner/summaries/`), read the `public_api` field from each module summary. This provides classes, functions, methods with their purposes and dependencies.
-
-   **If no analysis**, use Grep and Read to identify public API symbols:
-   ```bash
-   # For Go repos: find exported symbols (uppercase)
-   grep -rn "^func [A-Z]" /tmp/tech-review/repo-name/
-   grep -rn "^type [A-Z]" /tmp/tech-review/repo-name/
-
-   # For Python repos: find public functions/classes
-   grep -rn "^def [a-z]" /tmp/tech-review/repo-name/ --include="*.py" | grep -v "^def _"
-   grep -rn "^class [A-Z]" /tmp/tech-review/repo-name/ --include="*.py"
-   ```
-
-   Build an API reference list for comparison against documentation references.
+4. **Extract API surface** — For each cloned repo: if learn-code analysis exists (`.code-learner/summaries/`), read `public_api` from module summaries. Otherwise, use Grep to find exported symbols (Go: `^func [A-Z]`, `^type [A-Z]`; Python: `^def [a-z]`/`^class [A-Z]` excluding `_` prefixed). Build an API reference list.
 
 5. **Triage results** — Review the claim validation findings and API reference list against the extracted references (`/tmp/tech-review-refs.json`). Apply the structured triage pipeline from Step 6 (below). Use Read and Grep on source files to verify ambiguous results.
 
@@ -282,43 +213,9 @@ Workflow:
 
 ## Step 6: Structured Triage (Evidence-Based Classification)
 
-Process ALL claim validation findings and API reference data through a classification pipeline. Do NOT skip this step or use ad-hoc exploration.
+Process ALL findings through a 5-pass classification pipeline (scope filtering → claim validation → API surface comparison → source file verification → cross-reference and dedup). See [triage pipeline](references/triage-pipeline.md) for the full pass-by-pass process and signal quality filter.
 
-**Pass 1: Scope filtering (commands only)** — For each command in the extracted references (`/tmp/tech-review-refs.json`), classify the binary as external or in-scope. External system commands (sudo, dnf, oc, kubectl, docker, git, curl, etc.) cannot be validated against the code repo — tag as `out-of-scope` and skip further analysis.
-
-**Pass 2: Claim validation analysis** — For each validated claim:
-- `inaccurate` claims → Flag as likely incorrect. Read source to understand the discrepancy. High confidence (>=80%) when source clearly contradicts the claim.
-- `unverifiable` claims → Check if the claim references something that should be in the repo. Could be wrong repo, or reference lives elsewhere. Medium confidence (50-70%).
-- `stale` claims → Medium-high confidence. Cross-reference the actual current implementation to determine what changed.
-- `verified` claims → No issue. Skip.
-
-**Pass 3: API surface comparison** — Compare the extracted references (`/tmp/tech-review-refs.json`) against the API reference list:
-- For each API, class, or function referenced in the docs, check if it appears in the API reference. If absent, flag as potentially stale or renamed. Confidence: 60-80%.
-- For each entity in the API reference not mentioned in the doc references, note as potentially undocumented. Severity: Low-Medium. Confidence: 60-80%.
-
-**Pass 4: Read source files** — For items flagged in passes 2-3 with confidence >=50%, read the actual source file to confirm the issue. Do not report issues based solely on analysis output without verifying against the source.
-
-**Pass 5: Cross-reference and deduplicate** — Merge findings from passes 2-4:
-- If a claim flagged in Pass 2 also has a missing API in Pass 3, consolidate into a single issue with the stronger evidence.
-- If an entity flagged as undocumented in Pass 3 is found via additional Grep searches in the source, downgrade or remove.
-- Remove duplicate findings that flag the same underlying problem from different angles.
-
-**Assigning severity**: `High` = users will hit errors (broken commands, missing APIs). `Medium` = misleading but not blocking (wrong names, stale options). `Low` = cosmetic or informational (undocumented features, formatting).
-
-### Signal quality filter
-
-**Flag issues where:**
-- Documentation will actively mislead users (wrong commands, broken examples, incorrect terminology)
-- Code examples contain wrong default values, renamed flags, or missing parameters
-- API signatures, return types, or import paths don't match source code
-- Configuration keys or values are stale or incorrect
-
-**Do NOT flag:**
-- "Not found in code" without concrete evidence of a problem
-- Test fixtures, examples, or intentionally different deprecated paths
-- External system commands (sudo, grep, git, etc.) that aren't project-specific
-- Pre-existing issues in unchanged content
-- Minor discrepancies that don't affect functionality
+**Assigning severity**: `High` = users will hit errors. `Medium` = misleading but not blocking. `Low` = cosmetic or informational.
 
 ## Step 7: Validate All Issues
 
@@ -349,26 +246,7 @@ Remove issues that:
 
 ## Step 10: Generate Report and Present Results
 
-Write report to `/tmp/docs-review-technical-report.md` using the format below. Output summary to terminal:
-
-```
-## Technical Review
-
-**Source**: <branch vs base | PR/MR URL>
-**Files reviewed**: X documentation files
-**Issues found**: Y (Z above confidence threshold)
-
-### Issues
-
-1. **file.adoc:23** [confidence: 95] — Flag `--enable-feature` renamed to `--feature-enable` in v2.3 (code-scan)
-2. **file.adoc:67** [confidence: 88] — Default `pool_size` is 5, not 10 (technical-review)
-
-### Skipped (below threshold)
-
-- **file.adoc:91** [confidence: 55] — Config key `max_retries` not found in source
-
-Full report saved to: /tmp/docs-review-technical-report.md
-```
+Write full report to `/tmp/docs-review-technical-report.md` (see [report template](references/report-template.md) for format). Output a terminal summary: source, files reviewed, issues count (above/below threshold), numbered issue list with `file:line [confidence] — description (source)`, and the report path.
 
 ### For --local mode: Offer to Apply Changes
 
@@ -380,14 +258,7 @@ Stop here.
 
 ### For --pr mode with --post-comments
 
-If NO issues found, post a summary comment via `git-pr-reader`:
-
-```bash
-cat <<'SUMMARY' > /tmp/docs-review-summary.json
-[{"file": "", "line": 0, "message": "## Technical review\n\nNo issues found. Checked for technical accuracy and code-aware validation.", "severity": "suggestion"}]
-SUMMARY
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py post "${PR_URL}" /tmp/docs-review-summary.json --review-type technical
-```
+If NO issues found, write a summary JSON to `/tmp/docs-review-summary.json` with a "no issues found" message and post via `git_pr_reader.py post "${PR_URL}" /tmp/docs-review-summary.json --review-type technical`.
 
 If issues found, continue to Step 11.
 
@@ -395,12 +266,12 @@ If issues found, continue to Step 11.
 
 Get deterministic line numbers:
 ```bash
-LINE=$(python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py extract "${PR_URL}" "path/to/file.adoc" "pattern from the issue")
+LINE=$(uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- extract "${PR_URL}" "path/to/file.adoc" "pattern from the issue")
 ```
 
 Build comments JSON and post:
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py post "${PR_URL}" /tmp/docs-review-comments.json --review-type technical
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- post "${PR_URL}" /tmp/docs-review-comments.json --review-type technical
 ```
 
 For each comment: brief description with evidence from source code, include corrected values for small fixes, describe larger fixes without inline code. **Only ONE comment per unique issue.**
@@ -409,164 +280,15 @@ For each comment: brief description with evidence from source code, include corr
 
 **Phase A — Auto-fix**: For each issue with confidence >=65%, apply the fix using the Edit tool.
 
-**Phase B — Interactive walkthrough**: For each issue with confidence <65%, present to user:
+**Phase B — Interactive walkthrough**: For each issue with confidence <65%, present to user with issue details (file, line, current/suggested values, evidence). Ask via AskUserQuestion: **Apply** | **Modify** | **Skip** | **Delete section**.
 
-```
-Issue 1 of 5: Command flag renamed | Confidence: 60% | Severity: High
-File: modules/proc-install.adoc
-
-Current:   $ my-tool --enable-feature
-Suggested: $ my-tool --feature-enable
-
-Evidence: Flag renamed in commit abc123
-```
-
-Ask user via AskUserQuestion: **Apply** | **Modify** | **Skip** | **Delete section**
-
-**Fix-mode report** — When `--fix` is used, the report at `/tmp/docs-review-technical-report.md` includes additional sections:
-
-### Issues Auto-Fixed
-
-| ID | File:Line | Issue | Evidence | Before | After |
-|----|-----------|-------|----------|--------|-------|
-| AF-1 | file.adoc:23 | Flag renamed | cli_validation | `--enable-feature` | `--feature-enable` |
-
-### Issues Interactively Resolved
-
-| ID | File:Line | Issue | Action |
-|----|-----------|-------|--------|
-| IR-1 | file.adoc:45 | Stale config key | Applied suggested fix |
-| IR-2 | file.adoc:67 | Wrong default | Modified by user |
-
-### Issues Skipped
-
-| ID | File:Line | Issue | Confidence |
-|----|-----------|-------|------------|
-| SK-1 | file.adoc:91 | Config key not found | 55% |
-
----
-
-# Report Format
-
-```markdown
-# Technical Review Report
-
-**Source**: [Branch: <branch> vs <base> | PR/MR URL]
-**Date**: YYYY-MM-DD
-
-## Grounded Review Summary
-
-| Metric | Count |
-|--------|-------|
-| Claims extracted | X |
-| Supported | A |
-| Partially supported | B |
-| Unsupported | C |
-| No evidence found | D |
-
-## API Surface Summary
-
-| Metric | Count |
-|--------|-------|
-| Files processed | X |
-| Total entities | Y |
-| Entities in docs | Z |
-| Potentially undocumented | N |
-
-## Code Repositories
-
-| Repo | Ref | Clone Path | Source |
-|------|-----|------------|--------|
-| repo-name | main | /tmp/tech-review/repo-name | --code |
-
-## Triage Summary
-
-| Pass | Description | Items Processed | Issues Flagged |
-|------|-------------|-----------------|----------------|
-| Pass 1 | Scope filtering | X | Y |
-| Pass 2 | Claim verdict analysis | X | Y |
-| Pass 3 | API surface comparison | X | Y |
-| Pass 4 | Source file verification | X | Y |
-| Pass 5 | Cross-reference and deduplicate | X | Y |
-
-## Summary
-
-| Metric | Count |
-|--------|-------|
-| Files reviewed | X |
-| Errors (must fix) | Y |
-| Warnings (should fix) | Z |
-| Suggestions (optional) | N |
-
-## Files Reviewed
-
-### 1. path/to/file.adoc
-
-**Type**: CONCEPT | PROCEDURE | REFERENCE | ASSEMBLY
-
-#### Technical Accuracy
-
-| Line | Severity | Issue | Evidence |
-|------|----------|-------|----------|
-
-#### Code Validation (if Agent 2 ran)
-
-| Line | Severity | Issue | Evidence | Verdict |
-|------|----------|-------|----------|---------|
-
-Show specific value mismatches (e.g., "Docs: pool_size=10, Code: pool_size=5"), unsupported claims, and import path errors. Only report items where grounded review returned `unsupported` or `no_evidence_found` with concrete evidence, or where the API surface shows a missing/renamed entity.
-
----
-
-## Required Changes
-
-1. **file.adoc:23** — Description (evidence) [verdict: unsupported]
-
-## Suggestions
-
-1. **file.adoc:91** — Description [verdict: no_evidence_found]
-
-## Undocumented API Surface (if Agent 2 ran)
-
-Entities found in API surface but not referenced in reviewed documentation:
-
-| Type | Name | Source File | Signature |
-|------|------|-------------|-----------|
-| function | list_resources | src/app.py:12 | def list_resources() |
-| class | ExampleClient | src/client.py:2 | class ExampleClient |
-
-## Out-of-Scope References
-
-| Tool | Count |
-|------|-------|
-| sudo | X |
-| kubectl | Y |
-
----
-
-*Generated with [Claude Code](https://claude.com/claude-code)*
-```
-
-**Sections**: Errors = must fix. Warnings = should fix. Suggestions = optional.
-
-**Do NOT include**: positive findings, executive summaries, compliance percentages, references sections.
-
-## Feedback Guidelines
-
-- **In scope**: Content changed in the branch or PR/MR. **Out of scope**: Unchanged content, enhancement requests.
-- **Required** (blocks merging): Incorrect commands, wrong API references, broken code examples, stale config values.
-- **Optional** (does not block): Minor accuracy improvements, additional context. Mark with **[SUGGESTION]**.
-- Include source code evidence for each issue. For recurring issues: "[GLOBAL] This issue occurs elsewhere."
+See [report template](references/report-template.md) for the fix-mode report sections, the full report format, and feedback guidelines.
 
 ---
 
 # Notes
 
-- Always use `python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py` for all Git platform interactions (see `git-pr-reader` for full API reference)
-- Always use `git_pr_reader.py extract` for deterministic line numbers — never estimate or guess
-- Use Bash with heredoc/cat for writing /tmp files (not the Write tool)
-- Include source code evidence in each issue's `reason` field
-- Comments are posted under YOUR username using tokens from `.env` files
-- `scripts/extract_refs.py` extracts technical references from doc files (commands, APIs, configs, file paths)
-- When reviewing repos with learn-code analysis (`.code-learner/` directory), read ONBOARDING.md and module summaries for structured code understanding. When no analysis exists, use Read/Grep directly on source files.
-- Vale linting is NOT part of the technical review — use `docs-review-style` for that
+- Use `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py --` for all Git platform interactions. Use `extract` for deterministic line numbers — never guess
+- Use Bash with heredoc/cat for /tmp files (not Write). Include source code evidence in each issue's `reason`
+- If learn-code analysis exists (`.code-learner/`), use ONBOARDING.md and module summaries. Otherwise use Read/Grep directly
+- Vale linting is NOT part of this review — use `docs-review-style`

@@ -509,9 +509,7 @@ def scan_file(filepath):
     in_block = False
     block_type = None
     for i, line in enumerate(text.splitlines(), start=1):
-        skip, in_block, block_type = _track_block_comment(
-            line, in_block, block_type, filepath
-        )
+        skip, in_block, block_type = _track_block_comment(line, in_block, block_type, filepath)
         if skip:
             continue
         all_findings.extend(scan_line(line, i, filepath))
@@ -527,8 +525,8 @@ def collect_files(docs_dir, scan_dirs, file_types):
     files = []
     for scan_dir in scan_dirs:
         d = (root / scan_dir).resolve()
-        if not str(d).startswith(str(root)):
-            continue
+        if not d.is_relative_to(root):
+            raise ValueError(f"Path traversal blocked: {d} escapes root {root}")
         if not d.is_dir():
             continue
         for ext in file_types:
@@ -570,7 +568,14 @@ def run(args):
     """Execute the scan command and return exit code."""
     # Collect files from paths or docs-dir
     if args.paths:
-        files = [Path(p) for p in args.paths if Path(p).is_file()]
+        invalid = [p for p in args.paths if not Path(p).is_file()]
+        if invalid:
+            print(
+                json.dumps({"error": f"Paths not found or not files: {invalid}"}),
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        files = [Path(p) for p in args.paths]
     elif args.docs_dir:
         docs_dir = args.docs_dir
         if not Path(docs_dir).is_dir():

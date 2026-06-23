@@ -107,7 +107,8 @@ def read_ticket_context(base_path):
     """Read requirements/discovery.json and format as ticket context."""
     discovery = Path(base_path) / "requirements" / "discovery.json"
     if not discovery.exists():
-        print(f"ERROR: {discovery} not found — required for intent-alignment judge", file=sys.stderr)
+        msg = f"ERROR: {discovery} not found — required for intent-alignment judge"
+        print(msg, file=sys.stderr)
         sys.exit(1)
 
     data = json.loads(discovery.read_text())
@@ -138,24 +139,29 @@ def read_evidence_status(base_path):
 def classify_gaps(missed_items, evidence_status):
     """Cross-reference missed AC items against evidence status."""
     gaps = []
-    req_statuses = {}
+    reqs_by_id = {}
+    reqs_by_title = {}
     if evidence_status:
         for req in evidence_status.get("requirements", []):
-            req_statuses[req.get("id", "")] = req
+            rid = req.get("id", "")
+            if rid:
+                reqs_by_id[rid] = req
             title_lower = req.get("title", "").lower()
-            req_statuses[title_lower] = req
+            if title_lower:
+                reqs_by_title[title_lower] = req
 
     for item in missed_items:
         ac_text = item.get("ac_item", "")
         ac_lower = ac_text.lower()
+        req_id = item.get("id", "")
 
         ev_status = "unknown"
         action = "investigate"
 
-        for key, req in req_statuses.items():
-            if isinstance(key, str) and (ac_lower in key or key in ac_lower):
-                ev_status = req.get("status", "unknown")
-                break
+        if req_id and req_id in reqs_by_id:
+            ev_status = reqs_by_id[req_id].get("status", "unknown")
+        elif ac_lower in reqs_by_title:
+            ev_status = reqs_by_title[ac_lower].get("status", "unknown")
 
         if ev_status == "absent":
             action = "document_as_unsupported"
