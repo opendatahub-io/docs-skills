@@ -20,7 +20,7 @@ All sidecars share these fields:
 | `schema_version` | integer | Always `1`. Bump when the schema changes incompatibly |
 | `step` | string | Step name matching the YAML step list (e.g., `"requirements"`) |
 | `ticket` | string | JIRA ticket ID as provided by the user (preserves original case) |
-| `completed_at` | string | ISO 8601 timestamp of when the step finished |
+| `completed_at` | string | ISO 8601 timestamp of when the step finished. **Must be obtained from** `date -u +%Y-%m-%dT%H:%M:%SZ` — do not estimate or round. Accurate timestamps are required for pipeline diagnostics duration calculations |
 
 ## Per-step extensions
 

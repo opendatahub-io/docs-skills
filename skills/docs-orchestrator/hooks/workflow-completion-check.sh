@@ -91,15 +91,27 @@ fi
 
 # Find the first incomplete step
 NEXT_STEP=""
+NEXT_STATUS=""
 for step in "${STEP_ORDER[@]}"; do
   STEP_STATUS=$(jq -r --arg s "$step" '.steps[$s].status // "missing"' "$PROGRESS_FILE")
   case "$STEP_STATUS" in
     completed|skipped|deferred) continue ;;
-    *) NEXT_STEP="$step"; break ;;
+    *)
+      NEXT_STEP="$step"
+      NEXT_STATUS="$STEP_STATUS"
+      break
+      ;;
   esac
 done
 
 if [ -n "$NEXT_STEP" ]; then
+  # If the next step is in_progress, the orchestrator has already started
+  # work on it (e.g., dispatched background agents). Allow stop — the
+  # orchestrator will be notified when agents complete.
+  if [ "$NEXT_STATUS" = "in_progress" ]; then
+    exit 0
+  fi
+
   echo "$((COUNT + 1))" > "$COUNTER_FILE"
   echo "Documentation workflow '$WORKFLOW_TYPE' for $TICKET is not complete. Next step: $NEXT_STEP. Read the progress file at $PROGRESS_FILE then continue the workflow." >&2
   exit 2

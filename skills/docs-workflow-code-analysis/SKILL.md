@@ -26,17 +26,31 @@ Orchestrator step skill that wraps `learn-code` to analyze a source repository a
 
 ### 2. Check for cached analysis
 
-Check if learn-code output already exists:
+Check if learn-code output already exists. Learn-code may store results in two locations depending on the subagent's working directory:
+
+1. **Inside the repo**: `${REPO}/.agent_workspace/*/synthesis/ONBOARDING.md`
+2. **At the docs repo level**: `${GIT_ROOT}/.agent_workspace/${REPO_NAME}/synthesis/ONBOARDING.md` (where `GIT_ROOT` is the documentation repo root and `REPO_NAME` is `basename "${REPO}"`)
+
+Check both locations:
 
 ```bash
-ls "${REPO}/.agent_workspace/"*/synthesis/ONBOARDING.md 2>/dev/null
+REPO_NAME="$(basename "$REPO")"
+GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+# Check inside the cloned repo first
+LEARN_CODE_ONBOARDING="$(ls "${REPO}/.agent_workspace/"*/synthesis/ONBOARDING.md 2>/dev/null | head -1)"
+
+# Fall back to docs-repo-level .agent_workspace/<repo-name>/
+if [[ -z "$LEARN_CODE_ONBOARDING" ]]; then
+  LEARN_CODE_ONBOARDING="$(ls "${GIT_ROOT}/.agent_workspace/${REPO_NAME}/synthesis/ONBOARDING.md" 2>/dev/null)"
+fi
 ```
 
-If an `ONBOARDING.md` exists under any `.agent_workspace/<repo-name>/synthesis/` directory, the analysis was already completed. Locate the corresponding base directory (the parent of `synthesis/`) and copy cached results to `--output-dir`:
+If an `ONBOARDING.md` is found at either location, the analysis was already completed. Locate the corresponding base directory (the parent of `synthesis/`) and copy cached results to `--output-dir`:
 
 ```bash
 # Find the learn-code base directory containing the cached analysis
-LEARN_CODE_BASE="$(dirname "$(dirname "$(ls "${REPO}/.agent_workspace/"*/synthesis/ONBOARDING.md 2>/dev/null | head -1)")")"
+LEARN_CODE_BASE="$(dirname "$(dirname "$LEARN_CODE_ONBOARDING")")"
 
 cp "${LEARN_CODE_BASE}/synthesis/ONBOARDING.md" "${OUTPUT_DIR}/"
 cp "${LEARN_CODE_BASE}/detection/detection.json" "${OUTPUT_DIR}/detection.json" 2>/dev/null
@@ -64,11 +78,22 @@ Agent:
     (ONBOARDING.md, registry.json, detection.json, summaries/, relationships/).
 ```
 
-After the agent completes, locate the learn-code output. Learn-code stores results in `${REPO}/.agent_workspace/<repo-name>/`. Copy the analysis output to the step's output directory:
+After the agent completes, locate the learn-code output. Check both possible locations (same as step 2):
 
 ```bash
-# Find the learn-code output directory
-LEARN_CODE_BASE="$(dirname "$(dirname "$(ls "${REPO}/.agent_workspace/"*/synthesis/ONBOARDING.md 2>/dev/null | head -1)")")"
+REPO_NAME="$(basename "$REPO")"
+GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+# Check inside the cloned repo first
+LEARN_CODE_ONBOARDING="$(ls "${REPO}/.agent_workspace/"*/synthesis/ONBOARDING.md 2>/dev/null | head -1)"
+
+# Fall back to docs-repo-level .agent_workspace/<repo-name>/
+if [[ -z "$LEARN_CODE_ONBOARDING" ]]; then
+  LEARN_CODE_ONBOARDING="$(ls "${GIT_ROOT}/.agent_workspace/${REPO_NAME}/synthesis/ONBOARDING.md" 2>/dev/null)"
+fi
+
+# Copy analysis output to the step's output directory
+LEARN_CODE_BASE="$(dirname "$(dirname "$LEARN_CODE_ONBOARDING")")"
 
 cp "${LEARN_CODE_BASE}/synthesis/ONBOARDING.md" "${OUTPUT_DIR}/"
 cp "${LEARN_CODE_BASE}/detection/detection.json" "${OUTPUT_DIR}/detection.json" 2>/dev/null
@@ -78,7 +103,7 @@ cp "${LEARN_CODE_BASE}/module-analysis/"*.json "${OUTPUT_DIR}/summaries/" 2>/dev
 cp "${LEARN_CODE_BASE}/relationships/"*.json "${OUTPUT_DIR}/relationships/" 2>/dev/null
 ```
 
-If `ONBOARDING.md` is not found after the agent completes, mark the step as `failed` and report the error.
+If `ONBOARDING.md` is not found at either location after the agent completes, mark the step as `failed` and report the error.
 
 ### 4. Write step-result.json
 

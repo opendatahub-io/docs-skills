@@ -431,6 +431,24 @@ def detect_loop_groups(
     return groups
 
 
+def resolve_output_path(output: str, base_path: str) -> str:
+    """Resolve a step output path, which may be relative, to an absolute path."""
+    if os.path.isabs(output):
+        return output
+    # Try relative to CWD first (legacy behavior)
+    if os.path.isdir(output):
+        return os.path.abspath(output)
+    # Try as a path relative to the project root by using base_path context.
+    # output is like ".agent_workspace/<ticket>/<step-name>" and base_path
+    # is the absolute "<project>/.agent_workspace/<ticket>".
+    # The step directory is base_path/<step-name>.
+    step_name = os.path.basename(output)
+    candidate = os.path.join(base_path, step_name)
+    if os.path.isdir(candidate):
+        return candidate
+    return output
+
+
 def detect_failures(
     step_order: list[str],
     steps: dict,
@@ -455,17 +473,19 @@ def detect_failures(
 
         if status == "completed":
             output = info.get("output")
-            if output and not os.path.isdir(output):
-                issues.append(
-                    {
-                        "type": "missing_output",
-                        "step": name,
-                        "severity": "high",
-                        "detail": (
-                            f"Step '{name}' marked completed but output dir missing: {output}"
-                        ),
-                    }
-                )
+            if output:
+                resolved = resolve_output_path(output, base_path)
+                if not os.path.isdir(resolved):
+                    issues.append(
+                        {
+                            "type": "missing_output",
+                            "step": name,
+                            "severity": "high",
+                            "detail": (
+                                f"Step '{name}' marked completed but output dir missing: {output}"
+                            ),
+                        }
+                    )
 
             sidecar = os.path.join(base_path, name, "step-result.json")
             if not os.path.isfile(sidecar):
@@ -695,12 +715,39 @@ def build_recommendations(
     return recs
 
 
+def derive_base_path(progress_path: str, progress: dict) -> str:
+    """Derive base_path from the progress file when the field is missing.
+
+    The progress file lives at <base_path>/workflow/<name>.json, so
+    base_path is two directories up from the file.  If the progress
+    file contains a non-empty base_path, that value is used directly.
+    """
+    explicit = progress.get("base_path", "")
+    if explicit and os.path.isdir(explicit):
+        return explicit
+
+    # Derive from file location: .../base_path/workflow/progress.json
+    workflow_dir = os.path.dirname(os.path.abspath(progress_path))
+    candidate = os.path.dirname(workflow_dir)
+    if os.path.basename(workflow_dir) == "workflow" and os.path.isdir(candidate):
+        return candidate
+
+    # Last resort: try to resolve from step output paths
+    for step_info in progress.get("steps", {}).values():
+        output = step_info.get("output", "")
+        if output and os.path.isdir(output):
+            # output is like .agent_workspace/<ticket>/<step-name>
+            return os.path.dirname(os.path.abspath(output))
+
+    return explicit
+
+
 def analyze(progress_path: str) -> dict:
     with open(progress_path) as f:
         progress = json.load(f)
 
     ticket = progress.get("ticket", "unknown")
-    base_path = progress.get("base_path", "")
+    base_path = derive_base_path(progress_path, progress)
     step_order = progress.get("step_order", [])
     steps = progress.get("steps", {})
     status = progress.get("status", "unknown")

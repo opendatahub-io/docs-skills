@@ -158,7 +158,7 @@ Skill: <step.skill>, args: "<constructed args>"
 
 1. Verify output folder exists — if missing, mark `failed` and **STOP**
 2. Read `step-result.json` sidecar if present; store fields in `steps.<step-name>.result`. If missing, log warning and store default result: `{"module_count": 0, "files": [], "passed": true}` — downstream post-processing must handle these defaults gracefully
-3. Set status to `completed` with output path. Update `updated_at`
+3. Set status to `completed` with output path. Get the real wall-clock timestamp by running `date -u +%Y-%m-%dT%H:%M:%SZ` and use it for `updated_at` and for the step's `completed_at` in the sidecar. **Do not estimate or round timestamps** — synthetic timestamps break duration calculations and bottleneck detection in pipeline diagnostics
 4. Do NOT read step output files into orchestrator context — read only sidecars
 5. Run [step-specific post-processing](#step-specific-post-processing)
 6. Re-read the progress file from disk before the next step (post-step context refresh)

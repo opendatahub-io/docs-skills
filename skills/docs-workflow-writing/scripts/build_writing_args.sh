@@ -108,9 +108,55 @@ PR_ANALYSIS_DIR="${BASE_PATH}/pr-analysis"
 OUTPUT_DIR="${BASE_PATH}/writing"
 OUTPUT_FILE="${OUTPUT_DIR}/_index.md"
 
-# --- Check for code-learner analysis ---
-if [[ -d "$CODE_ANALYSIS_DIR" && -f "$CODE_ANALYSIS_DIR/ONBOARDING.md" ]]; then
+# --- Helper: find code analysis dir for a repo ---
+# Checks all known layout patterns:
+#   1. code-analysis/ONBOARDING.md                       (flat, single-repo)
+#   2. code-analysis/<repo-name>/ONBOARDING.md            (subdirectory)
+#   3. code-analysis-<repo-name>/ONBOARDING.md            (hyphenated)
+#   4. code-analysis-<N>-<repo-name>/ONBOARDING.md        (indexed, from step-post-processing)
+find_code_analysis_dir() {
+  local base="$1"
+  local repo_name="$2"
+  local is_primary="$3"  # "true" for primary repo
+
+  # Primary repo: check flat layout first
+  if [[ "$is_primary" == "true" && -d "${base}/code-analysis" && -f "${base}/code-analysis/ONBOARDING.md" ]]; then
+    echo "${base}/code-analysis"
+    return 0
+  fi
+
+  # Subdirectory layout: code-analysis/<repo-name>/
+  if [[ -d "${base}/code-analysis/${repo_name}" && -f "${base}/code-analysis/${repo_name}/ONBOARDING.md" ]]; then
+    echo "${base}/code-analysis/${repo_name}"
+    return 0
+  fi
+
+  # Hyphenated layout: code-analysis-<repo-name>/
+  if [[ -d "${base}/code-analysis-${repo_name}" && -f "${base}/code-analysis-${repo_name}/ONBOARDING.md" ]]; then
+    echo "${base}/code-analysis-${repo_name}"
+    return 0
+  fi
+
+  # Indexed layout: code-analysis-<N>-<repo-name>/
+  for candidate in "${base}"/code-analysis-*-"${repo_name}"; do
+    if [[ -d "$candidate" && -f "$candidate/ONBOARDING.md" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+# --- Check for code-learner analysis (primary repo) ---
+primary_repo_name=""
+if [[ -n "$SOURCE_REPO" ]]; then
+  primary_repo_name="$(basename "$SOURCE_REPO")"
+fi
+found_dir="$(find_code_analysis_dir "$BASE_PATH" "$primary_repo_name" "true" 2>/dev/null)"
+if [[ -n "$found_dir" ]]; then
   HAS_CODE_ANALYSIS=true
+  CODE_ANALYSIS_DIR="$found_dir"
 else
   HAS_CODE_ANALYSIS=false
   CODE_ANALYSIS_DIR=""
@@ -120,9 +166,9 @@ fi
 ADDITIONAL_CODE_ANALYSIS_DIRS=()
 for repo in "${ADDITIONAL_REPOS[@]}"; do
   repo_name="$(basename "$repo")"
-  add_analysis_dir="${BASE_PATH}/code-analysis-${repo_name}"
-  if [[ -d "$add_analysis_dir" && -f "$add_analysis_dir/ONBOARDING.md" ]]; then
-    ADDITIONAL_CODE_ANALYSIS_DIRS+=("$add_analysis_dir")
+  add_dir="$(find_code_analysis_dir "$BASE_PATH" "$repo_name" "false" 2>/dev/null)"
+  if [[ -n "$add_dir" ]]; then
+    ADDITIONAL_CODE_ANALYSIS_DIRS+=("$add_dir")
   fi
 done
 
