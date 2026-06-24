@@ -3,9 +3,8 @@ Export Google Docs to Markdown, Slides to Markdown (via PPTX),
 or Sheets to CSV.  Optionally include Google Docs comments as
 Markdown footnotes.
 
-Authenticates via gcloud CLI (preferred) or a Google service account
-credentials file (GOOGLE_APPLICATION_CREDENTIALS).  Requires python-pptx
-for Slides export.
+Authenticates via gcloud CLI (preferred) or Google Application Default
+Credentials (ADC).  Requires python-pptx for Slides export.
 
 python3 ${CLAUDE_SKILL_DIR}/scripts/gdoc2md.py [--comments] [--include-resolved] <url> [output]
 """
@@ -20,7 +19,6 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/gdoc2md.py [--comments] [--include-resolved]
 
 import argparse
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -129,28 +127,30 @@ def _has_gcloud() -> bool:
     return result.returncode == 0
 
 
-_use_gcloud = True
+_gcloud_available = False
 
 
 def check_dependencies():
     """Verify that at least one authentication method is available."""
-    global _use_gcloud  # noqa: PLW0603
-    _use_gcloud = _has_gcloud()
-    if _use_gcloud:
+    global _gcloud_available  # noqa: PLW0603
+    _gcloud_available = _has_gcloud()
+    if _gcloud_available:
         return
-    creds_file = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
-    if creds_file and Path(creds_file).is_file():
-        return
-    print("Error: No authentication method available.", file=sys.stderr)
-    print(
-        "  Option 1: Install gcloud CLI — https://cloud.google.com/sdk/docs/install",
-        file=sys.stderr,
-    )
-    print(
-        "  Option 2: Set GOOGLE_APPLICATION_CREDENTIALS to a service account JSON file.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+    try:
+        import google.auth  # noqa: F401
+    except ImportError:
+        print("Error: No authentication method available.", file=sys.stderr)
+        print(
+            "  Option 1: Install gcloud CLI"
+            " — https://cloud.google.com/sdk/docs/install",
+            file=sys.stderr,
+        )
+        print(
+            "  Option 2: pip install google-auth and configure"
+            " Application Default Credentials.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
@@ -165,22 +165,45 @@ _SCOPES = [
 
 
 def get_token() -> str:
-    """Return a valid access token via gcloud CLI or service account file."""
-    if _use_gcloud:
-        return _get_token_gcloud()
-    return _get_token_service_account()
+    """Return a valid access token, trying non-interactive methods first."""
+    if _gcloud_available:
+        token = _try_gcloud_token()
+        if token:
+            return token
 
+    token = _try_adc_token()
+    if token:
+        return token
 
-def _get_token_gcloud() -> str:
-    """Get access token from gcloud CLI, prompting login if needed."""
-    result = subprocess.run(
-        ["gcloud", "auth", "print-access-token"],  # noqa: S607
-        capture_output=True,
-        text=True,
+    if _gcloud_available:
+        return _gcloud_interactive_login()
+
+    print(
+        "Error: Could not obtain credentials."
+        " Configure ADC or install gcloud CLI.",
+        file=sys.stderr,
     )
+    sys.exit(1)
+
+
+def _try_gcloud_token() -> str | None:
+    """Try to get a token from gcloud CLI without user interaction."""
+    try:
+        result = subprocess.run(
+            ["gcloud", "auth", "print-access-token"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     if result.returncode == 0 and result.stdout.strip():
         return result.stdout.strip()
+    return None
 
+
+def _gcloud_interactive_login() -> str:
+    """Prompt user to authenticate via gcloud and return the resulting token."""
     print("No active credentials found. Authenticating with Google...")
     login = subprocess.run(
         ["gcloud", "auth", "login", "--enable-gdrive-access"],  # noqa: S607
@@ -207,52 +230,28 @@ def _get_token_gcloud() -> str:
     return result.stdout.strip()
 
 
-def _get_token_service_account() -> str:
-    """Get access token from a service account credentials file."""
+def _try_adc_token() -> str | None:
+    """Try to get a token via Application Default Credentials.
+
+    Returns the token string on success, or None if ADC is unavailable
+    or credentials cannot be resolved.
+    """
     try:
+        import google.auth
         import google.auth.exceptions
         import google.auth.transport.requests
-        from google.oauth2 import service_account
     except ImportError:
-        print(
-            "Error: google-auth package not installed. Run: uv pip install google-auth",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    creds_file = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
-    if not creds_file or not Path(creds_file).is_file():
-        print(
-            "Error: GOOGLE_APPLICATION_CREDENTIALS is not set or file not found.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        return None
 
     try:
-        creds = service_account.Credentials.from_service_account_file(
-            creds_file,
-            scopes=_SCOPES,
-        )
+        creds, _ = google.auth.default(scopes=_SCOPES)
         creds.refresh(google.auth.transport.requests.Request())
+    except google.auth.exceptions.DefaultCredentialsError:
+        return None
+    except google.auth.exceptions.RefreshError:
+        return None
     except ValueError:
-        print(
-            f"Error: Service account file is malformed: {creds_file}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    except google.auth.exceptions.RefreshError as exc:
-        print(
-            f"Error: Could not refresh service account credentials: {exc}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    if not creds.token:
-        print(
-            "Error: Could not obtain access token from service account.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        return None
 
     return creds.token
 
