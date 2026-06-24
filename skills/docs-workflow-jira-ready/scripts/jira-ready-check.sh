@@ -81,7 +81,8 @@ _safe_load_env() {
 }
 _project_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [[ -z "$_project_root" ]]; then
-  # shellcheck disable=SC2015 — fallback to empty string is intentional
+  # Fallback to empty string is intentional
+  # shellcheck disable=SC2015
   _project_root="$(cd "$SCRIPT_DIR" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || true)"
 fi
 if [[ -n "$_project_root" ]]; then

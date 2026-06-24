@@ -237,7 +237,8 @@ fi
 if [[ -z "$mr_summary" && -f "$BASE_PATH/requirements/requirements.md" ]]; then
     mr_summary=$(grep -m1 '^#' "$BASE_PATH/requirements/requirements.md" 2>/dev/null \
         | sed 's/^#\+[[:space:]]*//' | head -c 80 || true)
-    # shellcheck disable=SC2001 — regex with character classes not supported by ${//}
+    # Regex with character classes not supported by ${//}
+    # shellcheck disable=SC2001
     mr_summary=$(echo "$mr_summary" | sed "s/^${TICKET_UPPER}[[:space:]]*[-:][[:space:]]*//I")
 fi
 mr_summary="${mr_summary:-generated documentation}"
@@ -247,7 +248,8 @@ pr_title="[AI generated docs] $TICKET_UPPER: $mr_summary"
 # Build MR/PR description
 # ---------------------------------------------------------------------------
 
-# shellcheck disable=SC2016 — backticks are literal markdown formatting
+# Backticks are literal markdown formatting
+# shellcheck disable=SC2016
 files_block=$(printf -- '- \`%s\`\n' "${staged[@]}")
 
 desc_file=$(mktemp)
