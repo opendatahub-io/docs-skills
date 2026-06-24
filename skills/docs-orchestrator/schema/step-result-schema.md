@@ -366,7 +366,7 @@ When an existing linked ticket is found:
 
 ### action-comments
 
-Used by the `docs-review-comments` workflow and the standalone `action-comments` skill.
+Used by the standalone `action-comments` skill.
 
 ```json
 {
@@ -374,18 +374,22 @@ Used by the `docs-review-comments` workflow and the standalone `action-comments`
   "step": "action-comments",
   "ticket": "PROJ-123",
   "completed_at": "2026-04-23T16:00:00Z",
+  "ci_mode": true,
   "comments_resolved": 3,
   "comments_skipped": 2,
   "comments_outdated": 1,
+  "comments_replied": 3,
   "files_modified": ["modules/proc-installing-operator.adoc"]
 }
 ```
 
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
+| `ci_mode` | boolean | Whether the skill ran in autonomous CI mode | Informational |
 | `comments_resolved` | integer | Number of review comments applied or edited | Informational |
-| `comments_skipped` | integer | Number of comments skipped by user | Informational |
+| `comments_skipped` | integer | Number of comments skipped by user (or autonomously in CI) | Informational |
 | `comments_outdated` | integer | Number of comments auto-skipped as outdated | Informational |
+| `comments_replied` | integer | Number of reply comments posted to the PR/MR (CI mode only, 0 in interactive) | Informational |
 | `files_modified` | string[] | Paths of files modified | Informational |
 
 ### pipeline-diagnostics
