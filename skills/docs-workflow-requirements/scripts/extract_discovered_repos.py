@@ -229,7 +229,10 @@ def _traverse_linked_tickets(graph_data, jira_reader_path):
     for key in linked_keys:
         try:
             result = subprocess.run(  # noqa: S603
-                ["uv", "run", "--script", jira_reader_path, "--", "--graph", key, "--max-graph-tokens", "10000"],  # noqa: S607
+                [  # noqa: S607
+                    "uv", "run", "--script", jira_reader_path,
+                    "--", "--graph", key, "--max-graph-tokens", "10000",
+                ],
                 capture_output=True,
                 text=True,
                 timeout=60,

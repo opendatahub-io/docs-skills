@@ -2,8 +2,6 @@
 
 import json
 import textwrap
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from pii_scanner import (
@@ -19,7 +17,6 @@ from pii_scanner import (
     scan_file,
     scan_line,
 )
-
 
 # ── IP allowlist ─────────────────────────────────────────────────────────────
 

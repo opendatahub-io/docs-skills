@@ -8,15 +8,11 @@ the expected diagnostics.
 
 import json
 import os
-import time
 from datetime import datetime, timezone
 
-import pytest
 from pipeline_diagnostics import (
-    DirStats,
     analyze,
     build_recommendations,
-    build_timeline,
     derive_base_path,
     detect_bottlenecks,
     detect_failures,
@@ -27,7 +23,6 @@ from pipeline_diagnostics import (
     resolve_output_path,
     scan_dir,
 )
-
 
 # ── Fixture helpers ──────────────────────────────────────────────────────────
 

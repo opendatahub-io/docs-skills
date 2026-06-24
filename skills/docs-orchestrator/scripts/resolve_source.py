@@ -365,7 +365,10 @@ def _verify_existing_clone(clone_dir, ref=None, expected_repo_url=None, dry_run=
     if dry_run:
         return True
 
-    cmd = ["uv", "run", "--script", _git_pr_reader_path(), "--", "clone", "--verify", str(clone_dir)]
+    cmd = [
+        "uv", "run", "--script", _git_pr_reader_path(),
+        "--", "clone", "--verify", str(clone_dir),
+    ]
     if ref:
         cmd += ["--ref", ref]
     if expected_repo_url:
