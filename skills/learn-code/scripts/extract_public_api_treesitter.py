@@ -1,4 +1,4 @@
-"""Extract public API surface from Go, JavaScript, and TypeScript files
+"""Extract public API surface from Go, JavaScript, TypeScript, and Python files
 using tree-sitter AST parsing.
 
 Uses py-tree-sitter (compiled bindings, no Node.js required).
@@ -16,6 +16,7 @@ Usage:
 #     "tree-sitter",
 #     "tree-sitter-go",
 #     "tree-sitter-javascript",
+#     "tree-sitter-python",
 #     "tree-sitter-typescript",
 # ]
 # ///
@@ -29,12 +30,14 @@ from pathlib import Path
 
 import tree_sitter_go
 import tree_sitter_javascript
+import tree_sitter_python
 import tree_sitter_typescript
 from tree_sitter import Language, Parser
 
 LANGUAGES = {
     "go": Language(tree_sitter_go.language()),
     "javascript": Language(tree_sitter_javascript.language()),
+    "python": Language(tree_sitter_python.language()),
     "typescript": Language(tree_sitter_typescript.language_typescript()),
     "tsx": Language(tree_sitter_typescript.language_tsx()),
 }
@@ -171,9 +174,7 @@ def extract_go_exports(root, file_name: str) -> list[dict]:
                 )
 
         elif child.type == "var_declaration":
-            for spec in child.named_children:
-                if spec.type != "var_spec":
-                    continue
+            for spec in _descendants_of_type(child, "var_spec"):
                 name_node = spec.child_by_field_name("name")
                 if not name_node or not _text(name_node)[0].isupper():
                     continue
@@ -189,9 +190,7 @@ def extract_go_exports(root, file_name: str) -> list[dict]:
                 )
 
         elif child.type == "const_declaration":
-            for spec in child.named_children:
-                if spec.type != "const_spec":
-                    continue
+            for spec in _descendants_of_type(child, "const_spec"):
                 name_node = spec.child_by_field_name("name")
                 if not name_node or not _text(name_node)[0].isupper():
                     continue
@@ -220,6 +219,137 @@ def extract_go_imports(root, file_name: str) -> list[dict]:
                 if path_node:
                     mod_path = _text(path_node).strip('"')
                     imports.append({"module": mod_path, "file": file_name})
+
+    return imports
+
+
+# ---------------------------------------------------------------------------
+# Python extraction
+# ---------------------------------------------------------------------------
+
+
+def _get_python_docstring(body_node) -> str | None:
+    """Extract docstring from the first statement of a Python body block."""
+    if not body_node or body_node.child_count == 0:
+        return None
+    first = body_node.children[0]
+    if first.type == "expression_statement":
+        for child in first.children:
+            if child.type == "string":
+                raw = _text(child)
+                stripped = re.sub(r'^(\"\"\"|\'\'\')([\s\S]*?)\1$', r"\2", raw)
+                return stripped.strip().split("\n")[0][:200] or None
+    return None
+
+
+def _extract_python_def(node, file_name: str) -> dict | None:
+    """Extract a single function/class definition node (handles decorated or bare)."""
+    target = node
+    decorator_names = []
+
+    if node.type == "decorated_definition":
+        for child in node.children:
+            if child.type == "decorator":
+                for dc in child.children:
+                    if dc.type in ("identifier", "dotted_name", "attribute"):
+                        decorator_names.append(_text(dc))
+        target = node.child_by_field_name("definition")
+        if not target:
+            return None
+
+    if target.type == "function_definition":
+        name_node = target.child_by_field_name("name")
+        if not name_node or _text(name_node).startswith("_"):
+            return None
+        params = target.child_by_field_name("parameters")
+        ret = target.child_by_field_name("return_type")
+        body = target.child_by_field_name("body")
+        sig = f"def {_text(name_node)}{_text(params) if params else '()'}"
+        if ret:
+            sig += f" -> {_text(ret)}"
+        if decorator_names:
+            sig = ", ".join(f"@{d}" for d in decorator_names) + " " + sig
+        return {
+            "name": _text(name_node),
+            "kind": "function",
+            "file": file_name,
+            "line": target.start_point[0] + 1,
+            "signature": sig[:400],
+            "docstring": _get_python_docstring(body),
+        }
+
+    if target.type == "class_definition":
+        name_node = target.child_by_field_name("name")
+        if not name_node or _text(name_node).startswith("_"):
+            return None
+        body = target.child_by_field_name("body")
+        sig_text = _text(target).split(":")[0].strip()
+        if decorator_names:
+            sig_text = ", ".join(f"@{d}" for d in decorator_names) + " " + sig_text
+        return {
+            "name": _text(name_node),
+            "kind": "class",
+            "file": file_name,
+            "line": target.start_point[0] + 1,
+            "signature": sig_text[:400],
+            "docstring": _get_python_docstring(body),
+        }
+
+    return None
+
+
+def extract_python_exports(root, file_name: str) -> list[dict]:
+    exports = []
+
+    for child in root.named_children:
+        if child.type in ("function_definition", "decorated_definition",
+                          "class_definition"):
+            entry = _extract_python_def(child, file_name)
+            if entry:
+                exports.append(entry)
+
+        elif child.type == "expression_statement":
+            for sub in child.children:
+                if sub.type != "assignment":
+                    continue
+                left = sub.child_by_field_name("left")
+                if not left or left.type != "identifier":
+                    continue
+                name = _text(left)
+                if name.startswith("_"):
+                    continue
+                kind = "constant" if name.isupper() else "variable"
+                exports.append({
+                    "name": name,
+                    "kind": kind,
+                    "file": file_name,
+                    "line": sub.start_point[0] + 1,
+                    "signature": _text(sub)[:200],
+                    "docstring": None,
+                })
+
+    return exports
+
+
+def extract_python_imports(root, file_name: str) -> list[dict]:
+    imports = []
+
+    for child in root.named_children:
+        if child.type == "import_statement":
+            for sub in child.named_children:
+                if sub.type == "dotted_name":
+                    imports.append({"module": _text(sub), "file": file_name})
+                elif sub.type == "aliased_import":
+                    name_node = sub.child_by_field_name("name")
+                    if name_node:
+                        imports.append(
+                            {"module": _text(name_node), "file": file_name}
+                        )
+
+        elif child.type == "import_from_statement":
+            mod_node = child.child_by_field_name("module_name")
+            if mod_node:
+                imports.append({"module": _text(mod_node), "file": file_name})
 
     return imports
 
@@ -432,7 +562,7 @@ def _error_result(msg: str, module_name: str, lang: str) -> dict:
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Extract public API from Go/JS/TS files via tree-sitter",
+        description="Extract public API from Go/JS/TS/Python files via tree-sitter",
     )
     ap.add_argument(
         "--files", nargs="*", default=[], help="Source files to analyze"
@@ -452,6 +582,7 @@ def main():
 
     is_typescript = args.lang == "typescript"
     is_go = args.lang == "go"
+    is_python = args.lang == "python"
 
     all_exports = []
     all_imports = []
@@ -483,6 +614,13 @@ def main():
         if is_go:
             all_exports.extend(extract_go_exports(tree.root_node, file_name))
             all_imports.extend(extract_go_imports(tree.root_node, file_name))
+        elif is_python:
+            all_exports.extend(
+                extract_python_exports(tree.root_node, file_name)
+            )
+            all_imports.extend(
+                extract_python_imports(tree.root_node, file_name)
+            )
         else:
             all_exports.extend(
                 extract_js_exports(tree.root_node, file_name, is_typescript)
