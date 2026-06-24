@@ -7,11 +7,11 @@ for Go, JavaScript, TypeScript, and Python fixtures.
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
-#     "tree-sitter",
-#     "tree-sitter-go",
-#     "tree-sitter-javascript",
-#     "tree-sitter-python",
-#     "tree-sitter-typescript",
+#     "tree-sitter>=0.25.2",
+#     "tree-sitter-go>=0.25.0",
+#     "tree-sitter-javascript>=0.25.0",
+#     "tree-sitter-python>=0.25.0",
+#     "tree-sitter-typescript>=0.23.2",
 # ]
 # ///
 
@@ -365,7 +365,7 @@ def test_javascript_edge_cases():
     exports = result["exports"]
     names = [e["name"] for e in exports]
 
-    check("renamed re-export EventEmitter", "EventEmitter" in names)
+    check("renamed re-export Emitter", "Emitter" in names)
     check("async function fetchData", "fetchData" in names)
 
     fetch_export = next(e for e in exports if e["name"] == "fetchData")

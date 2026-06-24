@@ -13,11 +13,11 @@ Usage:
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
-#     "tree-sitter",
-#     "tree-sitter-go",
-#     "tree-sitter-javascript",
-#     "tree-sitter-python",
-#     "tree-sitter-typescript",
+#     "tree-sitter>=0.25.2",
+#     "tree-sitter-go>=0.25.0",
+#     "tree-sitter-javascript>=0.25.0",
+#     "tree-sitter-python>=0.25.0",
+#     "tree-sitter-typescript>=0.23.2",
 # ]
 # ///
 
@@ -109,6 +109,14 @@ def _find_child_of_type(node, type_name: str):
 # ---------------------------------------------------------------------------
 
 
+def _go_spec_names(spec) -> list:
+    """Return all name identifier nodes from a var_spec or const_spec."""
+    name_node = spec.child_by_field_name("name")
+    if name_node:
+        return [name_node]
+    return [c for c in spec.named_children if c.type == "identifier"]
+
+
 def extract_go_exports(root, file_name: str) -> list[dict]:
     exports = []
 
@@ -175,35 +183,37 @@ def extract_go_exports(root, file_name: str) -> list[dict]:
 
         elif child.type == "var_declaration":
             for spec in _descendants_of_type(child, "var_spec"):
-                name_node = spec.child_by_field_name("name")
-                if not name_node or not _text(name_node)[0].isupper():
-                    continue
-                exports.append(
-                    {
-                        "name": _text(name_node),
-                        "kind": "variable",
-                        "file": file_name,
-                        "line": spec.start_point[0] + 1,
-                        "signature": _text(spec)[:200],
-                        "docstring": _get_preceding_comment(child),
-                    }
-                )
+                name_nodes = _go_spec_names(spec)
+                for name_node in name_nodes:
+                    if not _text(name_node)[0].isupper():
+                        continue
+                    exports.append(
+                        {
+                            "name": _text(name_node),
+                            "kind": "variable",
+                            "file": file_name,
+                            "line": spec.start_point[0] + 1,
+                            "signature": _text(spec)[:200],
+                            "docstring": _get_preceding_comment(child),
+                        }
+                    )
 
         elif child.type == "const_declaration":
             for spec in _descendants_of_type(child, "const_spec"):
-                name_node = spec.child_by_field_name("name")
-                if not name_node or not _text(name_node)[0].isupper():
-                    continue
-                exports.append(
-                    {
-                        "name": _text(name_node),
-                        "kind": "constant",
-                        "file": file_name,
-                        "line": spec.start_point[0] + 1,
-                        "signature": _text(spec)[:200],
-                        "docstring": _get_preceding_comment(child),
-                    }
-                )
+                name_nodes = _go_spec_names(spec)
+                for name_node in name_nodes:
+                    if not _text(name_node)[0].isupper():
+                        continue
+                    exports.append(
+                        {
+                            "name": _text(name_node),
+                            "kind": "constant",
+                            "file": file_name,
+                            "line": spec.start_point[0] + 1,
+                            "signature": _text(spec)[:200],
+                            "docstring": _get_preceding_comment(child),
+                        }
+                    )
 
     return exports
 
@@ -264,7 +274,9 @@ def _extract_python_def(node, file_name: str) -> dict | None:
         params = target.child_by_field_name("parameters")
         ret = target.child_by_field_name("return_type")
         body = target.child_by_field_name("body")
-        sig = f"def {_text(name_node)}{_text(params) if params else '()'}"
+        is_async = any(c.type == "async" for c in target.children)
+        prefix = "async def" if is_async else "def"
+        sig = f"{prefix} {_text(name_node)}{_text(params) if params else '()'}"
         if ret:
             sig += f" -> {_text(ret)}"
         if decorator_names:
@@ -376,9 +388,10 @@ def extract_js_exports(
             if clause:
                 specifiers = _descendants_of_type(clause, "export_specifier")
                 for spec in specifiers:
-                    name_node = spec.child_by_field_name("name")
+                    alias_node = spec.child_by_field_name("alias")
+                    name_node = alias_node or spec.child_by_field_name("name")
                     if not name_node and spec.named_child_count > 0:
-                        name_node = spec.named_children[0]
+                        name_node = spec.named_children[-1]
                     if name_node:
                         exports.append(
                             {
@@ -426,13 +439,14 @@ def extract_js_exports(
             )
 
         elif decl.type in ("lexical_declaration", "variable_declaration"):
+            is_const = decl.children[0].type == "const" if decl.children else False
             declarators = _descendants_of_type(decl, "variable_declarator")
             for d in declarators:
                 name_node = d.child_by_field_name("name")
                 if not name_node:
                     continue
                 value_node = d.child_by_field_name("value")
-                kind = "constant"
+                kind = "constant" if is_const else "variable"
                 if value_node and value_node.type in (
                     "arrow_function",
                     "function_expression",
@@ -587,9 +601,27 @@ def main():
     all_exports = []
     all_imports = []
 
+    root_dir = Path.cwd().resolve()
+    max_source_bytes = 2 * 1024 * 1024
+
     for filepath in args.files:
         try:
-            source = Path(filepath).read_bytes()
+            source_path = Path(filepath).resolve(strict=True)
+            if not source_path.is_relative_to(root_dir):
+                print(
+                    f"Warning: skipping {filepath} (outside repo root)",
+                    file=sys.stderr,
+                )
+                continue
+            if not source_path.is_file():
+                continue
+            if source_path.stat().st_size > max_source_bytes:
+                print(
+                    f"Warning: skipping {filepath} (exceeds 2 MB)",
+                    file=sys.stderr,
+                )
+                continue
+            source = source_path.read_bytes()
         except OSError:
             continue
 

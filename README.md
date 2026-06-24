@@ -119,7 +119,7 @@ These are declared as PEP 723 inline metadata in their scripts and installed aut
 | `git-pr-reader/scripts/git_pr_reader.py` | `PyGithub`, `python-gitlab`, `pyyaml` |
 | `article-extractor/scripts/article_extractor.py` | `requests`, `beautifulsoup4`, `html2text` |
 | `redhat-docs-toc/scripts/toc_extractor.py` | `requests`, `beautifulsoup4` |
-| `learn-code/scripts/extract_public_api_treesitter.py` | `tree-sitter`, `tree-sitter-go`, `tree-sitter-javascript`, `tree-sitter-typescript` |
+| `learn-code/scripts/extract_public_api_treesitter.py` | `tree-sitter`, `tree-sitter-go`, `tree-sitter-javascript`, `tree-sitter-python`, `tree-sitter-typescript` |
 | `docs-convert-gdoc-md/scripts/gdoc2md.py` | `python-pptx` |
 
 ## Quick Start
