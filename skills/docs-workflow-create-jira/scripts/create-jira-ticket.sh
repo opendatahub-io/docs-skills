@@ -36,6 +36,7 @@ _safe_load_env() {
         fi
     done < "$file"
 }
+# shellcheck disable=SC2015 — fallback to empty string is intentional
 _project_root="$(cd "$(dirname "$PLAN_FILE")" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || true)"
 if [[ -n "$_project_root" ]]; then
     _safe_load_env "$_project_root/.env"

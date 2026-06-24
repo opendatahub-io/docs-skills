@@ -14,6 +14,7 @@
 
 set -u
 
+# shellcheck disable=SC2034 — hook protocol requires consuming stdin
 INPUT=$(cat)
 
 if ! cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; then

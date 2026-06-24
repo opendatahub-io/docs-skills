@@ -237,6 +237,7 @@ fi
 if [[ -z "$mr_summary" && -f "$BASE_PATH/requirements/requirements.md" ]]; then
     mr_summary=$(grep -m1 '^#' "$BASE_PATH/requirements/requirements.md" 2>/dev/null \
         | sed 's/^#\+[[:space:]]*//' | head -c 80 || true)
+    # shellcheck disable=SC2001 — regex with character classes not supported by ${//}
     mr_summary=$(echo "$mr_summary" | sed "s/^${TICKET_UPPER}[[:space:]]*[-:][[:space:]]*//I")
 fi
 mr_summary="${mr_summary:-generated documentation}"
@@ -246,6 +247,7 @@ pr_title="[AI generated docs] $TICKET_UPPER: $mr_summary"
 # Build MR/PR description
 # ---------------------------------------------------------------------------
 
+# shellcheck disable=SC2016 — backticks are literal markdown formatting
 files_block=$(printf -- '- \`%s\`\n' "${staged[@]}")
 
 desc_file=$(mktemp)
@@ -305,7 +307,7 @@ elif [[ "$platform" == "gitlab" ]]; then
 
     # Check for existing MRs
     if [[ "$is_fork" == true ]]; then
-        upstream_encoded=$(echo "$upstream_project" | sed 's|/|%2F|g')
+        upstream_encoded="${upstream_project//\//%2F}"
         mr_url=$(glab api "projects/$upstream_encoded/merge_requests?source_branch=$branch&state=opened" \
             2>/dev/null | jq -r '.[0].web_url // empty' || true)
     else
@@ -319,7 +321,7 @@ elif [[ "$platform" == "gitlab" ]]; then
     else
         if [[ "$is_fork" == true ]]; then
             # Fork: POST to fork's endpoint with target_project_id
-            fork_encoded=$(echo "$origin_project" | sed 's|/|%2F|g')
+            fork_encoded="${origin_project//\//%2F}"
             upstream_id=$(glab api "projects/$upstream_encoded" 2>/dev/null | jq -r '.id // empty' || true)
 
             if [[ -z "$upstream_id" ]]; then
