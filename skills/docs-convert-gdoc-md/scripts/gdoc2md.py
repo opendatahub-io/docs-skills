@@ -3,7 +3,9 @@ Export Google Docs to Markdown, Slides to Markdown (via PPTX),
 or Sheets to CSV.  Optionally include Google Docs comments as
 Markdown footnotes.
 
-Requires gcloud CLI and python-pptx (for Slides export).
+Authenticates via gcloud CLI (preferred) or a Google service account
+credentials file (GOOGLE_APPLICATION_CREDENTIALS).  Requires python-pptx
+for Slides export.
 
 python3 ${CLAUDE_SKILL_DIR}/scripts/gdoc2md.py [--comments] [--include-resolved] <url> [output]
 """
@@ -11,13 +13,16 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/gdoc2md.py [--comments] [--include-resolved]
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
+#     "google-auth",
 #     "python-pptx",
 # ]
 # ///
 
 import argparse
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -116,28 +121,60 @@ def parse_and_validate_args():
 # ---------------------------------------------------------------------------
 
 
-def check_dependencies():
-    """Verify that the gcloud CLI is installed, exiting with guidance if not."""
+def _has_gcloud() -> bool:
+    """Return True if gcloud CLI is installed and functional."""
+    if not shutil.which("gcloud"):
+        return False
     result = subprocess.run(["gcloud", "version"], capture_output=True)  # noqa: S607
-    if result.returncode != 0:
-        print("Error: gcloud CLI is not installed.", file=sys.stderr)
-        print(
-            "  Install: https://cloud.google.com/sdk/docs/install",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    return result.returncode == 0
+
+
+_use_gcloud = True
+
+
+def check_dependencies():
+    """Verify that at least one authentication method is available."""
+    global _use_gcloud  # noqa: PLW0603
+    _use_gcloud = _has_gcloud()
+    if _use_gcloud:
+        return
+    creds_file = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+    if creds_file and Path(creds_file).is_file():
+        return
+    print("Error: No authentication method available.", file=sys.stderr)
+    print(
+        "  Option 1: Install gcloud CLI"
+        " — https://cloud.google.com/sdk/docs/install",
+        file=sys.stderr,
+    )
+    print(
+        "  Option 2: Set GOOGLE_APPLICATION_CREDENTIALS"
+        " to a service account JSON file.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
 # Auth — single source of truth for obtaining a token
 # ---------------------------------------------------------------------------
 
+_SCOPES = [
+    "https://www.googleapis.com/auth/documents.readonly",
+    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+]
+
 
 def get_token() -> str:
-    """
-    Return a valid access token, prompting the user to log in if needed.
-    Raises SystemExit on unrecoverable failure.
-    """
+    """Return a valid access token via gcloud CLI or service account file."""
+    if _use_gcloud:
+        return _get_token_gcloud()
+    return _get_token_service_account()
+
+
+def _get_token_gcloud() -> str:
+    """Get access token from gcloud CLI, prompting login if needed."""
     result = subprocess.run(
         ["gcloud", "auth", "print-access-token"],  # noqa: S607
         capture_output=True,
@@ -157,7 +194,6 @@ def get_token() -> str:
         )
         sys.exit(1)
 
-    # Re-fetch after successful login
     result = subprocess.run(
         ["gcloud", "auth", "print-access-token"],  # noqa: S607
         capture_output=True,
@@ -171,6 +207,57 @@ def get_token() -> str:
         sys.exit(1)
 
     return result.stdout.strip()
+
+
+def _get_token_service_account() -> str:
+    """Get access token from a service account credentials file."""
+    try:
+        import google.auth.exceptions
+        import google.auth.transport.requests
+        from google.oauth2 import service_account
+    except ImportError:
+        print(
+            "Error: google-auth package not installed."
+            " Run: uv pip install google-auth",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    creds_file = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+    if not creds_file or not Path(creds_file).is_file():
+        print(
+            "Error: GOOGLE_APPLICATION_CREDENTIALS is not set"
+            " or file not found.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    try:
+        creds = service_account.Credentials.from_service_account_file(
+            creds_file, scopes=_SCOPES,
+        )
+        creds.refresh(google.auth.transport.requests.Request())
+    except ValueError:
+        print(
+            f"Error: Service account file is malformed: {creds_file}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except google.auth.exceptions.RefreshError as exc:
+        print(
+            f"Error: Could not refresh service account credentials: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if not creds.token:
+        print(
+            "Error: Could not obtain access token from service account.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    return creds.token
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +282,11 @@ def download(url: str, token: str, retries: int = 3) -> bytes:
                 time.sleep(wait)
                 continue
             messages = {
-                401: ("Authentication failed (401). Try: gcloud auth login --enable-gdrive-access"),
+                401: (
+                    "Authentication failed (401). "
+                    "gcloud: run 'gcloud auth login --enable-gdrive-access'. "
+                    "Service account: verify the JSON file and its permissions."
+                ),
                 403: ("Access denied (403). Check you have permission to access this file."),
                 404: "Not found (404). Check the URL is correct.",
             }
