@@ -1,6 +1,6 @@
 ---
 name: docs-orchestrator
-description: Documentation workflow orchestrator. Reads the step list from .agent_workspace/docs-workflow.yaml (or the plugin default). Runs steps sequentially, manages progress state, handles iteration and confirmation gates. Claude is the orchestrator — the YAML is a step list, not a workflow engine.
+description: Documentation workflow orchestrator. Uses a Python state machine driver for all deterministic logic (progress, args, post-processing, iteration). Claude runs the loop — invoke init, execute each skill action, call step-done, repeat.
 
 argument-hint: <ticket> [--workflow <name>] [--pr <url>...] [--source-code-repo <url-or-path>...] [--no-source-repo] [--auto-discover-repos] [--max-secondary-repos <N>] [--mkdocs] [--draft] [--docs-repo-path <path>] [--create-jira <PROJECT>] [--create-merge-request]
 
@@ -9,11 +9,9 @@ allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, AskUserQuestion
 
 # Docs Orchestrator
 
-**When the user invokes `/docs-orchestrator`, run THIS skill directly. Do NOT redirect to `docs-workflow-start` or any other skill.**
+**When the user invokes `/docs-orchestrator` or `/docs-tools:docs-orchestrator`, run THIS skill directly. Do NOT redirect to `docs-workflow-start` or any other skill.**
 
-Claude is the orchestrator. The YAML is a step list. The hook is a safety net.
-
-This skill teaches you how to run a documentation workflow pipeline. You read the step list from YAML, run each step skill sequentially, manage progress state via a JSON file, and handle iteration loops and confirmation gates.
+All deterministic logic — progress file management, step argument construction, post-processing, tech review iteration, when-condition evaluation — is handled by `docs_orchestrator.py`. Claude's role is: call the driver, run the skill it says, report the result back to the driver.
 
 ## Pre-flight
 
@@ -23,197 +21,148 @@ Install the workflow completion Stop hook (safe to re-run, skips if already inst
 bash ${CLAUDE_SKILL_DIR}/scripts/setup-hooks.sh
 ```
 
-**Do not** source `.env` files or check for tokens/CLIs here — Python scripts (`jira_reader.py`, `resolve_source.py`, etc.) load `.env` files and validate prerequisites themselves, producing clear errors on failure.
+**Do not** source `.env` files or check for tokens/CLIs here — Python scripts load `.env` files and validate prerequisites themselves, producing clear errors on failure.
 
-## Parse arguments
+## Arguments
+
+When displaying available options to the user (e.g., on skill load or when asking for flags), reproduce the descriptions below **verbatim** — do not summarize or paraphrase them.
 
 - `$1` — JIRA ticket ID (required). If missing, STOP and ask the user.
+- `--workflow <name>` — Use `.agent_workspace/docs-<name>.yaml` instead of `docs-workflow.yaml`. Allows running alternative pipelines (e.g., writing-only, review-only). If the project-level file does not exist, fall back to the matching plugin default at `skills/docs-orchestrator/defaults/docs-<name>.yaml`
+- `--pr <url>...` — PR/MR URLs (space-delimited, one or more). Accepts GitHub PRs (`gh` CLI) and GitLab MRs (`glab` CLI). Used both as requirements input (agent reads diffs/descriptions) and for source repo resolution (repo URL and branch derived from the first PR/MR). When multiple PRs from different repos are provided, all repos are resolved and treated equally as source material
+- `--mkdocs` — Use Material for MkDocs format instead of AsciiDoc
+- `--draft` — Write documentation to the staging area instead of directly into the repo
+- `--docs-repo-path <path>` — Target documentation repository for UPDATE-IN-PLACE mode. **Precedence**: if both `--docs-repo-path` and `--draft` are passed, `--docs-repo-path` wins — the driver logs a warning
+- `--source-code-repo <url-or-path>...` — Source code repository/repositories for code analysis and requirements enrichment (space-delimited, one or more)
+- `--create-jira <PROJECT>` — Create a linked JIRA ticket in the specified project after the workflow completes. Runs as a standalone step
+- `--create-merge-request` — Create a branch, commit, push, and open a merge request or pull request after reviews complete
+- `--no-source-repo` — Skip source repo resolution and all source-dependent steps
+- `--auto-discover-repos` — Skip the confirmation prompt when secondary repos are discovered
+- `--max-secondary-repos <N>` — Maximum number of secondary repos to clone (default: 3)
 
-All other flags are optional. See [argument reference](references/argument-reference.md) for full descriptions, precedence rules, and usage examples.
-
-## Resolve source repository
-
-After parsing arguments and before running steps, resolve the source code repository if one is configured. This makes the repo available to all downstream steps that need it (requirements, code-analysis, writing).
-
-All clone, verify, PR-resolution, and source.yaml logic is handled by the `resolve_source.py` script. The orchestrator calls the script and acts on the JSON result.
-
-### Pre-flight resolution
-
-Run the script with whatever source information is available from CLI args:
+### Examples
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/resolve_source.py \
-  --base-path <base_path> \
-  [--repo <url-or-path>...] \
-  [--pr <url>...]
+# Minimal — just a ticket
+/docs-orchestrator PROJ-123
+
+# PR-driven with MkDocs output
+/docs-orchestrator PROJ-123 --pr https://github.com/org/repo/pull/42 --mkdocs
+
+# Multiple PRs, written to a separate docs repo
+/docs-orchestrator PROJ-123 \
+  --pr https://github.com/org/backend/pull/10 https://gitlab.example.com/org/frontend/-/merge_requests/5 \
+  --docs-repo-path /home/user/docs-repo
+
+# Source repo without PRs, draft mode, with merge request creation
+/docs-orchestrator PROJ-123 \
+  --source-code-repo https://github.com/org/operator \
+  --draft \
+  --create-merge-request
+
+# Local source repo + PR
+/docs-orchestrator PROJ-123 \
+  --source-code-repo /home/user/local-checkout \
+  --pr https://github.com/org/repo/pull/99
+
+# Custom workflow YAML
+/docs-orchestrator PROJ-123 --workflow quick
 ```
 
-The script checks sources in priority order:
+## Execution
 
-1. **CLI `--source-code-repo` flag** — clone or verify the path
-2. **Per-ticket `source.yaml`** — read and apply existing config
-3. **PR-derived** — resolve repo URL and branch from `--pr` via `gh pr view` or `glab mr view`
-4. **`discovered_repos.json`** — read repos discovered by the requirements step (from JIRA graph walk)
-5. **No source** — exit code 2, defer resolution until after requirements
+The orchestrator uses a simple loop driven by `docs_orchestrator.py`. All progress file writes, argument construction, post-processing logic, and iteration decisions are handled by the Python driver.
 
-The script outputs JSON with `status`, `repo_path`, `repo_url`, `ref`, and `scope`.
+### Step 1: Initialize
 
-### Handle the result
+Build the CLI args from the user's input and call init:
 
-| Exit code | `status` | Action |
-|---|---|---|
-| 0 | `resolved` | Set `has_source_repo = true`. Record `options.source` in the progress file from the JSON fields (`repo_path`, `repo_url`, `ref`, `scope`) |
-| 1 | `error` | **STOP** with the error `message` from the JSON |
-| 2 | `no_source` | Mark steps with `when: has_source_repo` as `deferred`. Source resolution will be retried after requirements (see [Post-requirements source resolution](#post-requirements-source-resolution)) |
-
-If `discovered_repos` is present in the result (multiple repos found), log all resolved repos. If `additional_repos` is present, record them in the progress file alongside the primary source. If `warnings` is present, log each warning.
-
-### Per-ticket source config schema
-
-Writers can pre-configure the source repo and scope in `<base-path>/source.yaml`. See [output and state reference](references/output-and-state.md#per-ticket-source-config-schema) for the full schema.
-
-## Load the step list
-
-### 1. Determine the YAML file
-
-- If `--workflow <name>` was specified → `.agent_workspace/docs-<name>.yaml`
-- If that project-level file doesn't exist → fall back to `skills/docs-orchestrator/defaults/docs-<name>.yaml`
-- Otherwise → `.agent_workspace/docs-workflow.yaml`
-- If that project-level file doesn't exist → fall back to `skills/docs-orchestrator/defaults/docs-workflow.yaml`
-
-### 2. Read the YAML
-
-Read the YAML file and extract the ordered step list. Each step has: `name`, `skill`, `description`, optional `when`, and optional `inputs`.
-
-### 3. Evaluate `when` conditions
-
-| Condition | Behavior |
-|---|---|
-| `create_merge_request` | Run only if `--create-merge-request` was passed |
-| `has_pr` | Run only if a PR/MR URL is available (from `--pr`, JIRA discovery, or `options.pr_urls`) |
-| `has_source_repo` | If `--no-source-repo` → `skipped`. If source resolved pre-flight → `pending`. Otherwise → `deferred` until post-requirements resolution |
-| `has_many_requirements` | Deferred until requirements step completes. See [`when: has_many_requirements` condition](#when-has_many_requirements-condition) |
-| _(none)_ | Always runs |
-
-Steps that don't meet their condition and can't be deferred are marked `skipped`.
-
-### 4. Validate the step list
-
-All of the following must be true. If any check fails, **STOP** with a clear error:
-
-- All step names are unique
-- All `skill` references resolve to a known skill (bare names like `docs-workflow-writing` are preferred; fully qualified `plugin:skill` format is also accepted)
-- Input dependencies are satisfied — for each step with `inputs`, every referenced step name must be present in the step list (unless it has a `when` condition that would skip it)
-
-### Input dependencies
-
-Steps declare `inputs` as a list of upstream step names. Validate at load time that all referenced names exist. If an upstream step was `skipped` (via `when`), the dependency is satisfied — the downstream step checks for optional input data itself. Only `failed` upstream steps block execution. Missing references fail at load time.
-
-## Output conventions
-
-Every step writes to `.agent_workspace/<ticket>/<step-name>/`. The ticket ID is lowercase for directory names. Resolve `BASE_PATH` to an absolute path via `git rev-parse --show-toplevel`.
-
-See [output and state reference](references/output-and-state.md#output-conventions) for the folder structure tree, base path resolution formula, and [step-result schema](schema/step-result-schema.md) for sidecar format.
-
-## Progress file
-
-Claude writes the progress file directly using the Write tool. Create it after parsing arguments, before step 1. Update it after each step.
-
-**Location**: `.agent_workspace/<ticket>/workflow/<workflow-type>_<ticket>.json`
-
-See [output and state reference](references/output-and-state.md#progress-file) for the full JSON schema, status values (`pending`, `in_progress`, `completed`, `failed`, `skipped`, `deferred`), `step_order` array, and the [active workflow marker](references/output-and-state.md#active-workflow-marker) schema and lifecycle (when to write, delete, and overwrite).
-
-## Check for existing work
-
-Check for a progress file at `.agent_workspace/<ticket>/workflow/<workflow-type>_<ticket>.json`.
-
-**If found**: Read it. Verify each `completed` step's output folder exists on disk — if missing, reset it and all downstream steps to `pending` and clear `steps.<step>.result` for the rewound step and all its downstream dependents (prevents stale sidecar data from being reused). If `options.source` is null, rehydrate via `resolve_source.py --base-path <base_path> --progress-file <progress_file>` (add `--scan-requirements --skip-deferred-on-no-source` if requirements already completed). Resume from the first `pending` or `failed` step after validating input dependencies.
-
-**If not found**: Create a new progress file and start from step 1.
-
-In both cases, write the active workflow marker.
-
-## Running workflow steps
-
-Run steps in the order defined by the YAML. For each step:
-
-- If the step's status is `deferred`, skip it for now — it will be re-evaluated after post-requirements source resolution
-- If the step's status is `skipped`, skip it permanently
-
-### Before the step
-
-Validate input dependencies: `completed` upstream needs a non-null `output` folder; `skipped` upstream is satisfied (downstream checks for data); `failed` upstream blocks immediately. Set step status to `in_progress`.
-
-### Construct arguments and invoke
-
-See [step post-processing](references/step-post-processing.md#construct-arguments) for the full flag mapping per step. Always pass `<ticket> --base-path <base_path>`. Add `--repo <repo_path>` if source is resolved. The orchestrator maps `--source-code-repo` → `--repo`, `--docs-repo-path` → `--repo-path`.
-
-### Invoke the step skill
-
-```
-Skill: <step.skill>, args: "<constructed args>"
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py init <TICKET> [flags...]
 ```
 
-### After the step
+Map user flags directly: `--pr`, `--source-code-repo`, `--mkdocs`, `--draft`, `--docs-repo-path`, `--create-merge-request`, `--create-jira <PROJECT>`, `--no-source-repo`, `--auto-discover-repos`, `--max-secondary-repos <N>`, `--workflow <name>`.
 
-1. Verify output folder exists — if missing, mark `failed` and **STOP**
-2. Read `step-result.json` sidecar if present; store fields in `steps.<step-name>.result`. If missing, log warning and store default result: `{"module_count": 0, "files": [], "passed": true}` — downstream post-processing must handle these defaults gracefully
-3. Set status to `completed` with output path. Get the real wall-clock timestamp by running `date -u +%Y-%m-%dT%H:%M:%SZ` and use it for `updated_at` and for the step's `completed_at` in the sidecar. **Do not estimate or round timestamps** — synthetic timestamps break duration calculations and bottleneck detection in pipeline diagnostics
-4. Do NOT read step output files into orchestrator context — read only sidecars
-5. Run [step-specific post-processing](#step-specific-post-processing)
-6. Re-read the progress file from disk before the next step (post-step context refresh)
+The driver returns a JSON action on stdout. Capture it.
 
-### Step-specific post-processing
+### Step 2: Action loop
 
-After each step completes, apply the per-step rules from [step post-processing](references/step-post-processing.md). When rules reference sidecar fields, read from `steps.<step-name>.result` in the progress file. Key triggers: requirements triggers post-requirements source resolution if `options.source` is null; planning stops on 0 modules; writing skips create-merge-request if no files; quality-gate enters the iteration loop if `passed` is false.
+Read the action JSON. The `action` field determines what to do:
 
-## Post-requirements source resolution
+#### `action: "run_skill"`
 
-Triggers only when requirements completes AND `options.source` is still null. Run `resolve_source.py --base-path <base_path> --progress-file <progress_file> --scan-requirements --skip-deferred-on-no-source`. The script reads `discovered_repos.json` and scans `requirements.md` for PR/MR URLs.
+The driver says to run a step skill. The JSON includes:
+- `skill` — the qualified skill name to invoke (e.g., `docs-tools:docs-workflow-requirements`)
+- `args` — the pre-built args string to pass to the skill
+- `step` — the step name (for step-done reporting)
+- `message` — a status message to display
 
-| Exit code | Action |
-|---|---|
-| 0 (`resolved`) | Script updated progress file and promoted deferred steps to `pending`. Log resolved repos |
-| 1 (`error`) | Log warning. Leave progress unchanged. User can retry with `--source-code-repo` |
-| 2 (`no_source`) | Script already set deferred steps to `skipped`. Log and continue without code-analysis |
+1. Display the `message` to the user
+2. Display any `warnings` or `messages` arrays if present
+3. Invoke the skill:
 
-## Technical review iteration
+```
+Skill: <skill>, args: "<args>"
+```
 
-Loop up to 3 iterations until confidence is acceptable:
+4. After the skill completes, report the result back to the driver:
 
-1. Invoke `docs-workflow-tech-review`. Read confidence from the sidecar (`step-result.json`), falling back to grep on `review.md` for `Overall technical confidence:`. Update `steps.technical-review.result`
-2. `HIGH` → done. `MEDIUM` with `critical=0` AND `significant=0` → acceptable (log, proceed). Otherwise continue
-3. If `MEDIUM` (with fixable issues) or `LOW` → fix via `docs-workflow-writing --fix-from <base_path>/technical-review/review.md` (pass all `--repo` flags), then re-run reviewer
-4. After 3 iterations: `MEDIUM` → proceed with warning. `LOW` → ask user
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py step-done <TICKET> <step>
+```
 
-## Quality gate iteration
+If the skill failed (threw an error, produced no output), add `--failed`:
 
-Loop up to 2 iterations until `intent_alignment >= 4`:
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py step-done <TICKET> <step> --failed
+```
 
-1. Invoke `docs-workflow-quality-gate`. Read `quality-gate/step-result.json` — stop if missing or incomplete (needs `doc_quality`, `intent_alignment`, `passed`)
-2. `intent_alignment >= 4` → done (warn if `doc_quality < 4`). Otherwise continue
-3. Fix via `docs-workflow-writing --fix-from <BASE_PATH>/quality-gate/feedback-brief-<iteration>.md` (verify file exists first; pass all `--repo` flags), then re-run quality gate
-4. After 2 iterations: `intent_alignment >= 3` → accept with warning. `< 3` → ask user
+5. The driver returns the next action JSON. Go back to the top of the loop.
 
-### `when: has_many_requirements` condition
+#### `action: "complete"`
 
-The `quality-gate` step uses `when: has_many_requirements`. Evaluated in two phases: Phase 1 after requirements (threshold: `requirement_count >= 6`), Phase 2 after technical-review (skip if `confidence == HIGH`). See [quality gate conditions](references/quality-gate-conditions.md) for the full evaluation logic and rationale.
+The workflow is done. The JSON includes:
+- `summary.steps_completed` — list of completed step names
+- `summary.steps_skipped` — list of skipped step names
+- `summary.mr_url` — MR/PR URL if created
+- `summary.jira_url` / `summary.jira_key` — JIRA URL and key if created
+- `summary.module_count` — number of modules from planning
+- `summary.file_count` — number of files written
+- `summary.warnings` — any warnings accumulated during the workflow
 
-## Commit confirmation gate
+Display a completion summary to the user with all available fields.
 
-Before `create-merge-request`, ask user to confirm. Show: branch name (from ticket ID or current branch), target repo, file count (from `steps.writing.result.files`). If declined, mark step `skipped` with `skip_reason: "user_declined"` and null result fields.
+#### `action: "fail"`
 
-## Completion
+The workflow failed. The JSON includes:
+- `step` — the step that failed
+- `reason` — why it failed
+- `message` — a message to display
 
-Set progress `status → "completed"`, delete `.agent_workspace/.active-workflow`. Display summary: output folder paths, warnings, MR/PR URL, JIRA URL, module/file counts from step results.
+Display the failure message and stop.
 
-For SME review comments on an existing MR/PR, use the standalone `action-comments` skill after the workflow completes. It can also be added to a custom workflow YAML as a step.
+### Step 3: Confirmation gate (create-merge-request only)
 
-## Resume behavior
+Before executing the `create-merge-request` step, the action loop should prompt the user:
 
-On resume (same or new session), read the progress file and skip completed steps. Resume from the first `pending` or `failed` step. Before running it, validate input dependencies — every upstream step must have `status: "completed"` and its output folder on disk. For each upstream dependency, verify the output folder still exists on disk. If an output folder was deleted, mark that step as `pending` and re-run it. Additional flags provided on resume (e.g., `--create-jira`) update the progress file options.
+> The workflow is ready to create a merge request. Review the output and confirm:
+> - Commit and push? (proceeds with create-merge-request)
+> - Skip? (marks step as skipped)
 
-### Context management
+If the user declines, call step-done with `--failed` and the driver handles the rest.
 
-The progress file is the authoritative state. After automatic compaction compresses earlier turns, re-read the progress file from disk (post-step context refresh). No workflow state is held only in conversation memory.
+## Context management
 
+The Python driver owns all workflow state in the progress file. After context compaction, the driver reconstructs everything it needs from disk — no conversation state is required to continue.
+
+The orchestrator runs the entire pipeline in a single session. The progress file is the safety net for genuine session interruptions.
+
+## Resume
+
+To resume a prior workflow, call init again with the same ticket. The driver detects the existing progress file, validates completed steps still have output on disk, and returns the next action.
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py init <TICKET> [additional flags]
+```
+
+Additional flags on resume (e.g., `--create-jira`) are merged into the existing options.

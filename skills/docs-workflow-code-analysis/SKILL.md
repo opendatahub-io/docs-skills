@@ -107,25 +107,24 @@ If `ONBOARDING.md` is not found at either location after the agent completes, ma
 
 ### 4. Write step-result.json
 
-Extract metrics from the copied analysis files:
+Extract metadata from the analysis output and write the sidecar via script pipeline. Note: `registry.json` is a JSON **array** (length = module count), and `detection.json` uses `language_counts` keys for detected languages:
 
-- **module_count**: `registry.json` is a JSON **array** — the count is its length (e.g. `len(json.load(f))` or `jq length`).
-- **relationship_count**: count of `.json` files in `relationships/`.
-- **languages_detected**: read `detection.json` (a JSON object) — use the keys of `language_counts`, or fall back to `primary_language` as a single-element list.
+```bash
+MODULE_COUNT=$(python3 -c "import json; r=json.load(open('${OUTPUT_DIR}/registry.json')); print(len(r))" 2>/dev/null || echo 0)
+REL_COUNT=$(ls "${OUTPUT_DIR}/relationships/"*.json 2>/dev/null | wc -l | tr -d ' ')
+LANGS=$(python3 -c "import json; d=json.load(open('${OUTPUT_DIR}/detection.json')); print(json.dumps(list(d.get('language_counts', {}).keys()) or [d.get('primary_language', 'unknown')]))" 2>/dev/null || echo '[]')
 
-Write the sidecar:
+STEP_DATA=$(jq -n \
+  --argjson module_count "$MODULE_COUNT" \
+  --argjson relationship_count "$REL_COUNT" \
+  --argjson languages_detected "$LANGS" \
+  --arg repo_path "$REPO" \
+  '{module_count: $module_count, relationship_count: $relationship_count, languages_detected: $languages_detected, repo_path: $repo_path}')
 
-```json
-{
-  "schema_version": 1,
-  "step": "code-analysis",
-  "ticket": "<TICKET>",
-  "completed_at": "<ISO 8601>",
-  "module_count": "<length of registry.json array>",
-  "relationship_count": "<count of .json files in relationships/>",
-  "languages_detected": ["<keys from detection.json language_counts>"],
-  "repo_path": "<absolute path to repo>"
-}
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/write_step_result.py \
+  --step code-analysis --ticket "<TICKET>" \
+  --output-dir "${OUTPUT_DIR}" \
+  --data "$STEP_DATA"
 ```
 
 ### 5. Report completion

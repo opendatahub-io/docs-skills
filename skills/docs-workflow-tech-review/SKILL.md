@@ -18,6 +18,7 @@ This skill performs a single review pass. The iteration loop (re-running with fi
 - `$1` — JIRA ticket ID (required)
 - `--base-path <path>` — Base output path (e.g., `.agent_workspace/proj-123`)
 - `--repo <path>...` — Path to the source code repository (optional, repeatable, provided by orchestrator when available). The first `--repo` is the primary source repo. Additional `--repo` values are secondary repos with code-learner analysis at `<base-path>/code-analysis-<repo-name>/`
+- `--iteration <N>` — Review iteration number (default: 1). Passed by the orchestrator on re-review after a fix cycle. Used for the sidecar `iteration` field and for skipping claim validation reuse checks
 
 ## Input
 
@@ -38,9 +39,11 @@ This skill performs a single review pass. The iteration loop (re-running with fi
 
 ### 1. Parse arguments
 
-Extract the ticket ID, `--base-path`, and optional `--repo` value(s) from the args string.
+Extract the ticket ID, `--base-path`, optional `--repo` value(s), and optional `--iteration <N>` from the args string.
 
 Collect all `--repo` values. The first becomes the primary `REPO_PATH`. Additional values are stored in an `ADDITIONAL_REPO_PATHS` list.
+
+Set `ITERATION` from `--iteration` (default: `1` if not provided).
 
 Set the paths:
 
@@ -157,7 +160,7 @@ For each batch, use:
 
 ```
 Agent:
-  subagent_type: code-questioner
+  subagent_type: docs-tools:code-questioner
   description: "Verify <N> claims from <file>"
   prompt: |
     Verify documentation claims from <DOC_FILE> against the source code.
@@ -262,7 +265,7 @@ Set `HAS_CLAIMS=true`.
 **You MUST use the Agent tool** to invoke the `technical-reviewer` subagent. Do NOT read the agent's markdown file or attempt to perform the agent's work yourself — the agent has a specialized system prompt and must run as an isolated subagent.
 
 **Agent tool parameters:**
-- `subagent_type`: `technical-reviewer`
+- `subagent_type`: `docs-tools:technical-reviewer`
 - `description`: `Technical review of documentation for <TICKET>`
 
 **Prompt** (pass this as the `prompt` parameter to the Agent tool):
@@ -313,31 +316,16 @@ The report should also include a `Severity counts: critical=N significant=N mino
 
 ### 6. Write step-result.json
 
-Parse `<OUTPUT_FILE>` to extract the structured review metadata:
+Extract review metadata and write the sidecar via script pipeline:
 
-1. Find the `Overall technical confidence: HIGH|MEDIUM|LOW` line. Extract the confidence value
-2. Find the `Severity counts: critical=N significant=N minor=N sme=N` line if present. Extract each count (default to `0` if the line is missing)
+```bash
+ITERATION=${ITERATION:-1}
+CODE_GROUNDED=$( [ "$HAS_CLAIMS" = "true" ] && echo "true" || echo "false" )
 
-Write the sidecar to `${BASE_PATH}/technical-review/step-result.json`:
-
-```json
-{
-  "schema_version": 1,
-  "step": "technical-review",
-  "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>",
-  "confidence": "<HIGH|MEDIUM|LOW>",
-  "severity_counts": {
-    "critical": "<N>",
-    "significant": "<N>",
-    "minor": "<N>",
-    "sme": "<N>"
-  },
-  "iteration": 1,
-  "code_grounded": <true|false>
-}
+REVIEW_JSON=$(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/parse_review_meta.py "<OUTPUT_FILE>" "$ITERATION" "$CODE_GROUNDED")
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/write_step_result.py \
+  --step technical-review --ticket "<TICKET>" \
+  --output-dir "<OUTPUT_DIR>" --data "$REVIEW_JSON"
 ```
 
-The `iteration` field is `1` for the first review pass. If the orchestrator re-invokes this skill after a fix cycle, it passes the current iteration count — increment it for the sidecar.
-
-The `code_grounded` field records whether code-learner analysis was available for claim validation — either from running the validation (`HAS_CLAIMS`) or from reusing prior iteration files. Set to `true` if the reviewer agent received claim validation evidence in its prompt, regardless of whether the validation ran in this invocation or a prior one.
+The `ITERATION` value comes from the `--iteration` flag (default 1). `CODE_GROUNDED` is `true` if claim validation evidence was passed to the reviewer agent (either from running validation or reusing prior iteration files).

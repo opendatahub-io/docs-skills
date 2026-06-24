@@ -238,6 +238,15 @@ else
   VERIFY=true
 fi
 
+# --- Determine prompt template ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROMPTS_DIR="${SCRIPT_DIR}/../prompts"
+if [[ "$MODE" == "fix" ]]; then
+  PROMPT_TEMPLATE="${PROMPTS_DIR}/fix.md"
+else
+  PROMPT_TEMPLATE="${PROMPTS_DIR}/${MODE}-${FORMAT}.md"
+fi
+
 # --- Build JSON arrays for additional repos ---
 if [[ ${#ADDITIONAL_REPOS[@]} -gt 0 ]]; then
   ADDITIONAL_REPOS_JSON="$(printf '%s\n' "${ADDITIONAL_REPOS[@]}" | jq -R . | jq -s .)"
@@ -266,6 +275,7 @@ jq -n \
   --arg source_repo_path    "$SOURCE_REPO" \
   --arg fix_from            "$FIX_FROM" \
   --argjson verify          "$VERIFY" \
+  --arg prompt_template   "$PROMPT_TEMPLATE" \
   --argjson additional_repo_paths "$ADDITIONAL_REPOS_JSON" \
   --argjson additional_code_analysis_dirs "$ADDITIONAL_ANALYSIS_JSON" \
   '{
@@ -284,5 +294,6 @@ jq -n \
     additional_repo_paths: $additional_repo_paths,
     additional_code_analysis_dirs: $additional_code_analysis_dirs,
     fix_from:          (if $fix_from == "" then null else $fix_from end),
-    verify_output:     $verify
+    verify_output:     $verify,
+    prompt_template:   $prompt_template
   }'

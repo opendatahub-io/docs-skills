@@ -74,7 +74,7 @@ Set `DRAFTS_DIR="${BASE_PATH}/writing"` and build the block as:
 Select the prompt below based on the `--format` flag. Substitute `<SOURCE_FILES_BLOCK>` with the block built in step 2.
 
 **Agent tool parameters:**
-- `subagent_type`: `docs-reviewer`
+- `subagent_type`: `docs-tools:docs-reviewer`
 - `description`: `Review documentation for <TICKET>`
 
 **Prompt for AsciiDoc** (`--format adoc`):
@@ -119,13 +119,10 @@ After the agent completes, verify the review report exists at `<OUTPUT_FILE>`.
 
 ### 5. Write step-result.json
 
-Write the sidecar to `<OUTPUT_DIR>/step-result.json`:
+Write the sidecar via script:
 
-```json
-{
-  "schema_version": 1,
-  "step": "style-review",
-  "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>"
-}
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/write_step_result.py \
+  --step style-review --ticket "<TICKET>" \
+  --output-dir "<OUTPUT_DIR>"
 ```

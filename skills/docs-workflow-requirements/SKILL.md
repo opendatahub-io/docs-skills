@@ -51,7 +51,7 @@ Dispatch one `requirements-discoverer` agent to enumerate requirements from all 
 
 ```
 Agent:
-  subagent_type: requirements-discoverer
+  subagent_type: docs-tools:requirements-discoverer
   description: "Discover requirements for <TICKET>"
   prompt: |
     Discover documentation requirements for JIRA ticket <TICKET>.
@@ -119,7 +119,7 @@ For each requirement, use:
 
 ```
 Agent:
-  subagent_type: requirements-analyst
+  subagent_type: docs-tools:requirements-analyst
   description: "Analyze REQ-NNN: <title truncated to 40 chars>"
   prompt: |
     Perform deep analysis of a single documentation requirement.
@@ -293,26 +293,16 @@ Agent:
 
 ### 8. Write step-result.json
 
-Run the title-extraction script:
+Extract the title and write the sidecar via script pipeline:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/parse_title.py "<OUTPUT_FILE>"
+TITLE_JSON=$(python3 ${CLAUDE_SKILL_DIR}/scripts/parse_title.py "<OUTPUT_FILE>")
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/write_step_result.py \
+  --step requirements --ticket "<TICKET>" \
+  --output-dir "<OUTPUT_DIR>" --data "$TITLE_JSON"
 ```
 
-The script prints `{"title": "..."}` to stdout. If it exits non-zero, report the stderr message as an error.
-
-Use the `title` value from the script's JSON output to write the sidecar to `<OUTPUT_DIR>/step-result.json`. Include `requirement_count` from the discovery output parsed in step 4:
-
-```json
-{
-  "schema_version": 1,
-  "step": "requirements",
-  "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>",
-  "title": "<first heading, max 80 chars>",
-  "requirement_count": 8
-}
-```
+If `parse_title.py` exits non-zero, report the stderr message as an error.
 
 ### 9. Verify output
 

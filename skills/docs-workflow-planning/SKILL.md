@@ -46,7 +46,7 @@ mkdir -p "$OUTPUT_DIR"
 **You MUST use the Agent tool** to invoke the `docs-planner` subagent. Do NOT read the agent's markdown file or attempt to perform the agent's work yourself — the agent has a specialized system prompt and must run as an isolated subagent.
 
 **Agent tool parameters:**
-- `subagent_type`: `docs-planner`
+- `subagent_type`: `docs-tools:docs-planner`
 - `description`: `Create documentation plan for <TICKET>`
 
 **Prompt** (pass this as the `prompt` parameter to the Agent tool):
@@ -87,6 +87,17 @@ mkdir -p "$OUTPUT_DIR"
 >
 > Read the PR analysis from `<BASE_PATH>/pr-analysis/PR-*-ANALYSIS.md`. Focus documentation on modules listed in the "Changes by Module" section — these are the modules directly affected by the code changes that triggered this documentation work. Prioritize these modules for full specifications regardless of their onboarding_priority.
 
+**[Include only if `<BASE_PATH>/scope-req-audit/evidence-status.json` exists]** Also append:
+
+> ## Requirement evidence classification
+>
+> Read the scope-req-audit evidence from `<BASE_PATH>/scope-req-audit/evidence-status.json`. Each requirement has an evidence classification:
+> - **grounded**: requirement has strong code evidence — write full module specification with high confidence
+> - **partial**: requirement has some code evidence but gaps exist — write module specification but flag areas needing SME verification
+> - **absent**: no code evidence found — include the requirement in the plan but mark it as requiring subject matter expert input before writing
+>
+> Use these classifications to set confidence levels in module specifications and to prioritize grounded requirements over absent ones when structuring the implementation order.
+
 ### 3. Verify output
 
 After the agent completes, verify the output file exists at `<OUTPUT_FILE>`.
@@ -97,22 +108,11 @@ If no output file is found, report an error.
 
 ### 4. Write step-result.json
 
-Read `<OUTPUT_FILE>` and count the number of module specifications. Count each occurrence of:
+Count modules and write the sidecar via script pipeline:
 
-- Level-3 headings (`###`) whose text begins with `Module:`
-- Numbered or bulleted list items within the "Module Specifications" section that start with `Module:`
-
-Ignore headings or list items outside the "Module Specifications" section, and skip items inside code blocks or blockquotes. Treat duplicate module titles as separate modules (no deduplication). This count becomes the `module_count` field.
-
-
-Write the sidecar to `<OUTPUT_DIR>/step-result.json`:
-
-```json
-{
-  "schema_version": 1,
-  "step": "planning",
-  "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>",
-  "module_count": <number of modules in the plan>
-}
+```bash
+MODULE_JSON=$(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/count_modules.py "<OUTPUT_FILE>")
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/write_step_result.py \
+  --step planning --ticket "<TICKET>" \
+  --output-dir "<OUTPUT_DIR>" --data "$MODULE_JSON"
 ```
