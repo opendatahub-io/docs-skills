@@ -221,9 +221,7 @@ class TestEstimateContextPressure:
     def test_iteration_overhead_adds_to_score(self, tmp_path):
         steps = {
             "requirements": _completed_step(),
-            "technical-review": _completed_step(
-                result={"iteration": 3}
-            ),
+            "technical-review": _completed_step(result={"iteration": 3}),
         }
         for s in steps:
             _make_step_dir(str(tmp_path), s, files={"out.md": "small"})
@@ -235,7 +233,8 @@ class TestEstimateContextPressure:
     def test_large_artifacts_add_to_score(self, tmp_path):
         steps = {"requirements": _completed_step()}
         _make_step_dir(
-            str(tmp_path), "requirements",
+            str(tmp_path),
+            "requirements",
             files={"big.md": "x" * 1024 * 600},
         )
 
@@ -272,9 +271,14 @@ class TestEstimateContextPressure:
 class TestDetectFailures:
     def test_no_failures(self, tmp_path):
         steps = {"requirements": _completed_step()}
-        _make_step_dir(str(tmp_path), "requirements", sidecar={
-            "schema_version": 1, "step": "requirements",
-        })
+        _make_step_dir(
+            str(tmp_path),
+            "requirements",
+            sidecar={
+                "schema_version": 1,
+                "step": "requirements",
+            },
+        )
         failures = detect_failures(STEP_ORDER, steps, str(tmp_path))
         assert failures == []
 
@@ -287,13 +291,16 @@ class TestDetectFailures:
 
     def test_missing_output_dir(self, tmp_path):
         steps = {
-            "requirements": _completed_step(
-                output=str(tmp_path / "requirements" / "nonexistent")
-            ),
+            "requirements": _completed_step(output=str(tmp_path / "requirements" / "nonexistent")),
         }
-        _make_step_dir(str(tmp_path), "requirements", sidecar={
-            "schema_version": 1, "step": "requirements",
-        })
+        _make_step_dir(
+            str(tmp_path),
+            "requirements",
+            sidecar={
+                "schema_version": 1,
+                "step": "requirements",
+            },
+        )
         failures = detect_failures(STEP_ORDER, steps, str(tmp_path))
         missing = [f for f in failures if f["type"] == "missing_output"]
         assert len(missing) == 1
@@ -314,13 +321,16 @@ class TestDetectFailures:
 
     def test_low_confidence(self, tmp_path):
         steps = {
-            "technical-review": _completed_step(
-                result={"confidence": "LOW", "iteration": 2}
-            ),
+            "technical-review": _completed_step(result={"confidence": "LOW", "iteration": 2}),
         }
-        _make_step_dir(str(tmp_path), "technical-review", sidecar={
-            "schema_version": 1, "step": "technical-review",
-        })
+        _make_step_dir(
+            str(tmp_path),
+            "technical-review",
+            sidecar={
+                "schema_version": 1,
+                "step": "technical-review",
+            },
+        )
         failures = detect_failures(STEP_ORDER, steps, str(tmp_path))
         low_conf = [f for f in failures if f["type"] == "low_confidence"]
         assert len(low_conf) == 1
@@ -331,9 +341,14 @@ class TestDetectFailures:
                 result={"severity_counts": {"critical": 3, "significant": 2}}
             ),
         }
-        _make_step_dir(str(tmp_path), "technical-review", sidecar={
-            "schema_version": 1, "step": "technical-review",
-        })
+        _make_step_dir(
+            str(tmp_path),
+            "technical-review",
+            sidecar={
+                "schema_version": 1,
+                "step": "technical-review",
+            },
+        )
         failures = detect_failures(STEP_ORDER, steps, str(tmp_path))
         high_sev = [f for f in failures if f["type"] == "high_severity_count"]
         assert len(high_sev) == 1
@@ -342,9 +357,14 @@ class TestDetectFailures:
         steps = {
             "quality-gate": _completed_step(result={"intent_alignment": 2}),
         }
-        _make_step_dir(str(tmp_path), "quality-gate", sidecar={
-            "schema_version": 1, "step": "quality-gate",
-        })
+        _make_step_dir(
+            str(tmp_path),
+            "quality-gate",
+            sidecar={
+                "schema_version": 1,
+                "step": "quality-gate",
+            },
+        )
         failures = detect_failures(STEP_ORDER, steps, str(tmp_path))
         gate = [f for f in failures if f["type"] == "quality_gate_low"]
         assert len(gate) == 1
@@ -353,9 +373,14 @@ class TestDetectFailures:
         steps = {
             "quality-gate": _completed_step(result={"intent_alignment": 4}),
         }
-        _make_step_dir(str(tmp_path), "quality-gate", sidecar={
-            "schema_version": 1, "step": "quality-gate",
-        })
+        _make_step_dir(
+            str(tmp_path),
+            "quality-gate",
+            sidecar={
+                "schema_version": 1,
+                "step": "quality-gate",
+            },
+        )
         failures = detect_failures(STEP_ORDER, steps, str(tmp_path))
         gate = [f for f in failures if f["type"] == "quality_gate_low"]
         assert gate == []
@@ -364,9 +389,14 @@ class TestDetectFailures:
         steps = {
             "planning": _completed_step(result={"module_count": 0}),
         }
-        _make_step_dir(str(tmp_path), "planning", sidecar={
-            "schema_version": 1, "step": "planning",
-        })
+        _make_step_dir(
+            str(tmp_path),
+            "planning",
+            sidecar={
+                "schema_version": 1,
+                "step": "planning",
+            },
+        )
         failures = detect_failures(STEP_ORDER, steps, str(tmp_path))
         empty = [f for f in failures if f["type"] == "empty_plan"]
         assert len(empty) == 1
@@ -375,9 +405,14 @@ class TestDetectFailures:
         steps = {
             "writing": _completed_step(result={"files": []}),
         }
-        _make_step_dir(str(tmp_path), "writing", sidecar={
-            "schema_version": 1, "step": "writing",
-        })
+        _make_step_dir(
+            str(tmp_path),
+            "writing",
+            sidecar={
+                "schema_version": 1,
+                "step": "writing",
+            },
+        )
         failures = detect_failures(STEP_ORDER, steps, str(tmp_path))
         no_files = [f for f in failures if f["type"] == "no_files_written"]
         assert len(no_files) == 1
@@ -388,9 +423,14 @@ class TestDetectFailures:
             "planning": _completed_step(result={"module_count": 0}),
             "security-review": {"status": "deferred"},
         }
-        _make_step_dir(str(tmp_path), "planning", sidecar={
-            "schema_version": 1, "step": "planning",
-        })
+        _make_step_dir(
+            str(tmp_path),
+            "planning",
+            sidecar={
+                "schema_version": 1,
+                "step": "planning",
+            },
+        )
         failures = detect_failures(STEP_ORDER, steps, str(tmp_path))
         types = {f["type"] for f in failures}
         assert "step_failed" in types
@@ -574,9 +614,7 @@ class TestResolveOutputPath:
         base = tmp_path / "workspace"
         step_dir = base / "writing"
         step_dir.mkdir(parents=True)
-        result = resolve_output_path(
-            ".agent_workspace/test/writing", str(base)
-        )
+        result = resolve_output_path(".agent_workspace/test/writing", str(base))
         assert result == str(step_dir)
 
     def test_nonexistent_returned_as_is(self, tmp_path):
@@ -738,14 +776,21 @@ class TestAnalyze:
             "writing": _completed_step(),
         }
         for s in steps:
-            _make_step_dir(str(tmp_path / "test-1"), s, sidecar={
-                "schema_version": 1,
-                "step": s,
-                "completed_at": "2026-06-01T11:00:00Z",
-            }, files={"out.md": "content"})
+            _make_step_dir(
+                str(tmp_path / "test-1"),
+                s,
+                sidecar={
+                    "schema_version": 1,
+                    "step": s,
+                    "completed_at": "2026-06-01T11:00:00Z",
+                },
+                files={"out.md": "content"},
+            )
 
         progress_path, _ = _make_progress(
-            tmp_path, ticket="TEST-1", steps=steps,
+            tmp_path,
+            ticket="TEST-1",
+            steps=steps,
         )
         result = analyze(progress_path)
 
@@ -763,7 +808,10 @@ class TestAnalyze:
             "requirements": {"status": "failed"},
         }
         progress_path, _ = _make_progress(
-            tmp_path, ticket="TEST-2", steps=steps, status="failed",
+            tmp_path,
+            ticket="TEST-2",
+            steps=steps,
+            status="failed",
         )
         result = analyze(progress_path)
         assert result["summary"]["status"] == "failed"
@@ -780,15 +828,22 @@ class TestAnalyze:
             "resolve-feedback": _completed_step(),
         }
         for s in steps:
-            _make_step_dir(str(tmp_path / "test-3"), s, sidecar={
-                "schema_version": 1,
-                "step": s,
-                "completed_at": "2026-06-01T11:00:00Z",
-                "iteration": steps[s].get("result", {}).get("iteration", 1),
-            }, files={"out.md": "content"})
+            _make_step_dir(
+                str(tmp_path / "test-3"),
+                s,
+                sidecar={
+                    "schema_version": 1,
+                    "step": s,
+                    "completed_at": "2026-06-01T11:00:00Z",
+                    "iteration": steps[s].get("result", {}).get("iteration", 1),
+                },
+                files={"out.md": "content"},
+            )
 
         progress_path, _ = _make_progress(
-            tmp_path, ticket="TEST-3", steps=steps,
+            tmp_path,
+            ticket="TEST-3",
+            steps=steps,
         )
         result = analyze(progress_path)
         assert result["context_pressure"]["iteration_overhead"] == 3
@@ -799,9 +854,15 @@ class TestAnalyze:
         base = tmp_path / "test-4"
         workflow_dir = base / "workflow"
         workflow_dir.mkdir(parents=True)
-        _make_step_dir(str(base), "requirements", sidecar={
-            "schema_version": 1, "step": "requirements",
-        }, files={"out.md": "x"})
+        _make_step_dir(
+            str(base),
+            "requirements",
+            sidecar={
+                "schema_version": 1,
+                "step": "requirements",
+            },
+            files={"out.md": "x"},
+        )
 
         progress = {
             "ticket": "TEST-4",
@@ -823,13 +884,25 @@ class TestAnalyze:
         progress_path, _ = _make_progress(tmp_path, ticket="TEST-5", steps={})
         result = analyze(progress_path)
         expected_keys = {
-            "summary", "timeline", "loop_groups", "failures",
-            "bottlenecks", "context_pressure", "recommendations",
+            "summary",
+            "timeline",
+            "loop_groups",
+            "failures",
+            "bottlenecks",
+            "context_pressure",
+            "recommendations",
         }
         assert set(result.keys()) == expected_keys
         summary_keys = {
-            "ticket", "workflow", "status", "started_at", "finished_at",
-            "total_duration_s", "total_duration_min", "timing_source",
-            "progress_file", "base_path",
+            "ticket",
+            "workflow",
+            "status",
+            "started_at",
+            "finished_at",
+            "total_duration_s",
+            "total_duration_min",
+            "timing_source",
+            "progress_file",
+            "base_path",
         }
         assert set(result["summary"].keys()) == summary_keys
