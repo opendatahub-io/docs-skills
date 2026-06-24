@@ -250,7 +250,7 @@ def main():
             "language": args.lang,
             "raw_source": load_raw_source(args.files),
             "note": f"AST parsing not available for {args.lang} in this script. "
-            "Use extract_public_api_treesitter.mjs for Go/JS/TS.",
+            "Use extract_public_api_treesitter.py for Go/JS/TS.",
         }
 
     json.dump(result, sys.stdout, indent=2)

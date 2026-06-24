@@ -194,7 +194,7 @@ Log: `"Module tiers: <full_count> full, <api_guided_count> api-guided, <api_only
 
 ### 3.4 Pre-extract public API (AST-aware)
 
-For each module, run the language-appropriate AST extraction: Python uses `extract_public_api.py --files <files> --lang python --module <name>`. Go/JS/TS use `extract_public_api_treesitter.mjs --files <files> --lang <lang> --module <name>`. Log warning and continue if extraction fails for a module.
+For each module, run the language-appropriate AST extraction: Python uses `extract_public_api.py --files <files> --lang python --module <name>`. Go/JS/TS use `uv run --script ${CLAUDE_SKILL_DIR}/scripts/extract_public_api_treesitter.py -- --files <files> --lang <lang> --module <name>`. Log warning and continue if extraction fails for a module.
 
 ### 3.5 Generate api-only entries (no agent dispatch)
 
@@ -270,7 +270,7 @@ Capture JSON output. If `total_pairs` is 0, write empty results and step-result,
 
 ### 4.5 Prepare source data for priority pairs
 
-For each pair `(module_a, module_b)`: **Module A**: if ≤3000 lines, concatenate source with `### FILE:` headers; otherwise use pre-extracted API. **Module B**: always API surface only (via `extract_public_api.py` or `extract_public_api_treesitter.mjs`).
+For each pair `(module_a, module_b)`: **Module A**: if ≤3000 lines, concatenate source with `### FILE:` headers; otherwise use pre-extracted API. **Module B**: always API surface only (via `extract_public_api.py` or `extract_public_api_treesitter.py`).
 
 ### 4.6 Read language guidance
 

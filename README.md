@@ -96,7 +96,6 @@ GITLAB_TOKEN=your_gitlab_pat
 
 | Tool | Install | Required for |
 |------|---------|--------------|
-| Node.js 18+ / npm | [nodejs.org](https://nodejs.org/) | `learn-code` tree-sitter AST parsing |
 | `gh` | `dnf install gh` / [cli.github.com](https://cli.github.com/) | GitHub PR/issue workflows |
 | `glab` | `dnf install glab` / [gitlab.com](https://gitlab.com/gitlab-org/cli) | GitLab MR workflows |
 | `gcloud` | [cloud.google.com/sdk](https://cloud.google.com/sdk/docs/install) | Google Docs export (`docs-convert-gdoc-md`) |
@@ -120,6 +119,7 @@ These are declared as PEP 723 inline metadata in their scripts and installed aut
 | `git-pr-reader/scripts/git_pr_reader.py` | `PyGithub`, `python-gitlab`, `pyyaml` |
 | `article-extractor/scripts/article_extractor.py` | `requests`, `beautifulsoup4`, `html2text` |
 | `redhat-docs-toc/scripts/toc_extractor.py` | `requests`, `beautifulsoup4` |
+| `learn-code/scripts/extract_public_api_treesitter.py` | `tree-sitter`, `tree-sitter-go`, `tree-sitter-javascript`, `tree-sitter-python`, `tree-sitter-typescript` |
 | `docs-convert-gdoc-md/scripts/gdoc2md.py` | `python-pptx` |
 
 ## Quick Start
