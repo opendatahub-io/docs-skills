@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 /**
+ * DEPRECATED: Use extract_public_api_treesitter.py instead (no Node.js required).
+ *
  * Extract public API surface from Go, JavaScript, and TypeScript files using tree-sitter AST parsing.
  *
  * Uses web-tree-sitter (WASM-based, no native compilation required).
