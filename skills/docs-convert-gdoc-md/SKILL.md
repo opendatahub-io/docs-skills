@@ -7,7 +7,7 @@ allowed-tools: Bash, Read, Write
 
 # Convert Google Docs, Slides, or Sheets
 
-Export Google content using the `gcloud` CLI for authentication:
+Export Google content using `gcloud` CLI or service account credentials for authentication:
 
 - **Google Docs** → Markdown (`.md`)
 - **Google Slides** → Markdown (`.md`) via PPTX with slide titles, bullet points, tables, and speaker notes
@@ -16,8 +16,9 @@ Export Google content using the `gcloud` CLI for authentication:
 ## Prerequisites
 
 - The [Red Hat Docs Agent Tools marketplace](https://aireilly.gitlab.cee.redhat.com/redhat-docs-agent-tools/install/) is installed
-- `gcloud` CLI is installed
-- User is authenticated via `gcloud auth login --enable-gdrive-access`
+- Authentication — one of:
+  - `gcloud` CLI installed and authenticated via `gcloud auth login --enable-gdrive-access`
+  - `GOOGLE_APPLICATION_CREDENTIALS` environment variable set to a Google service account JSON file with Drive, Docs, and Sheets readonly scopes
 - `python-pptx` is installed for Slides export (`python3 -m pip install python-pptx`)
 
 ## Instructions
@@ -58,7 +59,10 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/gdoc2md.py -- --comments "<google-do
 
 ### Error handling
 
-- **401**: Authentication expired. Tell the user to run `gcloud auth login --enable-gdrive-access`.
+- **401**: Authentication expired or invalid.
+  - If using `gcloud`: tell the user to run `gcloud auth login --enable-gdrive-access`.
+  - If using a service account: verify the JSON file path and that the service account has access to the document.
 - **403**: No permission. The user needs access to the document.
 - **404**: Wrong URL or the document doesn't exist.
+- **No authentication method available**: Neither `gcloud` nor `GOOGLE_APPLICATION_CREDENTIALS` is configured. Tell the user to set up one of the two methods described in Prerequisites.
 - **ImportError**: `python-pptx` not installed. Tell the user to run `python3 -m pip install python-pptx`.
