@@ -212,6 +212,7 @@ def _get_token_gcloud() -> str:
 def _get_token_service_account() -> str:
     """Get access token from a service account credentials file."""
     try:
+        import google.auth.exceptions
         import google.auth.transport.requests
         from google.oauth2 import service_account
     except ImportError:
@@ -231,10 +232,23 @@ def _get_token_service_account() -> str:
         )
         sys.exit(1)
 
-    creds = service_account.Credentials.from_service_account_file(
-        creds_file, scopes=_SCOPES,
-    )
-    creds.refresh(google.auth.transport.requests.Request())
+    try:
+        creds = service_account.Credentials.from_service_account_file(
+            creds_file, scopes=_SCOPES,
+        )
+        creds.refresh(google.auth.transport.requests.Request())
+    except ValueError:
+        print(
+            f"Error: Service account file is malformed: {creds_file}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except google.auth.exceptions.RefreshError as exc:
+        print(
+            f"Error: Could not refresh service account credentials: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     if not creds.token:
         print(

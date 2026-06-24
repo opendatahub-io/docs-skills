@@ -59,9 +59,8 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/gdoc2md.py -- --comments "<google-do
 
 ### Error handling
 
-- **401**: Authentication expired or invalid.
-  - If using `gcloud`: tell the user to run `gcloud auth login --enable-gdrive-access`.
-  - If using a service account: verify the JSON file path and that the service account has access to the document.
+- **401**: Authentication expired or invalid. Tell the user to run `gcloud auth login --enable-gdrive-access`.
+- **Service account errors**: Malformed JSON or refresh failures are caught and reported at startup. Verify the `GOOGLE_APPLICATION_CREDENTIALS` path points to a valid service account JSON file.
 - **403**: No permission. The user needs access to the document.
 - **404**: Wrong URL or the document doesn't exist.
 - **No authentication method available**: Neither `gcloud` nor `GOOGLE_APPLICATION_CREDENTIALS` is configured. Tell the user to set up one of the two methods described in Prerequisites.
