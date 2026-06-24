@@ -1,13 +1,13 @@
 ---
 name: docs-review-technical
-description: Technical accuracy review and code-aware validation with confidence scoring. Supports local branch review, PR/MR review with optional inline comment posting, and code-aware technical validation against source code repos. MUST BE USED when the user asks to validate documentation against code, check technical accuracy, verify commands/APIs/configs in docs match source code, or run a technical review. Also use when the user provides a --code URL or mentions code-aware review.
+description: Technical accuracy review and code-aware validation with confidence scoring. Supports local branch review, PR/MR review with optional inline comment posting. MUST BE USED when the user asks to validate documentation against code, check technical accuracy, verify commands/APIs/configs in docs match source code, or run a technical review. Also use when the user provides a --code URL or mentions code-aware review.
 argument-hint: "[--local | --pr <url> [--post-comments]] [--code <url>] [--fix] [--threshold <0-100>]"
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, WebSearch, WebFetch, AskUserQuestion
 ---
 
 # Technical Accuracy and Code-Aware Review
 
-Multi-agent technical accuracy review with confidence-based scoring and optional code-aware validation against source repositories.
+Multi-agent technical accuracy review with confidence scoring and optional code-aware validation.
 
 For style guide compliance and modular docs review, use `docs-review-style`.
 
