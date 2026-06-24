@@ -237,24 +237,18 @@ class TestTrackBlockComment:
         assert in_block is True
 
     def test_html_block_open(self):
-        skip, in_block, btype = _track_block_comment(
-            "<!-- start", False, None, "test.md"
-        )
+        skip, in_block, btype = _track_block_comment("<!-- start", False, None, "test.md")
         assert skip is True
         assert in_block is True
         assert btype == "html"
 
     def test_html_block_close(self):
-        skip, in_block, btype = _track_block_comment(
-            "end -->", True, "html", "test.md"
-        )
+        skip, in_block, btype = _track_block_comment("end -->", True, "html", "test.md")
         assert skip is True
         assert in_block is False
 
     def test_not_in_block_no_delimiter(self):
-        skip, in_block, btype = _track_block_comment(
-            "normal text", False, None, "test.adoc"
-        )
+        skip, in_block, btype = _track_block_comment("normal text", False, None, "test.adoc")
         assert skip is False
         assert in_block is False
 
@@ -529,7 +523,8 @@ class TestScanFile:
 
     def test_block_comment_skipped_in_scan_file(self, tmp_path):
         f = tmp_path / "commented.adoc"
-        f.write_text(textwrap.dedent("""\
+        f.write_text(
+            textwrap.dedent("""\
             = Document
 
             ////
@@ -539,13 +534,15 @@ class TestScanFile:
             ////
 
             Normal content here.
-        """))
+        """)
+        )
         findings = scan_file(str(f))
         assert findings == []
 
     def test_html_block_comment_skipped(self, tmp_path):
         f = tmp_path / "commented.md"
-        f.write_text(textwrap.dedent("""\
+        f.write_text(
+            textwrap.dedent("""\
             # Document
 
             <!--
@@ -554,7 +551,8 @@ class TestScanFile:
             -->
 
             Normal content here.
-        """))
+        """)
+        )
         findings = scan_file(str(f))
         assert findings == []
 
@@ -567,13 +565,15 @@ class TestScanFile:
 
     def test_content_after_block_comment_scanned(self, tmp_path):
         f = tmp_path / "after_block.adoc"
-        f.write_text(textwrap.dedent("""\
+        f.write_text(
+            textwrap.dedent("""\
             ////
             safe inside comment
             ////
 
             password=RealValue!
-        """))
+        """)
+        )
         findings = scan_file(str(f))
         cred = [f for f in findings if f["category"] == "credential"]
         assert len(cred) == 1
@@ -647,10 +647,12 @@ class TestCmdScan:
 
 
 class TestRun:
-    def _make_args(self, paths=None, docs_dir=None, scan_dirs="modules,topics",
-                   file_types=".adoc,.md"):
+    def _make_args(
+        self, paths=None, docs_dir=None, scan_dirs="modules,topics", file_types=".adoc,.md"
+    ):
         """Build a namespace matching argparse output."""
         import argparse
+
         return argparse.Namespace(
             paths=paths or [],
             docs_dir=docs_dir,
