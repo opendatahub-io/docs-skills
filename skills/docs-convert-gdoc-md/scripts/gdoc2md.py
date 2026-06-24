@@ -143,13 +143,11 @@ def check_dependencies():
         return
     print("Error: No authentication method available.", file=sys.stderr)
     print(
-        "  Option 1: Install gcloud CLI"
-        " — https://cloud.google.com/sdk/docs/install",
+        "  Option 1: Install gcloud CLI — https://cloud.google.com/sdk/docs/install",
         file=sys.stderr,
     )
     print(
-        "  Option 2: Set GOOGLE_APPLICATION_CREDENTIALS"
-        " to a service account JSON file.",
+        "  Option 2: Set GOOGLE_APPLICATION_CREDENTIALS to a service account JSON file.",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -217,8 +215,7 @@ def _get_token_service_account() -> str:
         from google.oauth2 import service_account
     except ImportError:
         print(
-            "Error: google-auth package not installed."
-            " Run: uv pip install google-auth",
+            "Error: google-auth package not installed. Run: uv pip install google-auth",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -226,15 +223,15 @@ def _get_token_service_account() -> str:
     creds_file = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
     if not creds_file or not Path(creds_file).is_file():
         print(
-            "Error: GOOGLE_APPLICATION_CREDENTIALS is not set"
-            " or file not found.",
+            "Error: GOOGLE_APPLICATION_CREDENTIALS is not set or file not found.",
             file=sys.stderr,
         )
         sys.exit(1)
 
     try:
         creds = service_account.Credentials.from_service_account_file(
-            creds_file, scopes=_SCOPES,
+            creds_file,
+            scopes=_SCOPES,
         )
         creds.refresh(google.auth.transport.requests.Request())
     except ValueError:

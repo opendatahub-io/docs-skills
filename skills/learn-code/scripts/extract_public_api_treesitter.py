@@ -85,9 +85,7 @@ def _get_preceding_comment(node) -> str | None:
 def _find_declaration_child(export_node):
     """Find the declaration child of an export statement."""
     for child in export_node.named_children:
-        if child.type.endswith("_declaration") or child.type.endswith(
-            "_signature"
-        ):
+        if child.type.endswith("_declaration") or child.type.endswith("_signature"):
             return child
     if export_node.named_child_count > 0:
         last = export_node.named_children[-1]
@@ -247,7 +245,7 @@ def _get_python_docstring(body_node) -> str | None:
         for child in first.children:
             if child.type == "string":
                 raw = _text(child)
-                stripped = re.sub(r'^(\"\"\"|\'\'\')([\s\S]*?)\1$', r"\2", raw)
+                stripped = re.sub(r"^(\"\"\"|\'\'\')([\s\S]*?)\1$", r"\2", raw)
                 return stripped.strip().split("\n")[0][:200] or None
     return None
 
@@ -314,8 +312,7 @@ def extract_python_exports(root, file_name: str) -> list[dict]:
     exports = []
 
     for child in root.named_children:
-        if child.type in ("function_definition", "decorated_definition",
-                          "class_definition"):
+        if child.type in ("function_definition", "decorated_definition", "class_definition"):
             entry = _extract_python_def(child, file_name)
             if entry:
                 exports.append(entry)
@@ -331,14 +328,16 @@ def extract_python_exports(root, file_name: str) -> list[dict]:
                 if name.startswith("_"):
                     continue
                 kind = "constant" if name.isupper() else "variable"
-                exports.append({
-                    "name": name,
-                    "kind": kind,
-                    "file": file_name,
-                    "line": sub.start_point[0] + 1,
-                    "signature": _text(sub)[:200],
-                    "docstring": None,
-                })
+                exports.append(
+                    {
+                        "name": name,
+                        "kind": kind,
+                        "file": file_name,
+                        "line": sub.start_point[0] + 1,
+                        "signature": _text(sub)[:200],
+                        "docstring": None,
+                    }
+                )
 
     return exports
 
@@ -354,9 +353,7 @@ def extract_python_imports(root, file_name: str) -> list[dict]:
                 elif sub.type == "aliased_import":
                     name_node = sub.child_by_field_name("name")
                     if name_node:
-                        imports.append(
-                            {"module": _text(name_node), "file": file_name}
-                        )
+                        imports.append({"module": _text(name_node), "file": file_name})
 
         elif child.type == "import_from_statement":
             mod_node = child.child_by_field_name("module_name")
@@ -371,18 +368,14 @@ def extract_python_imports(root, file_name: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def extract_js_exports(
-    root, file_name: str, is_typescript: bool
-) -> list[dict]:
+def extract_js_exports(root, file_name: str, is_typescript: bool) -> list[dict]:
     exports = []
 
     for child in root.named_children:
         if child.type != "export_statement":
             continue
 
-        decl = child.child_by_field_name(
-            "declaration"
-        ) or _find_declaration_child(child)
+        decl = child.child_by_field_name("declaration") or _find_declaration_child(child)
         if not decl:
             clause = _find_child_of_type(child, "export_clause")
             if clause:
@@ -422,11 +415,7 @@ def extract_js_exports(
 
         elif decl.type in ("class_declaration", "abstract_class_declaration"):
             name_node = decl.child_by_field_name("name")
-            kind = (
-                "abstract-class"
-                if decl.type == "abstract_class_declaration"
-                else "class"
-            )
+            kind = "abstract-class" if decl.type == "abstract_class_declaration" else "class"
             exports.append(
                 {
                     "name": _text(name_node) if name_node else "(default)",
@@ -469,9 +458,7 @@ def extract_js_exports(
             name_node = decl.child_by_field_name("name")
             exports.append(
                 {
-                    "name": (
-                        _text(name_node) if name_node else "(anonymous)"
-                    ),
+                    "name": (_text(name_node) if name_node else "(anonymous)"),
                     "kind": "interface",
                     "file": file_name,
                     "line": decl.start_point[0] + 1,
@@ -486,9 +473,7 @@ def extract_js_exports(
             name_node = decl.child_by_field_name("name")
             exports.append(
                 {
-                    "name": (
-                        _text(name_node) if name_node else "(anonymous)"
-                    ),
+                    "name": (_text(name_node) if name_node else "(anonymous)"),
                     "kind": "type",
                     "file": file_name,
                     "line": decl.start_point[0] + 1,
@@ -503,9 +488,7 @@ def extract_js_exports(
             name_node = decl.child_by_field_name("name")
             exports.append(
                 {
-                    "name": (
-                        _text(name_node) if name_node else "(anonymous)"
-                    ),
+                    "name": (_text(name_node) if name_node else "(anonymous)"),
                     "kind": "enum",
                     "file": file_name,
                     "line": decl.start_point[0] + 1,
@@ -550,9 +533,7 @@ def extract_js_imports(root, file_name: str) -> list[dict]:
                     "string",
                     "template_string",
                 ):
-                    mod_path = re.sub(
-                        r"^['\"]|['\"]$", "", _text(first_arg)
-                    )
+                    mod_path = re.sub(r"^['\"]|['\"]$", "", _text(first_arg))
                     imports.append({"module": mod_path, "file": file_name})
 
     return imports
@@ -578,9 +559,7 @@ def main():
     ap = argparse.ArgumentParser(
         description="Extract public API from Go/JS/TS/Python files via tree-sitter",
     )
-    ap.add_argument(
-        "--files", nargs="*", default=[], help="Source files to analyze"
-    )
+    ap.add_argument("--files", nargs="*", default=[], help="Source files to analyze")
     ap.add_argument("--lang", default="javascript", help="Language")
     ap.add_argument("--module", default="unknown", help="Module name")
     args = ap.parse_args()
@@ -647,16 +626,10 @@ def main():
             all_exports.extend(extract_go_exports(tree.root_node, file_name))
             all_imports.extend(extract_go_imports(tree.root_node, file_name))
         elif is_python:
-            all_exports.extend(
-                extract_python_exports(tree.root_node, file_name)
-            )
-            all_imports.extend(
-                extract_python_imports(tree.root_node, file_name)
-            )
+            all_exports.extend(extract_python_exports(tree.root_node, file_name))
+            all_imports.extend(extract_python_imports(tree.root_node, file_name))
         else:
-            all_exports.extend(
-                extract_js_exports(tree.root_node, file_name, is_typescript)
-            )
+            all_exports.extend(extract_js_exports(tree.root_node, file_name, is_typescript))
             all_imports.extend(extract_js_imports(tree.root_node, file_name))
 
     result = {

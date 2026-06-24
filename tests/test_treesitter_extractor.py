@@ -30,16 +30,18 @@ FAIL = 0
 def run_extractor(files: list[str], lang: str, module: str = "test") -> dict:
     """Run the extractor script and return parsed JSON output."""
     cmd = [
-        sys.executable, str(SCRIPT),
-        "--files", *files,
-        "--lang", lang,
-        "--module", module,
+        sys.executable,
+        str(SCRIPT),
+        "--files",
+        *files,
+        "--lang",
+        lang,
+        "--module",
+        module,
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603
     if result.returncode != 0:
-        raise RuntimeError(
-            f"Extractor failed (exit {result.returncode}):\n{result.stderr}"
-        )
+        raise RuntimeError(f"Extractor failed (exit {result.returncode}):\n{result.stderr}")
     return json.loads(result.stdout)
 
 
@@ -58,9 +60,7 @@ def check(label: str, condition: bool, detail: str = ""):
 
 def test_go():
     print("\n=== Go extraction ===")
-    result = run_extractor(
-        [str(FIXTURES / "sample.go")], "go", "sample"
-    )
+    result = run_extractor([str(FIXTURES / "sample.go")], "go", "sample")
 
     check("module name", result["module"] == "sample")
     check("language", result["language"] == "go")
@@ -118,9 +118,7 @@ def test_go():
 
 def test_javascript():
     print("\n=== JavaScript extraction ===")
-    result = run_extractor(
-        [str(FIXTURES / "sample.js")], "javascript", "sample"
-    )
+    result = run_extractor([str(FIXTURES / "sample.js")], "javascript", "sample")
 
     exports = result["exports"]
     names = [e["name"] for e in exports]
@@ -152,9 +150,7 @@ def test_javascript():
 
 def test_typescript():
     print("\n=== TypeScript extraction ===")
-    result = run_extractor(
-        [str(FIXTURES / "sample.ts")], "typescript", "sample"
-    )
+    result = run_extractor([str(FIXTURES / "sample.ts")], "typescript", "sample")
 
     exports = result["exports"]
     names = [e["name"] for e in exports]
@@ -191,9 +187,7 @@ def test_typescript():
 
 def test_python():
     print("\n=== Python extraction ===")
-    result = run_extractor(
-        [str(FIXTURES / "sample.py")], "python", "sample"
-    )
+    result = run_extractor([str(FIXTURES / "sample.py")], "python", "sample")
 
     check("module name", result["module"] == "sample")
     check("language", result["language"] == "python")
@@ -303,9 +297,7 @@ def test_python_multi_file():
 
 def test_go_edge_cases():
     print("\n=== Go edge cases ===")
-    result = run_extractor(
-        [str(FIXTURES / "sample_edge.go")], "go", "sample_edge"
-    )
+    result = run_extractor([str(FIXTURES / "sample_edge.go")], "go", "sample_edge")
 
     exports = result["exports"]
     names = [e["name"] for e in exports]
@@ -358,9 +350,7 @@ def test_go_edge_cases():
 
 def test_javascript_edge_cases():
     print("\n=== JavaScript edge cases ===")
-    result = run_extractor(
-        [str(FIXTURES / "sample_edge.js")], "javascript", "sample_edge"
-    )
+    result = run_extractor([str(FIXTURES / "sample_edge.js")], "javascript", "sample_edge")
 
     exports = result["exports"]
     names = [e["name"] for e in exports]
@@ -386,9 +376,7 @@ def test_javascript_edge_cases():
 
 def test_typescript_edge_cases():
     print("\n=== TypeScript edge cases ===")
-    result = run_extractor(
-        [str(FIXTURES / "sample_edge.ts")], "typescript", "sample_edge"
-    )
+    result = run_extractor([str(FIXTURES / "sample_edge.ts")], "typescript", "sample_edge")
 
     exports = result["exports"]
     names = [e["name"] for e in exports]
@@ -452,9 +440,7 @@ def test_no_files():
 
 def test_missing_file():
     print("\n=== Missing file (should skip) ===")
-    result = run_extractor(
-        ["/nonexistent/file.go"], "go", "missing"
-    )
+    result = run_extractor(["/nonexistent/file.go"], "go", "missing")
     check("no error field", "error" not in result)
     check("exports empty", result["exports"] == [])
 
