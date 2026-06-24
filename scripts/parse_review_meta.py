@@ -53,7 +53,14 @@ def main():
         sys.exit(1)
 
     path = sys.argv[1]
-    iteration = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+    if len(sys.argv) > 2:
+        try:
+            iteration = int(sys.argv[2])
+        except ValueError:
+            print("iteration must be an integer", file=sys.stderr)
+            sys.exit(1)
+    else:
+        iteration = 1
     code_grounded = sys.argv[3].lower() == "true" if len(sys.argv) > 3 else False
 
     try:

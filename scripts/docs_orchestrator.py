@@ -45,7 +45,21 @@ DEFAULT_WORKFLOW_DIR = str(
     Path(__file__).resolve().parent.parent / "skills" / "docs-orchestrator" / "defaults"
 )
 
-VALID_WHEN_CONDITIONS = {"has_source_repo", "has_pr", "create_merge_request", "create_jira"}
+VALID_WHEN_CONDITIONS = {
+    "has_source_repo",
+    "has_pr",
+    "create_merge_request",
+    "create_jira",
+    "has_many_requirements",
+}
+
+TICKET_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]+-\d+$")
+
+
+def _validate_ticket(ticket):
+    if not TICKET_RE.fullmatch(ticket):
+        emit({"action": "fail", "error": True, "message": f"Invalid ticket format: {ticket}"})
+        sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +233,7 @@ def write_progress(path, data):
 
 def create_progress(ticket, workflow_name, base_path, options, steps, step_order):
     return {
-        "workflow_type": workflow_name,
+        "workflow": workflow_name,
         "ticket": ticket,
         "base_path": os.path.abspath(base_path),
         "status": "in_progress",
@@ -242,7 +256,7 @@ def write_active_marker(base_path, ticket, workflow_name, progress_file_rel):
         marker,
         {
             "ticket": ticket,
-            "workflow_type": workflow_name,
+            "workflow": workflow_name,
             "progress_file": progress_file_rel,
         },
     )
@@ -262,6 +276,28 @@ def delete_stop_counter(pfile):
         os.unlink(counter)
     except FileNotFoundError:
         pass
+
+
+def resolve_progress_file(base_path, root):
+    """Resolve progress file using .active-workflow marker, falling back to directory scan."""
+    marker = marker_path_for(base_path)
+    if os.path.isfile(marker):
+        try:
+            with open(marker) as f:
+                data = json.load(f)
+            pfile = os.path.join(root, data["progress_file"])
+            if os.path.isfile(pfile):
+                return pfile
+        except (json.JSONDecodeError, KeyError, OSError):
+            pass
+
+    workflow_dir = os.path.join(base_path, "workflow")
+    if not os.path.isdir(workflow_dir):
+        return None
+    pfiles = [
+        f for f in os.listdir(workflow_dir) if f.endswith(".json") and not f.endswith(".stop_count")
+    ]
+    return os.path.join(workflow_dir, pfiles[0]) if pfiles else None
 
 
 # ---------------------------------------------------------------------------
@@ -332,6 +368,9 @@ def evaluate_when(condition, options):
         if options.get("source"):
             return True
         return None  # deferred
+
+    if condition == "has_many_requirements":
+        return None  # always deferred; evaluated in post-processing
 
     return False
 
@@ -412,9 +451,10 @@ def build_step_args(step_name, ticket, base_path, options, progress=None):
         if docs_repo:
             parts.append(f"--repo-path {docs_repo}")
 
-        # Fix mode: check progress for tech review iteration state
         if progress:
             fix_from = progress.get("_tech_review_fix_from")
+            if not fix_from:
+                fix_from = progress.get("_quality_gate_fix_from")
             if fix_from:
                 parts.append(f"--fix-from {fix_from}")
 
@@ -430,6 +470,19 @@ def build_step_args(step_name, ticket, base_path, options, progress=None):
 
     elif step_name == "style-review":
         parts.append(f"--format {fmt}")
+
+    elif step_name == "security-review":
+        pass
+
+    elif step_name == "quality-gate":
+        iteration = (progress or {}).get("_quality_gate_iteration", 1)
+        if iteration > 1:
+            parts.append(f"--iteration {iteration}")
+
+    elif step_name == "pipeline-diagnostics":
+        ci_log = options.get("ci_log")
+        if ci_log:
+            parts.append(f"--ci-log {ci_log}")
 
     elif step_name == "create-merge-request":
         if draft:
@@ -499,10 +552,40 @@ def post_process(step_name, progress, base_path, options):
 
 
 def _pp_requirements(sidecar, progress, base_path, options):
+    warnings = []
     messages = []
     if sidecar and sidecar.get("title"):
         messages.append(f"Requirements extracted: {sidecar['title']}")
-    return {"messages": messages}
+
+    _eval_has_many_requirements_phase1(sidecar, progress, messages, warnings)
+
+    return {"warnings": warnings, "messages": messages}
+
+
+def _eval_has_many_requirements_phase1(sidecar, progress, messages, warnings):
+    """Phase 1: after requirements, decide if quality-gate is needed based on count."""
+    qg = progress.get("steps", {}).get("quality-gate")
+    if not qg or qg.get("status") not in ("deferred", "pending"):
+        return
+
+    req_count = (sidecar or {}).get("requirement_count")
+    if req_count is None:
+        warnings.append(
+            "requirement_count missing from requirements sidecar"
+            " — defaulting to quality-gate enabled"
+        )
+        return
+
+    if req_count < 6:
+        qg["status"] = "skipped"
+        qg["result"] = {"skip_reason": "few_requirements"}
+        messages.append(
+            f"Skipping quality-gate: {req_count} requirements (threshold: 6)"
+        )
+    else:
+        messages.append(
+            f"Requirements: {req_count} requirements discovered"
+        )
 
 
 def _pp_scope_req_audit(sidecar, progress, base_path, options):
@@ -639,7 +722,6 @@ def _pp_writing(sidecar, progress, base_path, options):
     # Check if this was a fix cycle (tech review iteration)
     fix_from = progress.get("_tech_review_fix_from")
     if fix_from:
-        # Route back to tech-review instead of advancing
         ticket = progress["ticket"]
         if "technical-review" in progress["steps"]:
             progress["steps"]["technical-review"]["status"] = "pending"
@@ -652,6 +734,24 @@ def _pp_writing(sidecar, progress, base_path, options):
                 "args": build_step_args("technical-review", ticket, base_path, options, progress),
                 "step": "technical-review",
                 "message": "Fix cycle complete — re-running technical review",
+            },
+        }
+
+    # Check if this was a quality gate fix cycle
+    qg_fix_from = progress.get("_quality_gate_fix_from")
+    if qg_fix_from:
+        ticket = progress["ticket"]
+        if "quality-gate" in progress["steps"]:
+            progress["steps"]["quality-gate"]["status"] = "pending"
+        return {
+            "warnings": warnings,
+            "messages": messages,
+            "action_override": {
+                "action": "run_skill",
+                "skill": _get_step_skill(progress, "quality-gate"),
+                "args": build_step_args("quality-gate", ticket, base_path, options, progress),
+                "step": "quality-gate",
+                "message": "Quality gate fix cycle complete — re-running quality gate",
             },
         }
 
@@ -679,6 +779,12 @@ def _pp_technical_review(sidecar, progress, base_path, options):
         return {
             "warnings": ["Could not extract confidence from technical review"],
             "messages": messages,
+            "action_override": {
+                "action": "fail",
+                "step": "technical-review",
+                "reason": "Missing required confidence line",
+                "message": "Workflow failed at technical-review: confidence not found",
+            },
         }
 
     messages.append(f"Technical review: {confidence} confidence (iteration {iteration})")
@@ -686,6 +792,7 @@ def _pp_technical_review(sidecar, progress, base_path, options):
     if confidence == "HIGH":
         progress.pop("_tech_review_fix_from", None)
         progress.pop("_tech_review_iteration", None)
+        _eval_has_many_requirements_phase2(confidence, progress, messages)
         return {"warnings": warnings, "messages": messages}
 
     if confidence == "MEDIUM":
@@ -700,12 +807,14 @@ def _pp_technical_review(sidecar, progress, base_path, options):
             progress.pop("_tech_review_fix_from", None)
             progress.pop("_tech_review_iteration", None)
             messages.append("MEDIUM confidence with zero critical/significant issues — proceeding")
+            _eval_has_many_requirements_phase2(confidence, progress, messages)
             return {"warnings": warnings, "messages": messages}
 
     max_iterations = 3
     if iteration >= max_iterations:
         progress.pop("_tech_review_fix_from", None)
         progress.pop("_tech_review_iteration", None)
+        _eval_has_many_requirements_phase2(confidence, progress, messages)
         if confidence == "MEDIUM":
             warnings.append(
                 f"MEDIUM confidence after {max_iterations} iterations — manual review recommended"
@@ -758,7 +867,8 @@ def _parse_review_fallback(review_file):
 
     with open(review_file) as f:
         for line in f:
-            m = re.search(r"(?:Overall\s+)?(?:technical\s+)?confidence[:\s]*\*?\*?\s*(HIGH|MEDIUM|LOW)", line, re.IGNORECASE)
+            pat = r"(?:Overall\s+)?(?:technical\s+)?confidence[:\s]*\*?\*?\s*(HIGH|MEDIUM|LOW)"
+            m = re.search(pat, line, re.IGNORECASE)
             if m:
                 confidence = m.group(1).upper()
 
@@ -776,6 +886,150 @@ def _parse_review_fallback(review_file):
                 }
 
     return confidence, severity
+
+
+def _eval_has_many_requirements_phase2(confidence, progress, messages):
+    """Phase 2: after tech-review settles, decide quality-gate status."""
+    qg = progress.get("steps", {}).get("quality-gate")
+    if not qg:
+        return
+    if qg.get("status") == "skipped":
+        return
+
+    if confidence == "HIGH":
+        qg["status"] = "skipped"
+        qg["result"] = {"skip_reason": "high_confidence_review"}
+        messages.append("Skipping quality-gate: technical review reached HIGH confidence")
+    else:
+        qg["status"] = "pending"
+        messages.append("Quality-gate enabled: technical review did not reach HIGH confidence")
+
+
+def _pp_security_review(sidecar, progress, base_path, options):
+    warnings = []
+    messages = []
+    if sidecar:
+        scanner = sidecar.get("scanner_findings", 0)
+        critical = sidecar.get("critical_findings", 0)
+        agent = sidecar.get("agent_findings", 0)
+        messages.append(
+            f"Security review: {scanner} scanner findings,"
+            f" {critical} critical, {agent} agent findings"
+        )
+        if critical > 0:
+            warnings.append(
+                f"Security review found {critical} critical finding(s)"
+                " — review before merging"
+            )
+    return {"warnings": warnings, "messages": messages}
+
+
+def _pp_quality_gate(sidecar, progress, base_path, options):
+    warnings = []
+    messages = []
+
+    if not sidecar:
+        return {"warnings": ["No step-result.json for quality-gate"], "messages": messages}
+
+    doc_quality = sidecar.get("doc_quality", 0)
+    intent_alignment = sidecar.get("intent_alignment", 0)
+    passed = sidecar.get("passed", False)
+    iteration = sidecar.get("iteration", 1)
+    gaps = sidecar.get("gaps", [])
+
+    messages.append(
+        f"Quality gate: doc_quality={doc_quality}/5,"
+        f" intent_alignment={intent_alignment}/5,"
+        f" passed={passed}, gaps={len(gaps)}"
+    )
+
+    if intent_alignment >= 4:
+        progress.pop("_quality_gate_fix_from", None)
+        progress.pop("_quality_gate_iteration", None)
+        if doc_quality < 4:
+            warnings.append(
+                f"Quality gate passed but doc_quality is {doc_quality}/5"
+                " — consider improvements"
+            )
+        return {"warnings": warnings, "messages": messages}
+
+    max_iterations = 2
+    if iteration >= max_iterations:
+        progress.pop("_quality_gate_fix_from", None)
+        progress.pop("_quality_gate_iteration", None)
+        if intent_alignment >= 3:
+            warnings.append(
+                f"Quality gate: intent_alignment={intent_alignment}/5"
+                f" after {max_iterations} iterations — accepting with warning"
+            )
+            return {"warnings": warnings, "messages": messages}
+        else:
+            return {
+                "warnings": warnings,
+                "messages": messages,
+                "action_override": {
+                    "action": "fail",
+                    "step": "quality-gate",
+                    "reason": (
+                        f"intent_alignment={intent_alignment}/5"
+                        f" after {max_iterations} iterations"
+                    ),
+                    "message": (
+                        f"Workflow failed: intent_alignment={intent_alignment}/5"
+                        f" after {max_iterations} quality gate iterations"
+                    ),
+                },
+            }
+
+    feedback_file = os.path.join(
+        base_path, "quality-gate", f"feedback-brief-{iteration}.md"
+    )
+    progress["_quality_gate_fix_from"] = feedback_file
+    progress["_quality_gate_iteration"] = iteration + 1
+
+    ticket = progress["ticket"]
+    if "writing" in progress["steps"]:
+        progress["steps"]["writing"]["status"] = "pending"
+
+    return {
+        "warnings": warnings,
+        "messages": messages,
+        "action_override": {
+            "action": "run_skill",
+            "skill": _get_step_skill(progress, "writing"),
+            "args": build_step_args("writing", ticket, base_path, options, progress),
+            "step": "writing",
+            "message": (
+                f"Quality gate iteration {iteration + 1}:"
+                " applying fixes from feedback brief"
+            ),
+        },
+    }
+
+
+def _pp_pipeline_diagnostics(sidecar, progress, base_path, options):
+    warnings = []
+    messages = []
+    if sidecar:
+        pressure = sidecar.get("context_pressure_level", "unknown")
+        failures = sidecar.get("failure_count", 0)
+        bottlenecks = sidecar.get("bottleneck_count", 0)
+        messages.append(
+            f"Pipeline diagnostics: context_pressure={pressure},"
+            f" failures={failures}, bottlenecks={bottlenecks}"
+        )
+        high_sev = sidecar.get("high_severity_failure_count", 0)
+        if high_sev > 0:
+            warnings.append(
+                f"Pipeline had {high_sev} high-severity failure(s)."
+                " Review the diagnostic report"
+            )
+        if pressure in ("high", "critical"):
+            warnings.append(
+                f"Context pressure is {pressure}."
+                " Consider workflow splitting for future runs"
+            )
+    return {"warnings": warnings, "messages": messages}
 
 
 def _pp_create_merge_request(sidecar, progress, base_path, options):
@@ -810,6 +1064,9 @@ _POST_PROCESSORS = {
     "planning": _pp_planning,
     "writing": _pp_writing,
     "technical-review": _pp_technical_review,
+    "security-review": _pp_security_review,
+    "quality-gate": _pp_quality_gate,
+    "pipeline-diagnostics": _pp_pipeline_diagnostics,
     "create-merge-request": _pp_create_merge_request,
     "create-jira": _pp_create_jira,
 }
@@ -818,8 +1075,8 @@ _POST_PROCESSORS = {
 def _get_step_skill(progress, step_name):
     """Look up the skill name for a step from the progress file's stored YAML data."""
     skill = progress.get("_step_skills", {}).get(step_name, f"docs-workflow-{step_name}")
-    if ":" not in skill:
-        skill = f"docs-tools:{skill}"
+    if ":" in skill:
+        skill = skill.split(":", 1)[1]
     return skill
 
 
@@ -997,6 +1254,7 @@ def build_options(args):
 
 def cmd_init(args):
     ticket = args.ticket
+    _validate_ticket(ticket)
     ticket_lower = ticket.lower()
     root = git_root()
     base_path = os.path.join(root, ".agent_workspace", ticket_lower)
@@ -1188,26 +1446,17 @@ def cmd_init(args):
 
 def cmd_step_done(args):
     ticket = args.ticket
+    _validate_ticket(ticket)
     ticket_lower = ticket.lower()
     root = git_root()
     base_path = os.path.join(root, ".agent_workspace", ticket_lower)
 
     # Find progress file
-    workflow_dir = os.path.join(base_path, "workflow")
-    if not os.path.isdir(workflow_dir):
-        emit(
-            {"action": "fail", "error": True, "message": f"No workflow directory at {workflow_dir}"}
-        )
-        sys.exit(1)
-
-    pfiles = [
-        f for f in os.listdir(workflow_dir) if f.endswith(".json") and not f.endswith(".stop_count")
-    ]
-    if not pfiles:
+    pfile = resolve_progress_file(base_path, root)
+    if not pfile:
         emit({"action": "fail", "error": True, "message": "No progress file found"})
         sys.exit(1)
 
-    pfile = os.path.join(workflow_dir, pfiles[0])
     progress = read_progress(pfile)
     if not progress:
         emit({"action": "fail", "error": True, "message": f"Cannot read progress file: {pfile}"})
@@ -1223,6 +1472,20 @@ def cmd_step_done(args):
                 "action": "fail",
                 "error": True,
                 "message": f"Unknown step '{step_name}' — not in progress file",
+            }
+        )
+        sys.exit(1)
+
+    current_status = progress["steps"][step_name].get("status")
+    if current_status != "in_progress":
+        emit(
+            {
+                "action": "fail",
+                "error": True,
+                "message": (
+                    f"Step '{step_name}' cannot be completed from status '{current_status}'. "
+                    "Expected 'in_progress'."
+                ),
             }
         )
         sys.exit(1)
@@ -1319,23 +1582,16 @@ def cmd_step_done(args):
 
 def cmd_next(args):
     ticket = args.ticket
+    _validate_ticket(ticket)
     ticket_lower = ticket.lower()
     root = git_root()
     base_path = os.path.join(root, ".agent_workspace", ticket_lower)
 
-    workflow_dir = os.path.join(base_path, "workflow")
-    if not os.path.isdir(workflow_dir):
-        emit({"action": "fail", "error": True, "message": "No workflow directory found"})
-        sys.exit(1)
-
-    pfiles = [
-        f for f in os.listdir(workflow_dir) if f.endswith(".json") and not f.endswith(".stop_count")
-    ]
-    if not pfiles:
+    pfile = resolve_progress_file(base_path, root)
+    if not pfile:
         emit({"action": "fail", "error": True, "message": "No progress file found"})
         sys.exit(1)
 
-    pfile = os.path.join(workflow_dir, pfiles[0])
     progress = read_progress(pfile)
     if not progress:
         emit({"action": "fail", "error": True, "message": "Cannot read progress file"})
@@ -1368,25 +1624,16 @@ def cmd_next(args):
 
 def cmd_status(args):
     ticket = args.ticket
+    _validate_ticket(ticket)
     ticket_lower = ticket.lower()
     root = git_root()
     base_path = os.path.join(root, ".agent_workspace", ticket_lower)
 
-    workflow_dir = os.path.join(base_path, "workflow")
-    if not os.path.isdir(workflow_dir):
-        emit({"action": "status", "found": False, "message": f"No workflow found for {ticket}"})
+    pfile = resolve_progress_file(base_path, root)
+    if not pfile:
+        emit({"action": "status", "found": False, "message": f"No progress file found for {ticket}"})
         return
 
-    pfiles = [
-        f for f in os.listdir(workflow_dir) if f.endswith(".json") and not f.endswith(".stop_count")
-    ]
-    if not pfiles:
-        emit(
-            {"action": "status", "found": False, "message": f"No progress file found for {ticket}"}
-        )
-        return
-
-    pfile = os.path.join(workflow_dir, pfiles[0])
     progress = read_progress(pfile)
     if not progress:
         emit({"action": "status", "found": False, "message": "Cannot read progress file"})
@@ -1402,7 +1649,7 @@ def cmd_status(args):
         {
             "action": "status",
             "found": True,
-            "workflow_type": progress.get("workflow_type"),
+            "workflow": progress.get("workflow"),
             "ticket": progress.get("ticket"),
             "status": progress.get("status"),
             "progress": f"{completed}/{total}",

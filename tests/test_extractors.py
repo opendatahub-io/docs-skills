@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 
-SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "..")
+SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "..", "scripts")
 
 
 def run_script(name, args):

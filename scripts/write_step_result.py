@@ -55,6 +55,12 @@ def main():
         print("--data must be a JSON object", file=sys.stderr)
         sys.exit(1)
 
+    reserved = {"schema_version", "step", "ticket", "completed_at"}
+    overlap = reserved.intersection(extra.keys())
+    if overlap:
+        print(f"--data cannot override reserved fields: {sorted(overlap)}", file=sys.stderr)
+        sys.exit(1)
+
     result = {
         "schema_version": SCHEMA_VERSION,
         "step": args.step,

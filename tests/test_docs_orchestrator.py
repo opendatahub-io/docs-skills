@@ -6,9 +6,11 @@ import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from docs_orchestrator import (
+    _eval_has_many_requirements_phase1,
+    _eval_has_many_requirements_phase2,
     build_step_args,
     classify_step,
     create_progress,
@@ -404,3 +406,326 @@ class TestCreateProgress:
         assert "b" in p["steps"]
         assert p["status"] == "in_progress"
         assert p["step_order"] == ["a", "b"]
+
+    def test_uses_workflow_key(self):
+        steps = [{"name": "a", "skill": "s", "inputs": []}]
+        p = create_progress("T-1", "docs-workflow", "/base", {}, steps, ["a"])
+        assert "workflow" in p
+        assert "workflow_type" not in p
+        assert p["workflow"] == "docs-workflow"
+
+
+class TestEvaluateWhenHasManyRequirements:
+    def test_always_deferred(self):
+        assert evaluate_when("has_many_requirements", {}) is None
+
+    def test_deferred_even_with_options(self):
+        assert evaluate_when("has_many_requirements", {"source": {"repo_path": "/x"}}) is None
+
+
+def _step(status="completed", result=None):
+    return {"status": status, "output": None, "result": result}
+
+
+def _qg_step(status="deferred", result=None):
+    return {"status": status, "output": None, "result": result}
+
+
+class TestHasManyRequirementsPhase1:
+    def test_few_requirements_skips_quality_gate(self):
+        sidecar = {"requirement_count": 3}
+        progress = {"steps": {"quality-gate": _qg_step()}}
+        messages, warnings = [], []
+        _eval_has_many_requirements_phase1(
+            sidecar, progress, messages, warnings,
+        )
+        assert progress["steps"]["quality-gate"]["status"] == "skipped"
+        assert any("Skipping" in m for m in messages)
+
+    def test_many_requirements_keeps_deferred(self):
+        sidecar = {"requirement_count": 8}
+        progress = {"steps": {"quality-gate": _qg_step()}}
+        messages, warnings = [], []
+        _eval_has_many_requirements_phase1(
+            sidecar, progress, messages, warnings,
+        )
+        assert progress["steps"]["quality-gate"]["status"] == "deferred"
+
+    def test_missing_count_warns(self):
+        sidecar = {"title": "some title"}
+        progress = {"steps": {"quality-gate": _qg_step()}}
+        messages, warnings = [], []
+        _eval_has_many_requirements_phase1(
+            sidecar, progress, messages, warnings,
+        )
+        assert progress["steps"]["quality-gate"]["status"] == "deferred"
+        assert any("missing" in w for w in warnings)
+
+    def test_no_quality_gate_step_is_noop(self):
+        sidecar = {"requirement_count": 3}
+        progress = {"steps": {"writing": {"status": "pending"}}}
+        messages, warnings = [], []
+        _eval_has_many_requirements_phase1(
+            sidecar, progress, messages, warnings,
+        )
+        assert warnings == []
+
+
+class TestHasManyRequirementsPhase2:
+    def test_high_confidence_skips(self):
+        progress = {"steps": {"quality-gate": _qg_step()}}
+        messages = []
+        _eval_has_many_requirements_phase2("HIGH", progress, messages)
+        assert progress["steps"]["quality-gate"]["status"] == "skipped"
+        assert any("HIGH" in m for m in messages)
+
+    def test_medium_confidence_enables(self):
+        progress = {"steps": {"quality-gate": _qg_step()}}
+        messages = []
+        _eval_has_many_requirements_phase2("MEDIUM", progress, messages)
+        assert progress["steps"]["quality-gate"]["status"] == "pending"
+
+    def test_already_skipped_no_change(self):
+        progress = {
+            "steps": {
+                "quality-gate": _qg_step(
+                    "skipped",
+                    {"skip_reason": "few_requirements"},
+                ),
+            },
+        }
+        messages = []
+        _eval_has_many_requirements_phase2("MEDIUM", progress, messages)
+        assert progress["steps"]["quality-gate"]["status"] == "skipped"
+
+
+class TestPostProcessSecurityReview:
+    def _make_sidecar(self, tmp_path, scanner=0, critical=0, agent=0):
+        base = str(tmp_path)
+        sr_dir = tmp_path / "security-review"
+        sr_dir.mkdir(exist_ok=True)
+        sidecar = {
+            "schema_version": 1,
+            "step": "security-review",
+            "scanner_findings": scanner,
+            "critical_findings": critical,
+            "agent_findings": agent,
+        }
+        (sr_dir / "step-result.json").write_text(json.dumps(sidecar))
+        return base
+
+    def test_logs_findings(self, tmp_path):
+        base = self._make_sidecar(tmp_path, scanner=5, critical=0, agent=2)
+        progress = {
+            "ticket": "T-1",
+            "steps": {"security-review": {"status": "completed", "output": None, "result": None}},
+        }
+        result = post_process("security-review", progress, base, {})
+        assert any("5 scanner" in m for m in result.get("messages", []))
+        assert "action_override" not in result
+
+    def test_critical_findings_warn(self, tmp_path):
+        base = self._make_sidecar(tmp_path, scanner=3, critical=2, agent=1)
+        progress = {
+            "ticket": "T-1",
+            "steps": {"security-review": {"status": "completed", "output": None, "result": None}},
+        }
+        result = post_process("security-review", progress, base, {})
+        assert any("critical" in w for w in result.get("warnings", []))
+
+
+class TestPostProcessQualityGate:
+    def _make_sidecar(
+        self, tmp_path, doc_quality=4, intent_alignment=4,
+        passed=True, iteration=1, gaps=None,
+    ):
+        base = str(tmp_path)
+        qg_dir = tmp_path / "quality-gate"
+        qg_dir.mkdir(exist_ok=True)
+        sidecar = {
+            "schema_version": 1,
+            "step": "quality-gate",
+            "doc_quality": doc_quality,
+            "intent_alignment": intent_alignment,
+            "passed": passed,
+            "iteration": iteration,
+            "gaps": gaps or [],
+        }
+        (qg_dir / "step-result.json").write_text(json.dumps(sidecar))
+        return base
+
+    def test_passes_when_alignment_high(self, tmp_path):
+        base = self._make_sidecar(tmp_path, intent_alignment=4)
+        progress = {
+            "ticket": "T-1",
+            "steps": {"quality-gate": {"status": "completed", "output": None, "result": None}},
+        }
+        result = post_process("quality-gate", progress, base, {})
+        assert "action_override" not in result
+
+    def test_low_doc_quality_warns(self, tmp_path):
+        base = self._make_sidecar(tmp_path, doc_quality=2, intent_alignment=4)
+        progress = {
+            "ticket": "T-1",
+            "steps": {"quality-gate": {"status": "completed", "output": None, "result": None}},
+        }
+        result = post_process("quality-gate", progress, base, {})
+        assert any("doc_quality" in w for w in result.get("warnings", []))
+
+    def test_low_alignment_triggers_fix_cycle(self, tmp_path):
+        base = self._make_sidecar(tmp_path, intent_alignment=2, passed=False, iteration=1)
+        progress = {
+            "ticket": "T-1",
+            "_step_skills": {"writing": "docs-workflow-writing"},
+            "steps": {
+                "quality-gate": {"status": "completed", "output": None, "result": None},
+                "writing": {"status": "completed", "output": None, "result": None},
+            },
+        }
+        result = post_process("quality-gate", progress, base, {})
+        assert "action_override" in result
+        assert result["action_override"]["action"] == "run_skill"
+        assert result["action_override"]["step"] == "writing"
+        assert progress.get("_quality_gate_fix_from") is not None
+        assert progress.get("_quality_gate_iteration") == 2
+
+    def test_alignment_3_after_max_accepts_with_warning(self, tmp_path):
+        base = self._make_sidecar(tmp_path, intent_alignment=3, passed=False, iteration=2)
+        progress = {
+            "ticket": "T-1",
+            "steps": {"quality-gate": {"status": "completed", "output": None, "result": None}},
+        }
+        result = post_process("quality-gate", progress, base, {})
+        assert "action_override" not in result
+        assert any("accepting" in w for w in result.get("warnings", []))
+
+    def test_alignment_below_3_after_max_fails(self, tmp_path):
+        base = self._make_sidecar(tmp_path, intent_alignment=1, passed=False, iteration=2)
+        progress = {
+            "ticket": "T-1",
+            "steps": {"quality-gate": {"status": "completed", "output": None, "result": None}},
+        }
+        result = post_process("quality-gate", progress, base, {})
+        assert "action_override" in result
+        assert result["action_override"]["action"] == "fail"
+
+
+class TestPostProcessPipelineDiagnostics:
+    def _make_sidecar(self, tmp_path, pressure="low", failures=0, bottlenecks=0, high_sev=0):
+        base = str(tmp_path)
+        pd_dir = tmp_path / "pipeline-diagnostics"
+        pd_dir.mkdir(exist_ok=True)
+        sidecar = {
+            "schema_version": 1,
+            "step": "pipeline-diagnostics",
+            "context_pressure_level": pressure,
+            "failure_count": failures,
+            "bottleneck_count": bottlenecks,
+            "high_severity_failure_count": high_sev,
+        }
+        (pd_dir / "step-result.json").write_text(json.dumps(sidecar))
+        return base
+
+    def test_logs_metrics(self, tmp_path):
+        base = self._make_sidecar(tmp_path, pressure="moderate", failures=1, bottlenecks=2)
+        progress = {
+            "ticket": "T-1",
+            "steps": {"pipeline-diagnostics": _step()},
+        }
+        result = post_process("pipeline-diagnostics", progress, base, {})
+        assert any("moderate" in m for m in result.get("messages", []))
+
+    def test_high_severity_warns(self, tmp_path):
+        base = self._make_sidecar(tmp_path, high_sev=2)
+        progress = {
+            "ticket": "T-1",
+            "steps": {"pipeline-diagnostics": _step()},
+        }
+        result = post_process("pipeline-diagnostics", progress, base, {})
+        assert any("high-severity" in w for w in result.get("warnings", []))
+
+    def test_critical_pressure_warns(self, tmp_path):
+        base = self._make_sidecar(tmp_path, pressure="critical")
+        progress = {
+            "ticket": "T-1",
+            "steps": {"pipeline-diagnostics": _step()},
+        }
+        result = post_process("pipeline-diagnostics", progress, base, {})
+        assert any("critical" in w for w in result.get("warnings", []))
+
+
+class TestBuildStepArgsNewSteps:
+    def test_security_review_basic(self):
+        args = build_step_args("security-review", "PROJ-123", "/base", {})
+        assert "PROJ-123" in args
+        assert "--base-path /base" in args
+
+    def test_quality_gate_basic(self):
+        args = build_step_args("quality-gate", "PROJ-123", "/base", {})
+        assert "PROJ-123" in args
+        assert "--iteration" not in args
+
+    def test_quality_gate_iteration(self):
+        progress = {"_quality_gate_iteration": 2}
+        args = build_step_args("quality-gate", "PROJ-123", "/base", {}, progress)
+        assert "--iteration 2" in args
+
+    def test_pipeline_diagnostics_basic(self):
+        args = build_step_args("pipeline-diagnostics", "PROJ-123", "/base", {})
+        assert "PROJ-123" in args
+        assert "--ci-log" not in args
+
+    def test_pipeline_diagnostics_with_ci_log(self):
+        opts = {"ci_log": "/tmp/ci.log"}
+        args = build_step_args(
+            "pipeline-diagnostics", "PROJ-123", "/base", opts,
+        )
+        assert "--ci-log /tmp/ci.log" in args
+
+    def test_writing_quality_gate_fix_from(self):
+        progress = {"_quality_gate_fix_from": "/base/quality-gate/feedback-brief-1.md"}
+        args = build_step_args("writing", "PROJ-123", "/base", {}, progress)
+        assert "--fix-from /base/quality-gate/feedback-brief-1.md" in args
+
+
+class TestPostProcessWritingQualityGateCycle:
+    def test_routes_to_quality_gate(self, tmp_path):
+        base = str(tmp_path)
+        writing_dir = tmp_path / "writing"
+        writing_dir.mkdir()
+        sidecar = {"schema_version": 1, "step": "writing", "files": ["/a.adoc"]}
+        (writing_dir / "step-result.json").write_text(json.dumps(sidecar))
+
+        progress = {
+            "ticket": "T-1",
+            "_quality_gate_fix_from": "/some/feedback-brief-1.md",
+            "_step_skills": {"quality-gate": "docs-workflow-quality-gate"},
+            "steps": {
+                "writing": {"status": "completed", "output": None, "result": None},
+                "quality-gate": {"status": "completed", "output": None, "result": None},
+            },
+        }
+        result = post_process("writing", progress, base, {})
+        assert "action_override" in result
+        assert result["action_override"]["step"] == "quality-gate"
+
+    def test_tech_review_cycle_takes_precedence(self, tmp_path):
+        base = str(tmp_path)
+        writing_dir = tmp_path / "writing"
+        writing_dir.mkdir()
+        sidecar = {"schema_version": 1, "step": "writing", "files": ["/a.adoc"]}
+        (writing_dir / "step-result.json").write_text(json.dumps(sidecar))
+
+        progress = {
+            "ticket": "T-1",
+            "_tech_review_fix_from": "/some/review.md",
+            "_quality_gate_fix_from": "/some/feedback.md",
+            "_step_skills": {"technical-review": "docs-workflow-tech-review"},
+            "steps": {
+                "writing": {"status": "completed", "output": None, "result": None},
+                "technical-review": {"status": "completed", "output": None, "result": None},
+                "quality-gate": {"status": "completed", "output": None, "result": None},
+            },
+        }
+        result = post_process("writing", progress, base, {})
+        assert result["action_override"]["step"] == "technical-review"
