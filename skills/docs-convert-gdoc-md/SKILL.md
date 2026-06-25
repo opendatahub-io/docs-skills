@@ -7,7 +7,7 @@ allowed-tools: Bash, Read, Write
 
 # Convert Google Docs, Slides, or Sheets
 
-Export Google content using `gcloud` CLI or service account credentials for authentication:
+Export Google content using `gcloud` CLI or Google Application Default Credentials for authentication:
 
 - **Google Docs** → Markdown (`.md`)
 - **Google Slides** → Markdown (`.md`) via PPTX with slide titles, bullet points, tables, and speaker notes
@@ -18,7 +18,7 @@ Export Google content using `gcloud` CLI or service account credentials for auth
 - The [Red Hat Docs Agent Tools marketplace](https://aireilly.gitlab.cee.redhat.com/redhat-docs-agent-tools/install/) is installed
 - Authentication — one of:
   - `gcloud` CLI installed and authenticated via `gcloud auth login --enable-gdrive-access`
-  - `GOOGLE_APPLICATION_CREDENTIALS` environment variable set to a Google service account JSON file with Drive, Docs, and Sheets readonly scopes
+  - Google Application Default Credentials (ADC) — set `GOOGLE_APPLICATION_CREDENTIALS` to a service-account JSON path, run `gcloud auth application-default login`, or use attached workload/metadata credentials
 - `python-pptx` is installed for Slides export (`python3 -m pip install python-pptx`)
 
 ## Instructions
@@ -60,8 +60,8 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/gdoc2md.py -- --comments "<google-do
 ### Error handling
 
 - **401**: Authentication expired or invalid. Tell the user to run `gcloud auth login --enable-gdrive-access`.
-- **Service account errors**: Malformed JSON or refresh failures are caught and reported at startup. Verify the `GOOGLE_APPLICATION_CREDENTIALS` path points to a valid service account JSON file.
+- **Credential errors**: Malformed JSON, missing ADC, or refresh failures are caught and reported. Verify the credentials are configured per Prerequisites.
 - **403**: No permission. The user needs access to the document.
 - **404**: Wrong URL or the document doesn't exist.
-- **No authentication method available**: Neither `gcloud` nor `GOOGLE_APPLICATION_CREDENTIALS` is configured. Tell the user to set up one of the two methods described in Prerequisites.
+- **No authentication method available**: Neither `gcloud` nor ADC is configured. Tell the user to set up one of the methods described in Prerequisites.
 - **ImportError**: `python-pptx` not installed. Tell the user to run `python3 -m pip install python-pptx`.
