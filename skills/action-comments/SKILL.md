@@ -52,7 +52,7 @@ If `PR_URL` does not match, stop with:
 >
 > Expected format:
 > - GitHub: `https://{host}/{owner}/{repo}/pull/{number}`
-> - GitLab: `https://{host}/{group}/{project}/merge_requests/{number}`
+> - GitLab: `https://{host}/{full_namespace}/{project}/merge_requests/{number}`
 >
 > Both public (github.com, gitlab.com) and self-hosted instances are supported.
 
@@ -247,7 +247,7 @@ No interactive prompts. For each non-outdated comment, autonomously decide and a
 
 For each comment, log the decision:
 
-```
+```text
 [{N}/{total}] {path}:{line} [{category}] → {Applied|Skipped|Replied} — {one-line rationale}
 ```
 
@@ -259,36 +259,40 @@ Same as interactive mode: read the target file, apply the edit using Edit tool, 
 
 After processing each comment (whether applied, skipped, or answered), post a reply on the PR/MR thread to explain the action taken.
 
-**Determine the forge type** from `PR_URL`:
-- Contains `/pull/` → GitHub
-- Contains `/merge_requests/` → GitLab
+**Reply body format** (passed as `REPLY_BODY`):
 
-**Extract routing fields** from `PR_URL`:
-
-For GitHub (`https://{host}/{owner}/{repo}/pull/{number}`):
-```bash
-COMMENT_ID=<id field from the fetched comment JSON>
-gh api "repos/{owner}/{repo}/pulls/{number}/comments/${COMMENT_ID}/replies" -f body="<reply>"
-```
-
-For GitLab (`https://{host}/{group}/{project}/merge_requests/{number}`):
-```bash
-DISCUSSION_ID=<discussion_id field from the fetched comment JSON>
-glab api "projects/{group}%2F{project}/merge_requests/{number}/discussions/${DISCUSSION_ID}/notes" -f body="<reply>"
-```
-
-**Reply body format:**
-
-```
+```text
 **{Action}** — {rationale}
 
 {If change was applied: "Applied to `{path}` — {brief description of what changed}"}
 {If question was answered: the answer, grounded in workspace context}
-
-🤖 Claude Code action-comments (CI)
 ```
 
-If the reply post fails, log a warning and continue — do not block on reply failures.
+**Determine the routing ID** from the comment JSON returned in Step 4:
+- GitHub comments have an `id` field → use `--comment-id`
+- GitLab comments have a `discussion_id` field → use `--discussion-id`
+
+**Post the reply:**
+
+For GitHub:
+```bash
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- \
+  reply "${PR_URL}" \
+  --comment-id "${COMMENT_ID}" \
+  --body "${REPLY_BODY}" \
+  --signoff "Claude Code action-comments (CI)"
+```
+
+For GitLab:
+```bash
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- \
+  reply "${PR_URL}" \
+  --discussion-id "${DISCUSSION_ID}" \
+  --body "${REPLY_BODY}" \
+  --signoff "Claude Code action-comments (CI)"
+```
+
+If the reply post fails (non-zero exit code), log a warning and continue — do not block on reply failures.
 
 ## Step 7: Summary
 
