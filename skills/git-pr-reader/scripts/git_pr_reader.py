@@ -479,6 +479,26 @@ class GitReviewAPI(ABC):
         ...
 
     @abstractmethod
+    def reply_to_comment(
+        self,
+        comment_id: int,
+        body: str,
+        discussion_id: Optional[str] = None,
+    ) -> Tuple[bool, str]:
+        """
+        Reply to an existing review comment thread.
+
+        Args:
+            comment_id: Review comment ID (GitHub) or note ID (GitLab).
+            body: Reply body text.
+            discussion_id: GitLab discussion ID (required for GitLab, ignored for GitHub).
+
+        Returns:
+            Tuple of (success, error_message).
+        """
+        ...
+
+    @abstractmethod
     def get_changed_files(self) -> List[Dict]:
         """
         Get list of changed files in the PR/MR.
@@ -1082,6 +1102,19 @@ class GitHubReviewAPI(GitReviewAPI):
         except Exception as e:
             return False, str(e)
 
+    def reply_to_comment(
+        self,
+        comment_id: int,
+        body: str,
+        discussion_id: Optional[str] = None,
+    ) -> Tuple[bool, str]:
+        """Reply to an existing review comment on GitHub using PyGithub."""
+        try:
+            self._pr.create_review_comment_reply(comment_id, body)
+            return True, ""
+        except Exception as e:
+            return False, str(e)
+
     def get_pr_data(self, apply_filters: bool = True) -> Dict:
         """
         Fetch PR data with diffs and optional file filtering.
@@ -1442,6 +1475,22 @@ class GitLabReviewAPI(GitReviewAPI):
         try:
             note_body = f"**{file}:{line}**\n\n{body}"
             self._mr.notes.create({"body": note_body})
+            return True, ""
+        except Exception as e:
+            return False, str(e)
+
+    def reply_to_comment(
+        self,
+        comment_id: int,
+        body: str,
+        discussion_id: Optional[str] = None,
+    ) -> Tuple[bool, str]:
+        """Reply to an existing discussion note on GitLab using python-gitlab."""
+        if not discussion_id:
+            return False, "discussion_id is required for GitLab replies"
+        try:
+            discussion = self._mr.discussions.get(discussion_id)
+            discussion.notes.create({"body": body})
             return True, ""
         except Exception as e:
             return False, str(e)
@@ -1886,6 +1935,60 @@ def cmd_post(args) -> int:
         print(f"\nErrors: {json.dumps(result.errors)}")
 
     return 1 if result.failed > 0 else 0
+
+
+def cmd_reply(args) -> int:
+    """Handle 'reply' subcommand -- reply to an existing review comment."""
+    try:
+        api = GitReviewAPI.from_url(args.pr_url)
+    except (ValueError, RuntimeError, ImportError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    comment_id = getattr(args, "comment_id", None)
+    discussion_id = getattr(args, "discussion_id", None)
+
+    if isinstance(api, GitHubReviewAPI):
+        if not comment_id:
+            print(
+                "Error: --comment-id is required for GitHub PRs",
+                file=sys.stderr,
+            )
+            return 1
+    elif isinstance(api, GitLabReviewAPI):
+        if not discussion_id:
+            print(
+                "Error: --discussion-id is required for GitLab MRs",
+                file=sys.stderr,
+            )
+            return 1
+
+    body = args.body
+    signoff = getattr(args, "signoff", "") or ""
+    if signoff:
+        body = f"{body}\n\n\U0001f916 {signoff}"
+
+    if args.dry_run:
+        color_print(
+            "Would reply",
+            f"comment_id={comment_id}, discussion_id={discussion_id}",
+        )
+        print(f"  Body: {body[:200]}{'...' if len(body) > 200 else ''}")
+        return 0
+
+    success, error = api.reply_to_comment(
+        comment_id=comment_id or 0,
+        body=body,
+        discussion_id=discussion_id,
+    )
+
+    if success:
+        color_print("Replied", f"comment_id={comment_id or discussion_id}")
+        return 0
+    else:
+        color_print("Failed", f"comment_id={comment_id or discussion_id}")
+        print(f"  Error: {error}", file=sys.stderr)
+        return 1
 
 
 def cmd_extract(args) -> int:
@@ -2652,6 +2755,37 @@ Examples:
         help="Review type for sign-off text (technical or style)",
     )
 
+    # -- reply subcommand ----------------------------------------------------
+    reply_parser = subparsers.add_parser(
+        "reply",
+        help="Reply to an existing review comment on a PR/MR",
+    )
+    reply_parser.add_argument("pr_url", help="GitHub PR or GitLab MR URL")
+    reply_parser.add_argument(
+        "--comment-id",
+        type=int,
+        help="Review comment ID (required for GitHub)",
+    )
+    reply_parser.add_argument(
+        "--discussion-id",
+        help="Discussion ID (required for GitLab)",
+    )
+    reply_parser.add_argument(
+        "--body",
+        required=True,
+        help="Reply body text",
+    )
+    reply_parser.add_argument(
+        "--signoff",
+        default="",
+        help="Sign-off text appended to the reply (empty = no signoff)",
+    )
+    reply_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be posted without actually posting",
+    )
+
     # -- extract subcommand --------------------------------------------------
     extract_parser = subparsers.add_parser(
         "extract",
@@ -2771,6 +2905,7 @@ Examples:
         "comments": cmd_comments,
         "diff": cmd_diff,
         "post": cmd_post,
+        "reply": cmd_reply,
         "extract": cmd_extract,
         "detect": cmd_detect,
         "resolve": cmd_resolve,

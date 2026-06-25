@@ -1,13 +1,13 @@
 ---
 name: action-comments
-description: Fetch unresolved review comments from GitHub PRs or GitLab MRs and interactively action them on local files. Works standalone or as a workflow step (with --base-path). MUST BE USED when the user asks to action, address, or process review comments on a PR/MR, or when the docs-review-comments workflow is running.
-argument-hint: "[url] [--include-resolved] | <ticket> --base-path <path> [url]"
+description: Fetch unresolved review comments from GitHub PRs or GitLab MRs and action them on local files. Works standalone (interactive) or in CI mode (autonomous). Optionally reads .agent_workspace artifacts for grounding. MUST BE USED when the user asks to action, address, or process review comments on a PR/MR.
+argument-hint: "[url] [--ci] [--include-resolved] | <ticket> --base-path <path> [--ci] [url]"
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Agent, AskUserQuestion
 ---
 
 # Action Review Comments
 
-Fetch unresolved review comments from a GitHub PR or GitLab MR and interactively action them on local files.
+Fetch unresolved review comments from a GitHub PR or GitLab MR and action them on local files. Runs interactively by default, or autonomously with `--ci`.
 
 ## Arguments
 
@@ -16,6 +16,7 @@ Fetch unresolved review comments from a GitHub PR or GitLab MR and interactively
 | Argument | Description |
 |----------|-------------|
 | `$1` (positional) | PR/MR URL (optional — auto-detects from current branch if omitted) |
+| `--ci` | Run autonomously without interactive prompts. Auto-applies fixes and posts reply comments on the PR/MR explaining rationale |
 | `--include-resolved` | Include resolved comments in addition to unresolved |
 
 ### Workflow step mode
@@ -25,6 +26,7 @@ Fetch unresolved review comments from a GitHub PR or GitLab MR and interactively
 | `$1` (positional) | Ticket ID (required, e.g., `PROJ-123`) |
 | `--base-path <path>` | Base output path (required). Used to **read** workspace artifacts from prior workflow steps (code-analysis, requirements, etc.) and to **write** `step-result.json` sidecar to `${BASE_PATH}/action-comments/` |
 | `--pr <url>` | PR/MR URL (optional — auto-detects from current branch if omitted) |
+| `--ci` | Run autonomously without interactive prompts. Auto-applies fixes and posts reply comments on the PR/MR explaining rationale |
 | `--include-resolved` | Include resolved comments in addition to unresolved |
 
 ## Step 1: Resolve PR/MR URL
@@ -50,7 +52,7 @@ If `PR_URL` does not match, stop with:
 >
 > Expected format:
 > - GitHub: `https://{host}/{owner}/{repo}/pull/{number}`
-> - GitLab: `https://{host}/{group}/{project}/merge_requests/{number}`
+> - GitLab: `https://{host}/{full_namespace}/{project}/merge_requests/{number}`
 >
 > Both public (github.com, gitlab.com) and self-hosted instances are supported.
 
@@ -173,7 +175,21 @@ Before presenting comments, categorize each one:
 3. Compute a bounded search range: `start = max(1, line - 20)`, `end = min(file_length, line + 20)`. Extract lines `start` through `end`.
 4. Check whether the quoted text appears verbatim within the extracted range. Mark the comment as outdated only if the text is **not found** in that range.
 
-## Step 6: Process each comment interactively
+## Step 6: Process comments
+
+For each non-outdated comment, read the target file and prepare a suggested change grounded in workspace context (see below). Then follow either the **interactive** or **CI** path depending on whether `--ci` was passed.
+
+### Grounding fixes with workspace context
+
+When `WORKSPACE` is set and the comment references technical content (API fields, commands, config options, prerequisites), use the loaded artifacts to verify and inform your suggested change:
+
+- **Code analysis available**: Check `ONBOARDING.md` for the API surface, module map, or code structure relevant to the comment. If the reviewer says "this flag doesn't exist", verify against the code analysis before agreeing or pushing back.
+- **Source repo available** (`SOURCE_REPO` is set): Read the actual source file to verify claims about specific APIs, config keys, default values, or command syntax. Use `grep` or `Read` against the source repo — do not guess.
+- **Requirements available**: If the reviewer suggests adding content, check whether it falls within the original ticket scope. If out of scope, note this when presenting the suggested change.
+- **Technical review available**: Cross-reference with prior review findings. If the tech review already validated a claim the reviewer is questioning, cite the validation.
+- **Scope audit available**: Check evidence status for the requirement the comment relates to. If the feature is classified as `absent` in the code, the reviewer's request to add documentation may need a "not supported" note instead.
+
+### Interactive mode (default)
 
 For each non-outdated comment, present:
 
@@ -188,16 +204,6 @@ For each non-outdated comment, present:
 ### Suggested change
 {your analysis and proposed edit, grounded in workspace context if available}
 ```
-
-### Grounding fixes with workspace context
-
-When `WORKSPACE` is set and the comment references technical content (API fields, commands, config options, prerequisites), use the loaded artifacts to verify and inform your suggested change:
-
-- **Code analysis available**: Check `ONBOARDING.md` for the API surface, module map, or code structure relevant to the comment. If the reviewer says "this flag doesn't exist", verify against the code analysis before agreeing or pushing back.
-- **Source repo available** (`SOURCE_REPO` is set): Read the actual source file to verify claims about specific APIs, config keys, default values, or command syntax. Use `grep` or `Read` against the source repo — do not guess.
-- **Requirements available**: If the reviewer suggests adding content, check whether it falls within the original ticket scope. If out of scope, note this when presenting the suggested change.
-- **Technical review available**: Cross-reference with prior review findings. If the tech review already validated a claim the reviewer is questioning, cite the validation.
-- **Scope audit available**: Check evidence status for the requirement the comment relates to. If the feature is classified as `absent` in the code, the reviewer's request to add documentation may need a "not supported" note instead.
 
 If workspace context contradicts the reviewer's comment, present both perspectives and let the user decide. Do not silently override the reviewer.
 
@@ -225,6 +231,68 @@ Apply the user's text using Edit tool. Read back the changed lines and verify th
 **When View context is selected**: Read 20 lines before and after the comment's line from the local file, display them, then re-present the same options.
 
 **When Skip is selected**: Move to next comment.
+
+### CI mode (`--ci`)
+
+No interactive prompts. For each non-outdated comment, autonomously decide and act based on category and workspace context.
+
+#### Decision logic by category
+
+| Category | Action |
+|----------|--------|
+| **Required** | Apply the fix. If the change is ambiguous or the file structure has changed too much to apply cleanly, log a warning and skip |
+| **Suggestion** | Evaluate using workspace context. Apply if the suggestion aligns with requirements/scope and the change is straightforward. Skip if out-of-scope, subjective, or would require significant restructuring |
+| **Question** | Do not apply changes. Post a reply addressing the question using workspace context if possible |
+| **Outdated** | Auto-skip (already handled in Step 5) |
+
+For each comment, log the decision:
+
+```text
+[{N}/{total}] {path}:{line} [{category}] → {Applied|Skipped|Replied} — {one-line rationale}
+```
+
+#### Applying changes in CI mode
+
+Same as interactive mode: read the target file, apply the edit using Edit tool, read back changed lines to verify. If the edit fails, log the failure and move to the next comment (no retry loop).
+
+#### Posting reply comments
+
+After processing each comment (whether applied, skipped, or answered), post a reply on the PR/MR thread to explain the action taken.
+
+**Reply body format** (passed as `REPLY_BODY`):
+
+```text
+**{Action}** — {rationale}
+
+{If change was applied: "Applied to `{path}` — {brief description of what changed}"}
+{If question was answered: the answer, grounded in workspace context}
+```
+
+**Determine the routing ID** from the comment JSON returned in Step 4:
+- GitHub comments have an `id` field → use `--comment-id`
+- GitLab comments have a `discussion_id` field → use `--discussion-id`
+
+**Post the reply:**
+
+For GitHub:
+```bash
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- \
+  reply "${PR_URL}" \
+  --comment-id "${COMMENT_ID}" \
+  --body "${REPLY_BODY}" \
+  --signoff "Claude Code action-comments (CI)"
+```
+
+For GitLab:
+```bash
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- \
+  reply "${PR_URL}" \
+  --discussion-id "${DISCUSSION_ID}" \
+  --body "${REPLY_BODY}" \
+  --signoff "Claude Code action-comments (CI)"
+```
+
+If the reply post fails (non-zero exit code), log a warning and continue — do not block on reply failures.
 
 ## Step 7: Summary
 
@@ -269,9 +337,13 @@ When `--base-path` is provided, write `${BASE_PATH}/action-comments/step-result.
   "step": "action-comments",
   "ticket": "<TICKET>",
   "completed_at": "<ISO 8601>",
+  "ci_mode": false,
   "comments_resolved": <count of applied + edited>,
   "comments_skipped": <count of user-skipped>,
   "comments_outdated": <count of auto-skipped outdated>,
+  "comments_replied": 0,
   "files_modified": ["<list of files modified>"]
 }
 ```
+
+In CI mode (`--ci`), set `ci_mode: true` and `comments_replied` to the count of reply comments successfully posted to the PR/MR.

@@ -1,9 +1,0 @@
-workflow:
-  name: docs-review-comments
-  description: Action unresolved review comments on a documentation MR/PR. Use after the main docs-workflow completes and reviewers have left comments.
-
-  # All step outputs go to: .agent_workspace/<ticket>/<step-name>/
-  steps:
-    - name: action-comments
-      skill: action-comments
-      description: Fetch and interactively action unresolved review comments

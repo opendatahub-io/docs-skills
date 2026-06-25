@@ -1,6 +1,6 @@
 ---
 name: git-pr-reader
-description: "Unified interface for GitHub PRs and GitLab MRs: read PR/MR data with file filtering, list changed files, get review comments, post inline review comments, extract line numbers from diffs, validate comments, auto-detect PR/MR for current branch, and get unified diffs. Automatically detects GitHub vs GitLab from URL. Use this skill for analyzing code changes, posting review feedback, and documentation workflows."
+description: "Unified interface for GitHub PRs and GitLab MRs: read PR/MR data with file filtering, list changed files, get review comments, post inline review comments, reply to existing comment threads, extract line numbers from diffs, validate comments, auto-detect PR/MR for current branch, and get unified diffs. Automatically detects GitHub vs GitLab from URL. Use this skill for analyzing code changes, posting review feedback, and documentation workflows."
 author: Gabriel McGoldrick (gmcgoldr@redhat.com)
 allowed-tools: Read, Bash, Grep, Glob
 ---
@@ -16,6 +16,7 @@ Unified interface for GitHub Pull Requests and GitLab Merge Requests — read, r
 - **List changed files**: Get file paths, statuses, and line counts with optional glob filtering
 - **Review comments**: Fetch existing review comments/discussions, filter bots, include/exclude resolved
 - **Post review comments**: Post inline comments on specific diff lines with duplicate detection and fallback to PR-level comments
+- **Reply to comments**: Reply to existing review comment threads on GitHub PRs and GitLab MRs
 - **Extract line numbers**: Parse diffs to get added/modified line numbers for accurate comment placement
 - **Validate comments**: Check comment line numbers against actual diff content
 - **Auto-detect PR/MR**: Find the open PR/MR for the current git branch (GitHub via `gh` CLI, GitLab via API)
@@ -72,6 +73,19 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- diff https://git
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- post https://github.com/owner/repo/pull/123 comments.json
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- post https://github.com/owner/repo/pull/123 comments.json --review-type technical
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- post https://github.com/owner/repo/pull/123 comments.json --review-type style --dry-run
+```
+
+#### reply — Reply to an existing review comment
+
+```bash
+# Reply to a GitHub review comment
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- reply https://github.com/owner/repo/pull/123 --comment-id 12345 --body "Applied the fix."
+
+# Reply to a GitLab discussion
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- reply https://gitlab.com/group/project/-/merge_requests/456 --discussion-id "abc123" --body "Fixed." --signoff "CI bot"
+
+# Dry run
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- reply https://github.com/owner/repo/pull/123 --comment-id 12345 --body "Test" --dry-run
 ```
 
 #### extract — Extract line numbers from diff
@@ -141,6 +155,9 @@ comments = api.get_review_comments()
 api.post_comments([
     {"file": "path/to/file.adoc", "line": 42, "message": "Issue description"}
 ])
+
+# Reply to an existing comment
+api.reply_to_comment(comment_id=12345, body="Fixed.")
 
 # Extract line numbers from diff
 lines = api.extract_line_numbers("path/to/file.adoc")
