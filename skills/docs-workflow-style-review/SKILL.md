@@ -74,7 +74,7 @@ Set `DRAFTS_DIR="${BASE_PATH}/writing"` and build the block as:
 Select the prompt below based on the `--format` flag. Substitute `<SOURCE_FILES_BLOCK>` with the block built in step 2.
 
 **Agent tool parameters:**
-- `subagent_type`: `docs-reviewer`
+- `subagent_type`: `docs-skills:docs-reviewer`
 - `description`: `Review documentation for <TICKET>`
 
 **Prompt for AsciiDoc** (`--format adoc`):

@@ -41,11 +41,11 @@ Use paths relative to the repository root (workspace):
 python3 skills/learn-code/scripts/detect_language.py --repo /path/to/repo
 ```
 
-## Skill naming
+## Skill and agent naming
 
-Skills use bare names: `docs-workflow-requirements`, `jira-reader`, `learn-code`.
+**Skills** (invoked via the Skill tool) use bare names: `docs-workflow-requirements`, `jira-reader`, `learn-code`. Qualified names (`docs-skills:docs-workflow-requirements`) also work. Use bare names in workflow YAML step lists and skill-to-skill invocations.
 
-Qualified names (`docs-skills:docs-workflow-requirements`) also work since the plugin name is `docs-skills`. Use bare names in workflow YAML step lists and skill-to-skill invocations.
+**Agents** (invoked via the Agent tool's `subagent_type`) require fully-qualified names with the plugin prefix: `docs-skills:technical-reviewer`, `docs-skills:docs-writer`. Bare names like `technical-reviewer` will fail with "Agent type not found".
 
 ## Contributing rules
 

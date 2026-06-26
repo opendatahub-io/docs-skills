@@ -46,7 +46,7 @@ mkdir -p "$OUTPUT_DIR"
 **You MUST use the Agent tool** to invoke the `docs-planner` subagent. Do NOT read the agent's markdown file or attempt to perform the agent's work yourself — the agent has a specialized system prompt and must run as an isolated subagent.
 
 **Agent tool parameters:**
-- `subagent_type`: `docs-planner`
+- `subagent_type`: `docs-skills:docs-planner`
 - `description`: `Create documentation plan for <TICKET>`
 
 **Prompt** (pass this as the `prompt` parameter to the Agent tool):
