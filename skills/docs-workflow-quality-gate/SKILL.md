@@ -44,7 +44,64 @@ This reads the writing output and ticket context, then writes two prompt files:
 - `${BASE_PATH}/quality-gate/dq-prompt.md` — doc_quality judge prompt with doc content interpolated
 - `${BASE_PATH}/quality-gate/ia-prompt.md` — intent_alignment judge prompt with doc content and ticket context interpolated
 
-### 3. Dispatch judge agents
+### 3. Per-AC coverage verification
+
+Run a deterministic coverage check on every acceptance criterion before the judge agents. Each AC item gets its own subagent with a fresh context containing only that one AC item and the full documentation — no other ACs, no judge context, no conversation history.
+
+#### 3a. Prepare coverage check prompts
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py verify \
+  --ticket "${TICKET}" \
+  --base-path "${BASE_PATH}" \
+  --prepare
+```
+
+This reads `discovery.json` and the documentation content, then writes one prompt file per AC item to `${BASE_PATH}/quality-gate/coverage-prompts/` and a manifest to `${BASE_PATH}/quality-gate/coverage-prompts/manifest.json`.
+
+If the manifest `items` array is empty (no AC items found), skip steps 3b and 3c.
+
+#### 3b. Dispatch coverage check agents
+
+Read the manifest JSON output from 3a. For each item in the `items` array, dispatch one agent. Launch **all agents in a single message** (parallel execution).
+
+Each agent:
+
+- **Model**: (default — not Opus; these are simple yes/no+quote tasks)
+- **Prompt**: Read the contents of the item's `prompt_file` and follow the instructions
+- **Schema**:
+  ```json
+  {
+    "type": "object",
+    "properties": {
+      "covered": {"type": "boolean", "description": "Whether the documentation addresses this acceptance criterion"},
+      "quote": {"type": ["string", "null"], "description": "Verbatim supporting sentence from the documentation, or null if not covered"}
+    },
+    "required": ["covered", "quote"]
+  }
+  ```
+
+Write each agent's JSON output to the item's `result_file` path from the manifest.
+
+#### 3c. Classify coverage results
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py verify \
+  --ticket "${TICKET}" \
+  --base-path "${BASE_PATH}" \
+  --classify
+```
+
+This reads each agent's result, validates that quoted text actually appears in the documentation (whitespace-normalized substring match), cross-references against scope-req-audit evidence status, and writes `${BASE_PATH}/quality-gate/coverage-check.json`.
+
+Classifications:
+- `covered` — AC is addressed with a verified quote. No action needed.
+- `real_defect` — AC is not in the documentation but code evidence exists (grounded or partial). Fix it.
+- `correctly_absent` — AC is not in the documentation and code evidence is absent. Document as unsupported.
+- `unverified` — Agent claimed coverage but the quote was not found in the document. Investigate.
+- `investigate` — AC is not covered and evidence status is unknown.
+
+### 4. Dispatch judge agents
 
 Dispatch **two agents in parallel** (both are independent reads of the same docs):
 
@@ -94,7 +151,7 @@ Dispatch **two agents in parallel** (both are independent reads of the same docs
   }
   ```
 
-### 4. Write judge results
+### 5. Write judge results
 
 After both agents return, write their structured outputs to `${BASE_PATH}/quality-gate/judge-results.json`:
 
@@ -105,7 +162,7 @@ After both agents return, write their structured outputs to `${BASE_PATH}/qualit
 }
 ```
 
-### 5. Classify gaps and write step-result.json
+### 6. Classify gaps and write step-result.json
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py classify \
@@ -116,7 +173,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py classify \
 
 The script:
 1. Reads the judge results from the JSON file
-2. Cross-references `missed_items` against evidence status to classify each gap:
+2. Reads `coverage-check.json` if it exists (from step 3c) and merges coverage defects into the gaps array, deduplicating by AC text (coverage check classification takes precedence)
+3. Cross-references `missed_items` against evidence status to classify each gap:
    - `absent` → `document_as_unsupported` (add "not supported in this release" note)
    - `partial` → `expand_with_evidence` (expand with available code evidence)
    - `grounded` → `add_missing_section` (writing step missed it — re-include from plan)
@@ -124,9 +182,9 @@ The script:
 3. Writes `quality-gate/step-result.json` and `quality-gate/judge-results.md`
 4. Outputs the step-result JSON to stdout
 
-### 6. Build feedback brief (when `passed = false`)
+### 7. Build feedback brief (when `passed = false`)
 
-If `passed` is false, build `${BASE_PATH}/quality-gate/feedback-brief-<iteration>.md` (e.g., `feedback-brief-1.md`) so the orchestrator can dispatch the writer in fix mode. Read the `iteration` value from the step-result.json written in step 5. Skip this step if `passed` is true.
+If `passed` is false, build `${BASE_PATH}/quality-gate/feedback-brief-<iteration>.md` (e.g., `feedback-brief-1.md`) so the orchestrator can dispatch the writer in fix mode. Read the `iteration` value from the step-result.json written in step 6. Skip this step if `passed` is true.
 
 ```markdown
 # Feedback Brief for <TICKET> (iteration <N>)
@@ -140,6 +198,30 @@ artifacts, scope balance analysis, and audience alignment — all directly actio
 ## Doc Quality Judge Assessment
 
 [Insert rationales.doc_quality from step-result.json verbatim.]
+
+## Coverage Check Results
+
+[If coverage-check.json exists, read it from ${BASE_PATH}/quality-gate/coverage-check.json:]
+
+AC coverage: <covered>/<total> acceptance criteria addressed with verified quotes.
+
+### Uncovered AC Items
+
+[For each item in coverage_check.items where classification != "covered":]
+
+- **<ac_text>** (from <req_id>)
+  - Classification: <classification>
+  - Evidence status: <evidence_status>
+  - Action: <action description>
+
+[Map classification codes to instructions:]
+- `real_defect` with action `add_missing_section` → "This acceptance criterion is supported by code but not addressed in the documentation. Add content covering it."
+- `real_defect` with action `expand_with_evidence` → "This acceptance criterion is partially supported by code. Expand existing documentation to address it."
+- `correctly_absent` → "This acceptance criterion is not supported by the codebase. Add a note stating this is not supported in this release."
+- `unverified` → "An agent claimed this was covered but the supporting quote could not be verified in the document. Review whether this criterion is actually addressed."
+- `investigate` → "Coverage status could not be determined. Review whether this criterion should be documented."
+
+[If coverage-check.json does not exist, omit this section.]
 
 ## Classified Gaps with Recommended Actions
 
@@ -178,7 +260,7 @@ Address gaps in this order:
 
 Include the **full judge rationale text**, not just the classified gap list. The rationale contains per-AC-item severity assessments ("partially covered", "weakly covered", "barely covered", "mostly missing"), names specific missing artifacts, identifies scope imbalance, and diagnoses audience gaps. This gives the fix agent precise, nuanced instructions instead of flat action codes.
 
-### 7. Verify output (always runs)
+### 8. Verify output (always runs)
 
 Read `${BASE_PATH}/quality-gate/step-result.json` and verify it contains:
 - `doc_quality` (integer 1-5)
@@ -188,13 +270,50 @@ Read `${BASE_PATH}/quality-gate/step-result.json` and verify it contains:
 
 If the file is missing or malformed, report the error.
 
-### 8. Report results
+### 9. Report results
 
 Report the scores and pass/fail status:
 - "Quality gate: doc_quality=N/5, intent_alignment=N/5, passed=true/false, gaps=N"
-- If gaps exist, list each gap's `ac_item` and `action`
+- If coverage check ran: "Coverage: N/M AC items addressed with verified quotes"
+- If gaps exist, list each gap's `ac_item`, `judge`, and `action`
 
 ## Output
+
+### coverage-check.json
+
+```json
+{
+  "total": 12,
+  "covered": 9,
+  "uncovered": 3,
+  "items": [
+    {
+      "id": "REQ-001_AC00",
+      "req_id": "REQ-001",
+      "ac_index": 0,
+      "ac_text": "Users can configure custom CA bundles following the procedure",
+      "covered": true,
+      "quote": "To configure a custom CA bundle, set the `ca_bundle_path` parameter.",
+      "quote_verified": true,
+      "evidence_status": "grounded",
+      "classification": "covered",
+      "action": null
+    },
+    {
+      "id": "REQ-002_AC01",
+      "req_id": "REQ-002",
+      "ac_index": 1,
+      "ac_text": "Default CA bundle path is documented in the reference table",
+      "covered": false,
+      "quote": null,
+      "quote_verified": false,
+      "evidence_status": "grounded",
+      "classification": "real_defect",
+      "action": "add_missing_section"
+    }
+  ]
+}
+```
 
 ### step-result.json
 
@@ -208,6 +327,11 @@ Report the scores and pass/fail status:
   "intent_alignment": 4,
   "passed": false,
   "iteration": 1,
+  "coverage_check": {
+    "total": 12,
+    "covered": 9,
+    "uncovered": 3
+  },
   "gaps": [
     {
       "ac_item": "Document confidence scores",
@@ -228,6 +352,10 @@ Report the scores and pass/fail status:
 ### judge-results.md
 
 Human-readable summary with rationales from both judges and the gap list.
+
+### coverage-prompts/ and coverage-results/
+
+Per-AC prompt files (`coverage-prompts/<id>.md`), manifest (`coverage-prompts/manifest.json`), and agent results (`coverage-results/<id>.json`). Written by the coverage verification step (step 3).
 
 ### `feedback-brief-<iteration>.md` (when `passed = false`)
 

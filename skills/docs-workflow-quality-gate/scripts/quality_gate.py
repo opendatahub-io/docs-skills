@@ -1,10 +1,8 @@
 """Quality gate support for docs-orchestrator pipeline.
 
-Prepares judge inputs and classifies judge outputs. Judge scoring
-is handled by Claude Code agents (not direct API calls).
-
 Subcommands:
     prepare  — Read pipeline outputs, write judge prompt files
+    verify   — Per-AC coverage check (--prepare writes prompts, --classify validates quotes)
     classify — Read agent judge results, classify gaps, write step-result.json
 """
 
@@ -15,6 +13,26 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 PASS_THRESHOLD_INTENT = 4
+
+COVERAGE_CHECK_PROMPT = """\
+Does this documentation address the following acceptance criterion?
+
+## Acceptance criterion
+
+{ac_text}
+
+## Documentation
+
+{doc_content}
+
+## Instructions
+
+1. Read the documentation carefully.
+2. Determine whether the acceptance criterion is addressed.
+3. If yes, quote the single most relevant supporting sentence from the \
+documentation VERBATIM — copy it exactly as written, including punctuation.
+4. If no, set covered to false and quote to null.
+"""
 
 DOC_QUALITY_PROMPT = """\
 You are evaluating AI-generated AsciiDoc documentation for a Red Hat product feature.
@@ -71,6 +89,38 @@ and the section heading or location where content should be added or expanded. I
 section is needed, name the file it belongs in and where it should be inserted relative to \
 existing sections.
 """
+
+
+def normalize_whitespace(text):
+    """Collapse whitespace runs to single space for substring matching."""
+    return " ".join(text.split())
+
+
+def verify_quote(quote, doc_content):
+    """Check if a quote exists in the doc content (whitespace-normalized)."""
+    if not quote:
+        return False
+    return normalize_whitespace(quote) in normalize_whitespace(doc_content)
+
+
+def read_ac_items(base_path):
+    """Read discovery.json and flatten acceptance_criteria into a list."""
+    discovery = Path(base_path) / "requirements" / "discovery.json"
+    if not discovery.exists():
+        print(f"ERROR: {discovery} not found", file=sys.stderr)
+        sys.exit(1)
+
+    data = json.loads(discovery.read_text())
+    items = []
+    for req in data.get("requirements", []):
+        req_id = req.get("id", "")
+        for i, ac_text in enumerate(req.get("acceptance_criteria", [])):
+            items.append({
+                "req_id": req_id,
+                "ac_index": i,
+                "ac_text": ac_text,
+            })
+    return items
 
 
 def read_doc_content(base_path):
@@ -185,7 +235,80 @@ def classify_gaps(missed_items, evidence_status):
     return gaps
 
 
-def write_results(output_dir, ticket, doc_quality_result, intent_result, gaps, iteration):
+def classify_coverage(manifest, doc_content, evidence_status):
+    """Validate quotes and join to evidence status for each AC item."""
+    reqs_by_id = {}
+    if evidence_status:
+        for req in evidence_status.get("requirements", []):
+            rid = req.get("id", "")
+            if rid:
+                reqs_by_id[rid] = req
+
+    results = []
+    for entry in manifest.get("items", []):
+        result_file = Path(entry["result_file"])
+        agent_result = {"covered": False, "quote": None}
+        if result_file.exists():
+            try:
+                agent_result = json.loads(result_file.read_text())
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+        covered = agent_result.get("covered", False)
+        quote = agent_result.get("quote")
+        quote_verified = verify_quote(quote, doc_content) if covered else False
+
+        if covered and not quote_verified:
+            covered = False
+
+        req_id = entry["req_id"]
+        ev_status = "unknown"
+        if req_id in reqs_by_id:
+            ev_status = reqs_by_id[req_id].get("status", "unknown")
+
+        if covered and quote_verified:
+            classification = "covered"
+            action = None
+        elif not covered and ev_status == "grounded":
+            classification = "real_defect"
+            action = "add_missing_section"
+        elif not covered and ev_status == "partial":
+            classification = "real_defect"
+            action = "expand_with_evidence"
+        elif not covered and ev_status == "absent":
+            classification = "correctly_absent"
+            action = "document_as_unsupported"
+        elif agent_result.get("covered") and not quote_verified:
+            classification = "unverified"
+            action = "investigate"
+        else:
+            classification = "investigate"
+            action = "investigate"
+
+        results.append({
+            "id": entry["id"],
+            "req_id": req_id,
+            "ac_index": entry["ac_index"],
+            "ac_text": entry["ac_text"],
+            "covered": covered and quote_verified,
+            "quote": quote if quote_verified else None,
+            "quote_verified": quote_verified,
+            "evidence_status": ev_status,
+            "classification": classification,
+            "action": action,
+        })
+
+    covered_count = sum(1 for r in results if r["classification"] == "covered")
+    return {
+        "total": len(results),
+        "covered": covered_count,
+        "uncovered": len(results) - covered_count,
+        "items": results,
+    }
+
+
+def write_results(output_dir, ticket, doc_quality_result, intent_result, gaps, iteration,
+                  coverage_check=None):
     """Write step-result.json and judge-results.md."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -208,6 +331,12 @@ def write_results(output_dir, ticket, doc_quality_result, intent_result, gaps, i
             "intent_alignment": intent_result.get("rationale", ""),
         },
     }
+    if coverage_check is not None:
+        sidecar["coverage_check"] = {
+            "total": coverage_check["total"],
+            "covered": coverage_check["covered"],
+            "uncovered": coverage_check["uncovered"],
+        }
     (output_dir / "step-result.json").write_text(json.dumps(sidecar, indent=2))
 
     md_lines = [
@@ -260,6 +389,69 @@ def cmd_prepare(args):
     print()
 
 
+def cmd_verify(args):
+    """Per-AC coverage verification: prepare prompts or classify results."""
+    base_path = Path(args.base_path)
+    output_dir = base_path / "quality-gate"
+
+    if args.prepare:
+        ac_items = read_ac_items(base_path)
+        if not ac_items:
+            result = {"items": []}
+            json.dump(result, sys.stdout, indent=2)
+            print()
+            return
+
+        doc_content = read_doc_content(base_path)
+        prompts_dir = output_dir / "coverage-prompts"
+        prompts_dir.mkdir(parents=True, exist_ok=True)
+        results_dir = output_dir / "coverage-results"
+        results_dir.mkdir(parents=True, exist_ok=True)
+
+        manifest_items = []
+        for item in ac_items:
+            item_id = f"{item['req_id']}_AC{item['ac_index']:02d}"
+            prompt = COVERAGE_CHECK_PROMPT.format(
+                ac_text=item["ac_text"],
+                doc_content=doc_content,
+            )
+            prompt_file = prompts_dir / f"{item_id}.md"
+            prompt_file.write_text(prompt)
+
+            manifest_items.append({
+                "id": item_id,
+                "req_id": item["req_id"],
+                "ac_index": item["ac_index"],
+                "ac_text": item["ac_text"],
+                "prompt_file": str(prompt_file),
+                "result_file": str(results_dir / f"{item_id}.json"),
+            })
+
+        manifest = {"items": manifest_items}
+        (prompts_dir / "manifest.json").write_text(
+            json.dumps(manifest, indent=2)
+        )
+        json.dump(manifest, sys.stdout, indent=2)
+        print()
+
+    elif args.classify:
+        manifest_path = output_dir / "coverage-prompts" / "manifest.json"
+        if not manifest_path.exists():
+            print(f"ERROR: {manifest_path} not found", file=sys.stderr)
+            sys.exit(1)
+
+        manifest = json.loads(manifest_path.read_text())
+        doc_content = read_doc_content(base_path)
+        evidence_status = read_evidence_status(base_path)
+
+        coverage = classify_coverage(manifest, doc_content, evidence_status)
+        coverage_path = output_dir / "coverage-check.json"
+        coverage_path.write_text(json.dumps(coverage, indent=2))
+
+        json.dump(coverage, sys.stdout, indent=2)
+        print()
+
+
 def cmd_classify(args):
     """Read agent judge results, classify gaps, write step-result.json."""
     base_path = Path(args.base_path)
@@ -274,6 +466,28 @@ def cmd_classify(args):
     missed_items = ia_result.get("missed_items", [])
     gaps = classify_gaps(missed_items, evidence_status)
 
+    coverage_check = None
+    coverage_path = output_dir / "coverage-check.json"
+    if coverage_path.exists():
+        coverage_check = json.loads(coverage_path.read_text())
+        judge_ac_texts = {g["ac_item"].lower() for g in gaps}
+        for item in coverage_check.get("items", []):
+            if item["classification"] == "covered":
+                continue
+            if item["ac_text"].lower() in judge_ac_texts:
+                for g in gaps:
+                    if g["ac_item"].lower() == item["ac_text"].lower():
+                        g["evidence_status"] = item["evidence_status"]
+                        g["action"] = item["action"]
+                        break
+            else:
+                gaps.append({
+                    "ac_item": item["ac_text"],
+                    "judge": "coverage_check",
+                    "evidence_status": item["evidence_status"],
+                    "action": item["action"],
+                })
+
     sidecar = write_results(
         output_dir,
         args.ticket,
@@ -281,6 +495,7 @@ def cmd_classify(args):
         ia_result,
         gaps,
         args.iteration,
+        coverage_check=coverage_check,
     )
 
     json.dump(sidecar, sys.stdout, indent=2)
@@ -305,11 +520,27 @@ def main():
     )
     classify.add_argument("--iteration", type=int, default=1)
 
+    verify_parser = subparsers.add_parser(
+        "verify", help="Per-AC coverage verification"
+    )
+    verify_parser.add_argument("--ticket", required=True)
+    verify_parser.add_argument("--base-path", required=True)
+    verify_mode = verify_parser.add_mutually_exclusive_group(required=True)
+    verify_mode.add_argument(
+        "--prepare", action="store_true", help="Write per-AC prompt files"
+    )
+    verify_mode.add_argument(
+        "--classify", action="store_true",
+        help="Validate quotes, classify coverage",
+    )
+
     args = parser.parse_args()
     if args.command == "prepare":
         cmd_prepare(args)
     elif args.command == "classify":
         cmd_classify(args)
+    elif args.command == "verify":
+        cmd_verify(args)
 
 
 if __name__ == "__main__":
