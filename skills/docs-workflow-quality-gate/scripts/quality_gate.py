@@ -8,9 +8,26 @@ Subcommands:
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+_SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def _safe_artifact_id(value):
+    """Sanitize a string for use as a filename component."""
+    return _SAFE_ID_RE.sub("_", value).strip("._") or "item"
+
+
+def _resolve_under(path, root):
+    """Resolve path and verify it stays inside root."""
+    resolved = Path(path).resolve()
+    root = Path(root).resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError(f"path outside workspace: {resolved}")
+    return resolved
 
 PASS_THRESHOLD_INTENT = 4
 
@@ -32,6 +49,8 @@ Does this documentation address the following acceptance criterion?
 3. If yes, quote the single most relevant supporting sentence from the \
 documentation VERBATIM — copy it exactly as written, including punctuation.
 4. If no, set covered to false and quote to null.
+5. Return JSON only, with this exact shape:
+   {{"covered": true, "quote": "verbatim sentence"}} or {{"covered": false, "quote": null}}
 """
 
 DOC_QUALITY_PROMPT = """\
@@ -235,7 +254,7 @@ def classify_gaps(missed_items, evidence_status):
     return gaps
 
 
-def classify_coverage(manifest, doc_content, evidence_status):
+def classify_coverage(manifest, doc_content, evidence_status, output_dir):
     """Validate quotes and join to evidence status for each AC item."""
     reqs_by_id = {}
     if evidence_status:
@@ -246,7 +265,7 @@ def classify_coverage(manifest, doc_content, evidence_status):
 
     results = []
     for entry in manifest.get("items", []):
-        result_file = Path(entry["result_file"])
+        result_file = _resolve_under(entry["result_file"], output_dir)
         agent_result = {"covered": False, "quote": None}
         if result_file.exists():
             try:
@@ -254,33 +273,30 @@ def classify_coverage(manifest, doc_content, evidence_status):
             except (json.JSONDecodeError, KeyError):
                 pass
 
-        covered = agent_result.get("covered", False)
+        agent_covered = agent_result.get("covered", False) is True
         quote = agent_result.get("quote")
-        quote_verified = verify_quote(quote, doc_content) if covered else False
-
-        if covered and not quote_verified:
-            covered = False
+        quote_verified = verify_quote(quote, doc_content) if agent_covered else False
 
         req_id = entry["req_id"]
         ev_status = "unknown"
         if req_id in reqs_by_id:
             ev_status = reqs_by_id[req_id].get("status", "unknown")
 
-        if covered and quote_verified:
+        if agent_covered and quote_verified:
             classification = "covered"
             action = None
-        elif not covered and ev_status == "grounded":
-            classification = "real_defect"
-            action = "add_missing_section"
-        elif not covered and ev_status == "partial":
-            classification = "real_defect"
-            action = "expand_with_evidence"
-        elif not covered and ev_status == "absent":
-            classification = "correctly_absent"
-            action = "document_as_unsupported"
-        elif agent_result.get("covered") and not quote_verified:
+        elif agent_covered and not quote_verified:
             classification = "unverified"
             action = "investigate"
+        elif ev_status == "grounded":
+            classification = "real_defect"
+            action = "add_missing_section"
+        elif ev_status == "partial":
+            classification = "real_defect"
+            action = "expand_with_evidence"
+        elif ev_status == "absent":
+            classification = "correctly_absent"
+            action = "document_as_unsupported"
         else:
             classification = "investigate"
             action = "investigate"
@@ -290,7 +306,7 @@ def classify_coverage(manifest, doc_content, evidence_status):
             "req_id": req_id,
             "ac_index": entry["ac_index"],
             "ac_text": entry["ac_text"],
-            "covered": covered and quote_verified,
+            "covered": agent_covered and quote_verified,
             "quote": quote if quote_verified else None,
             "quote_verified": quote_verified,
             "evidence_status": ev_status,
@@ -408,9 +424,15 @@ def cmd_verify(args):
         results_dir = output_dir / "coverage-results"
         results_dir.mkdir(parents=True, exist_ok=True)
 
+        for stale in results_dir.glob("*.json"):
+            stale.unlink()
+        stale_check = output_dir / "coverage-check.json"
+        if stale_check.exists():
+            stale_check.unlink()
+
         manifest_items = []
         for item in ac_items:
-            item_id = f"{item['req_id']}_AC{item['ac_index']:02d}"
+            item_id = f"{_safe_artifact_id(item['req_id'])}_AC{item['ac_index']:02d}"
             prompt = COVERAGE_CHECK_PROMPT.format(
                 ac_text=item["ac_text"],
                 doc_content=doc_content,
@@ -444,7 +466,7 @@ def cmd_verify(args):
         doc_content = read_doc_content(base_path)
         evidence_status = read_evidence_status(base_path)
 
-        coverage = classify_coverage(manifest, doc_content, evidence_status)
+        coverage = classify_coverage(manifest, doc_content, evidence_status, output_dir)
         coverage_path = output_dir / "coverage-check.json"
         coverage_path.write_text(json.dumps(coverage, indent=2))
 
@@ -477,8 +499,10 @@ def cmd_classify(args):
             if item["ac_text"].lower() in judge_ac_texts:
                 for g in gaps:
                     if g["ac_item"].lower() == item["ac_text"].lower():
+                        g["judge"] = "coverage_check"
                         g["evidence_status"] = item["evidence_status"]
                         g["action"] = item["action"]
+                        g["classification"] = item["classification"]
                         break
             else:
                 gaps.append({
@@ -486,6 +510,7 @@ def cmd_classify(args):
                     "judge": "coverage_check",
                     "evidence_status": item["evidence_status"],
                     "action": item["action"],
+                    "classification": item["classification"],
                 })
 
     sidecar = write_results(
