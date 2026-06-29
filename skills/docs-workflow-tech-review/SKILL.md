@@ -128,44 +128,46 @@ Agent:
     After writing, print ONLY: Written <OUTPUT_DIR>/claims-list.json
 ```
 
-After the agent completes, extract the claims grouped by doc file from disk without reading the full file into context:
+After the agent completes, split the claims into per-doc-file batch files on disk. The script writes one `batch-claims-<sanitized>.json` per doc file and prints **only** counts and sanitized batch identifiers — never claim text — so claim details stay out of the orchestrator's context:
 
 ```bash
-python3 -c "
-import json
-claims = json.load(open('<OUTPUT_DIR>/claims-list.json'))
-by_file = {}
-for c in claims:
-    by_file.setdefault(c.get('file', 'unknown'), []).append(c)
-print(json.dumps({
-    'total_claims': len(claims),
-    'batch_count': len(by_file),
-    'batches': [{'file': f, 'count': len(cs), 'claims': [{'id': c['id'], 'text': c['text'][:60]} for c in cs]} for f, cs in sorted(by_file.items())]
-}))
-"
+python3 ${CLAUDE_SKILL_DIR}/scripts/split_claims.py \
+  --claims-list <OUTPUT_DIR>/claims-list.json \
+  --output-dir <OUTPUT_DIR>
 ```
 
-This gives the orchestrator the claim batches grouped by doc file — enough to dispatch one code-questioner agent per batch without loading full claim details into context.
+The script emits a JSON object:
+
+```json
+{
+  "total_claims": 12,
+  "batch_count": 3,
+  "batches": [
+    {"sanitized": "proc-creating-cluster", "file": "proc-creating-cluster.adoc",
+     "count": 2, "claims_file": "<OUTPUT_DIR>/batch-claims-proc-creating-cluster.json"}
+  ]
+}
+```
+
+This gives the orchestrator the batch list (sanitized name, doc filename, count, claims file path) — enough to dispatch one code-questioner agent per batch without loading any claim text into context.
 
 #### 3b. Dispatch code-questioner agents for validation (batched by doc file)
 
-For each doc-file batch (from the step 3a grouped output), dispatch a single `code-questioner` agent that verifies ALL claims from that file. Launch ALL batch agents in a **single message** (parallel execution).
+For each doc-file batch (from the step 3a `batches` list), dispatch a single `code-questioner` agent that verifies ALL claims from that file. Launch ALL batch agents in a **single message** (parallel execution).
 
-Each agent reads analysis data from disk and writes its verdicts to a per-batch file. This keeps the orchestrator's context lean — agent prompts are compact (~0.5KB each) and agent results are one-line confirmations.
+Each agent reads its claims AND the analysis data from disk, then writes its verdicts to a per-batch file. The agent prompt carries no claim text — only file paths — so the orchestrator's context stays lean (agent prompts are tiny and agent results are one-line confirmations).
 
-For each batch, use:
+For each batch (use its `sanitized`, `file`, `count`, and `claims_file` fields), use:
 
 ```
 Agent:
   subagent_type: docs-skills:code-questioner
-  description: "Verify <N> claims from <file>"
+  description: "Verify <count> claims from <file>"
   prompt: |
-    Verify documentation claims from <DOC_FILE> against the source code.
+    Verify documentation claims from <file> against the source code.
 
-    CLAIMS:
-    1. [<claim-id>] "<claim text>"
-    2. [<claim-id>] "<claim text>"
-    ...
+    Read the claims to verify from: <claims_file>
+    It is a JSON array of objects with fields: id, text, file, line.
 
     Read the learn-code analysis data from: <CODE_ANALYSIS_DIR>/
     Files available:
@@ -177,9 +179,9 @@ Agent:
 
     REPO_PATH: <repo_path>
 
-    OUTPUT_FILE: <OUTPUT_DIR>/batch-verdict-<sanitized_file>.json
+    OUTPUT_FILE: <OUTPUT_DIR>/batch-verdict-<sanitized>.json
 
-    Write a JSON array of verdicts — one entry for EVERY claim listed above:
+    Write a JSON array of verdicts — one entry for EVERY claim in the claims file (keyed by its `id`):
     [
       {"claim_id": "<id>", "claim_text": "<text>", "verdict": "supported|partially_supported|unsupported|no_evidence_found", "evidence": "<1-2 sentences with file:line refs>"},
       ...
@@ -189,7 +191,7 @@ Agent:
     After writing, print ONLY: Written <OUTPUT_FILE>
 ```
 
-Where `<sanitized_file>` is the doc filename with `.adoc`/`.md` extension stripped and non-alphanumeric characters replaced with hyphens (e.g., `pre-loaded-mcp-servers.adoc` → `pre-loaded-mcp-servers`).
+Use the batch's `sanitized` field (already computed by `split_claims.py`) for the `batch-verdict-<sanitized>.json` filename so it pairs with the batch claims file.
 
 **Important:** All Agent calls MUST be in a single message so they run in parallel.
 
@@ -203,56 +205,26 @@ ls <OUTPUT_DIR>/batch-verdict-*.json 2>/dev/null | wc -l
 
 Log: `"<found_count>/<batch_count> batch verdict files written to disk"`
 
-For any missing batch verdict files (agent failed or was skipped), the merge agent in step 3d will create fallback entries with verdict `no_evidence_found` for all claims in that batch.
+For any missing batch verdict files (agent failed or was skipped), the merge script in step 3d creates fallback entries with verdict `no_evidence_found` for all claims in that batch.
 
-#### 3d. Assemble claim-validation.json and validation summary via merge agent
+#### 3d. Assemble claim-validation.json and validation summary via merge script
 
-Delegate the assembly of the claim validation output to a merge subagent. This keeps the full validation data out of the orchestrator's context.
+Assembling the validation output is deterministic JSON work — no judgment — so it runs as a script, not a subagent. The script reads `claims-list.json`, every `batch-verdict-*.json`, and the analysis `registry.json`, then writes both output files and prints only confirmation lines. The full validation data never enters the orchestrator's context.
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/merge_verdicts.py \
+  --claims-list <OUTPUT_DIR>/claims-list.json \
+  --output-dir <OUTPUT_DIR> \
+  --claims-file <OUTPUT_DIR>/claim-validation.json \
+  --summary-file <OUTPUT_DIR>/validation-summary.md \
+  --code-analysis-dir <CODE_ANALYSIS_DIR>
+```
+
+Any claim with no matching verdict (missing batch file or skipped claim) is filled in with verdict `no_evidence_found`, so every claim is always covered. The script prints:
 
 ```
-Agent:
-  description: "Merge claim verdicts for <TICKET>"
-  prompt: |
-    Assemble claim-validation.json and validation-summary.md from batch verdict files.
-
-    CLAIMS_LIST_FILE: <OUTPUT_DIR>/claims-list.json
-    OUTPUT_DIR: <OUTPUT_DIR>
-    CLAIMS_FILE: <OUTPUT_DIR>/claim-validation.json
-    SUMMARY_FILE: <OUTPUT_DIR>/validation-summary.md
-    CODE_ANALYSIS_DIR: <CODE_ANALYSIS_DIR>
-
-    Instructions:
-    1. Read CLAIMS_LIST_FILE for the full claims list (id, text, file, line)
-    2. Read all batch verdict files matching <OUTPUT_DIR>/batch-verdict-*.json
-       - Each file contains a JSON array of verdict objects with fields:
-         claim_id, claim_text, verdict, evidence
-       - Collect all verdicts across all batch files into a single map keyed by claim_id
-    3. Cross-reference against the claims list:
-       - For any claim in the claims list that has no matching verdict, create a fallback:
-         {"claim_id": "<id>", "claim_text": "<text>",
-          "verdict": "no_evidence_found",
-          "evidence": "Agent did not return a verdict for this claim"}
-    4. Assemble CLAIMS_FILE:
-       {
-         "claims": [
-           {"id": "<claim-id>", "text": "...", "verdict": "supported|...",
-            "evidence": "...", "file": "...", "line": N}
-         ],
-         "summary": {
-           "supported": N,
-           "partially_supported": N,
-           "unsupported": N,
-           "no_evidence_found": N
-         }
-       }
-    5. Read <CODE_ANALYSIS_DIR>/registry.json for module coverage context
-    6. Write SUMMARY_FILE as markdown containing:
-       - Count of claims by verdict
-       - List of unsupported and partially_supported claims with their evidence
-       - Module coverage summary from registry.json
-    7. After writing both files, print ONLY:
-       Written <CLAIMS_FILE>
-       Written <SUMMARY_FILE>
+Written <OUTPUT_DIR>/claim-validation.json
+Written <OUTPUT_DIR>/validation-summary.md
 ```
 
 Set `HAS_CLAIMS=true`.
@@ -272,7 +244,15 @@ Set `HAS_CLAIMS=true`.
 > Review all .adoc and .md files. Follow your standard review methodology.
 > Save your review report to: `<OUTPUT_FILE>`
 >
-> The report must include an `Overall technical confidence: HIGH|MEDIUM|LOW` line.
+> The report must include an `Overall technical confidence: HIGH|MEDIUM|LOW` line and a `Severity counts: critical=N significant=N minor=N sme=N` line.
+>
+> After writing the report file, do NOT print the review contents. Print ONLY these three lines:
+>
+> ```
+> Written <OUTPUT_FILE>
+> Overall technical confidence: HIGH|MEDIUM|LOW
+> Severity counts: critical=N significant=N minor=N sme=N
+> ```
 
 **[Include only if HAS_REPO=true]** Append:
 
@@ -313,10 +293,15 @@ The report should also include a `Severity counts: critical=N significant=N mino
 
 ### 6. Write step-result.json
 
-Parse `<OUTPUT_FILE>` to extract the structured review metadata:
+Extract the two metadata lines from `<OUTPUT_FILE>` **without reading the full report into context** — grep only the lines you need:
 
-1. Find the `Overall technical confidence: HIGH|MEDIUM|LOW` line. Extract the confidence value
-2. Find the `Severity counts: critical=N significant=N minor=N sme=N` line if present. Extract each count (default to `0` if the line is missing)
+```bash
+grep -m1 -E '^Overall technical confidence:' "<OUTPUT_FILE>"
+grep -m1 -E '^Severity counts:' "<OUTPUT_FILE>"
+```
+
+1. From the confidence line, extract the `HIGH|MEDIUM|LOW` value
+2. From the severity line, extract each count (default to `0` if the line is missing)
 
 Write the sidecar to `${BASE_PATH}/technical-review/step-result.json`:
 
