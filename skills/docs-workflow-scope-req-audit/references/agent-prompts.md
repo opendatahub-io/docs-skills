@@ -10,7 +10,7 @@ For each requirement, use:
 
 ```text
 Agent:
-  subagent_type: requirement-classifier
+  subagent_type: docs-skills:requirement-classifier
   description: "Classify REQ-NNN: <title truncated to 40 chars>"
   prompt: |
     Classify this requirement by code evidence status.

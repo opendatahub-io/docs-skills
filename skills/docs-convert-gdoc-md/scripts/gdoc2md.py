@@ -141,13 +141,11 @@ def check_dependencies():
     except ImportError:
         print("Error: No authentication method available.", file=sys.stderr)
         print(
-            "  Option 1: Install gcloud CLI"
-            " — https://cloud.google.com/sdk/docs/install",
+            "  Option 1: Install gcloud CLI — https://cloud.google.com/sdk/docs/install",
             file=sys.stderr,
         )
         print(
-            "  Option 2: pip install google-auth and configure"
-            " Application Default Credentials.",
+            "  Option 2: pip install google-auth and configure Application Default Credentials.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -179,8 +177,7 @@ def get_token() -> str:
         return _gcloud_interactive_login()
 
     print(
-        "Error: Could not obtain credentials."
-        " Configure ADC or install gcloud CLI.",
+        "Error: Could not obtain credentials. Configure ADC or install gcloud CLI.",
         file=sys.stderr,
     )
     sys.exit(1)

@@ -59,7 +59,7 @@ Select the prompt based on `mode` and `format` from the JSON output. See [agent 
 | `fix` | *(any)* | `Fix documentation for <TICKET>` |
 
 **Agent tool parameters for all modes:**
-- `subagent_type`: `docs-writer`
+- `subagent_type`: `docs-skills:docs-writer`
 - `description`: use the value from the Description column
 
 In every prompt, substitute the `<TICKET>`, `<INPUT_FILE>`, `<OUTPUT_FILE>`, `<OUTPUT_DIR>`, `<DOCS_REPO_PATH>`, `<FIX_FROM>`, `<CODE_ANALYSIS_DIR>`, `<PR_ANALYSIS_DIR>`, `<SOURCE_REPO>`, `<ADDITIONAL_REPO_PATHS>`, `<ADDITIONAL_CODE_ANALYSIS_DIRS>`, `HAS_CODE_ANALYSIS`, and `HAS_PR_ANALYSIS` placeholders with the corresponding values from the script's JSON.

@@ -157,7 +157,7 @@ For each batch, use:
 
 ```
 Agent:
-  subagent_type: code-questioner
+  subagent_type: docs-skills:code-questioner
   description: "Verify <N> claims from <file>"
   prompt: |
     Verify documentation claims from <DOC_FILE> against the source code.
@@ -262,7 +262,7 @@ Set `HAS_CLAIMS=true`.
 **You MUST use the Agent tool** to invoke the `technical-reviewer` subagent. Do NOT read the agent's markdown file or attempt to perform the agent's work yourself — the agent has a specialized system prompt and must run as an isolated subagent.
 
 **Agent tool parameters:**
-- `subagent_type`: `technical-reviewer`
+- `subagent_type`: `docs-skills:technical-reviewer`
 - `description`: `Technical review of documentation for <TICKET>`
 
 **Prompt** (pass this as the `prompt` parameter to the Agent tool):

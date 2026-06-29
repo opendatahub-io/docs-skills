@@ -148,7 +148,7 @@ For `--local` mode: `git diff "$BASE_BRANCH"...HEAD -- $(cat /tmp/docs-review-do
 
 ## Step 4: Agent 1 — Technical Accuracy and Consistency
 
-- `subagent_type`: `technical-reviewer`
+- `subagent_type`: `docs-skills:technical-reviewer`
 - `model`: `opus`
 
 Follow the full technical review process: doc type detection, reviewer persona (developer/architect lens), 6 review dimensions, confidence scoring, and output format. Use `jira-reader`, `git-pr-reader`, and `article-extractor` skills to cross-check technical claims. Do not duplicate style or formatting checks.

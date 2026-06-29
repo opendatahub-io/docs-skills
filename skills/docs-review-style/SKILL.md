@@ -199,19 +199,19 @@ For `--pr` mode, use `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader
 
 ### Agent 1: Style guide compliance (batch A)
 
-- `subagent_type`: `docs-reviewer`
+- `subagent_type`: `docs-skills:docs-reviewer`
 
 Focus on: `ibm-sg-language-and-grammar`, `ibm-sg-punctuation`, `ibm-sg-structure-and-format`, `ibm-sg-technical-elements`, `rh-ssg-grammar-and-language`, `rh-ssg-formatting`, `rh-ssg-structure`, `rh-ssg-technical-examples`
 
 ### Agent 2: Style guide compliance (batch B)
 
-- `subagent_type`: `docs-reviewer`
+- `subagent_type`: `docs-skills:docs-reviewer`
 
 Focus on: `ibm-sg-audience-and-medium`, `ibm-sg-numbers-and-measurement`, `ibm-sg-references`, `ibm-sg-legal-information`, `rh-ssg-gui-and-links`, `rh-ssg-legal-and-support`, `rh-ssg-accessibility`, `rh-ssg-release-notes`
 
 ### Agent 3: Modular docs structure and content quality
 
-- `subagent_type`: `docs-reviewer`
+- `subagent_type`: `docs-skills:docs-reviewer`
 
 Focus on: `docs-review-modular-docs`, `docs-review-content-quality`. Run Vale once per file if available.
 
