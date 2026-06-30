@@ -456,9 +456,13 @@ def load_judge_result(path, label, require_missed):
         print(f"ERROR: {label} judge result has invalid score: {score!r}", file=sys.stderr)
         sys.exit(1)
 
-    data.setdefault("rationale", "")
+    rationale = data.get("rationale")
+    if not isinstance(rationale, str) or not rationale.strip():
+        print(f"ERROR: {label} judge result has invalid or missing rationale", file=sys.stderr)
+        sys.exit(1)
     if require_missed and not isinstance(data.get("missed_items"), list):
-        data["missed_items"] = []
+        print(f"ERROR: {label} judge result has invalid or missing missed_items", file=sys.stderr)
+        sys.exit(1)
     return data
 
 

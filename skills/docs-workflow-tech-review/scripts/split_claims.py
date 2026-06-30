@@ -70,8 +70,17 @@ def main() -> int:
         by_file.setdefault(doc, []).append(claim)
 
     batches = []
+    seen_sanitized: dict[str, str] = {}
     for doc, doc_claims in sorted(by_file.items()):
         sanitized = sanitize(doc) or "unknown"
+        previous = seen_sanitized.get(sanitized)
+        if previous is not None and previous != doc:
+            print(
+                f"ERROR: batch id collision: {previous!r} and {doc!r} both map to {sanitized!r}",
+                file=sys.stderr,
+            )
+            return 1
+        seen_sanitized[sanitized] = doc
         claims_file = output_dir / f"batch-claims-{sanitized}.json"
         claims_file.write_text(json.dumps(doc_claims, indent=2))
         batches.append(

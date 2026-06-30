@@ -25,10 +25,14 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-CONFIDENCE_RE = re.compile(r"Overall technical confidence:\**\s*\[?\s*(HIGH|MEDIUM|LOW)", re.I)
+CONFIDENCE_RE = re.compile(
+    r"^(?:\*\*)?Overall technical confidence:(?:\*\*)?\s*\[?\s*(HIGH|MEDIUM|LOW)",
+    re.I | re.M,
+)
 SEVERITY_RE = re.compile(
-    r"Severity counts:\**\s*critical=(\d+)\s+significant=(\d+)\s+minor=(\d+)\s+sme=(\d+)",
-    re.I,
+    r"^(?:\*\*)?Severity counts:(?:\*\*)?\s*"
+    r"critical=(\d+)\s+significant=(\d+)\s+minor=(\d+)\s+sme=(\d+)",
+    re.I | re.M,
 )
 
 
