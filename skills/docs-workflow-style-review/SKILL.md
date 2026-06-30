@@ -93,6 +93,8 @@ Select the prompt below based on the `--format` flag. Substitute `<SOURCE_FILES_
 >    - IBM Style Guide: ibm-sg-audience-and-medium, ibm-sg-language-and-grammar, ibm-sg-punctuation, ibm-sg-numbers-and-measurement, ibm-sg-structure-and-format, ibm-sg-references, ibm-sg-technical-elements, ibm-sg-legal-information
 >    - Red Hat SSG: rh-ssg-grammar-and-language, rh-ssg-formatting, rh-ssg-structure, rh-ssg-technical-examples, rh-ssg-gui-and-links, rh-ssg-legal-and-support, rh-ssg-accessibility, rh-ssg-release-notes (if applicable)
 > 4. Skip ambiguous issues requiring broader context
+>
+> After writing the report to `<OUTPUT_FILE>`, do NOT print the review contents. Print ONLY: `Written <OUTPUT_FILE>`
 
 **Prompt for MkDocs** (`--format mkdocs`):
 
@@ -110,6 +112,8 @@ Select the prompt below based on the `--format` flag. Substitute `<SOURCE_FILES_
 >    - IBM Style Guide: ibm-sg-audience-and-medium, ibm-sg-language-and-grammar, ibm-sg-punctuation, ibm-sg-numbers-and-measurement, ibm-sg-structure-and-format, ibm-sg-references, ibm-sg-technical-elements, ibm-sg-legal-information
 >    - Red Hat SSG: rh-ssg-grammar-and-language, rh-ssg-formatting, rh-ssg-structure, rh-ssg-technical-examples, rh-ssg-gui-and-links, rh-ssg-legal-and-support, rh-ssg-accessibility
 > 4. Skip ambiguous issues requiring broader context
+>
+> After writing the report to `<OUTPUT_FILE>`, do NOT print the review contents. Print ONLY: `Written <OUTPUT_FILE>`
 
 Note: MkDocs review omits `docs-review-modular-docs` (AsciiDoc-specific) and `rh-ssg-release-notes`.
 

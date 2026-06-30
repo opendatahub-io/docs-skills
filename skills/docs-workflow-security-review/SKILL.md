@@ -100,13 +100,33 @@ Start the review report with the scanner results:
 [Apply the checklist from step 5 and add findings here]
 ```
 
-### 5. Apply agent analysis checklist (Layer 2)
+### 5. Dispatch the security-reviewer agent (Layer 2)
 
-Read the checklist from `${CLAUDE_PLUGIN_ROOT}/skills/docs-review-security/SKILL.md` — specifically the "Layer 2: Agent analysis checklist" section. Apply each checklist item against the source files. For each finding, add it to the "Agent analysis" section of the report with file, line, category `agent-detected`, and a description.
+**You MUST use the Agent tool** to invoke the `security-reviewer` subagent. Do NOT read the checklist or apply it yourself — the agent reads the source files and the Layer 2 checklist in its own isolated context and appends findings directly to the report, so neither the doc content nor the checklist enters the orchestrator's context.
+
+**Agent tool parameters:**
+- `subagent_type`: `security-reviewer`
+- `description`: `Security Layer 2 review for <TICKET>`
+
+**Prompt** (substitute `<SOURCE_FILES>` with the file list from step 2 and `<OUTPUT_FILE>` with the report path):
+
+> Apply the Layer 2 agent-analysis checklist to the documentation for ticket `<TICKET>`.
+>
+> **Source files** — review each of these:
+> <SOURCE_FILES>
+>
+> **Report file**: `<OUTPUT_FILE>` — this file already contains the report header and scanner results. Append your findings to its **Agent analysis** section by editing it in place. Do NOT overwrite the existing content and do NOT write to any other location.
+>
+> After appending all findings, do NOT print the report contents. Print ONLY these two lines:
+>
+> ```
+> Written <OUTPUT_FILE>
+> Agent findings: N
+> ```
 
 ### 6. Verify output
 
-After the review completes, verify the review report exists at `<OUTPUT_FILE>`.
+After the agent completes, verify the review report exists at `<OUTPUT_FILE>`.
 
 ### 7. Write step-result.json
 
@@ -135,6 +155,6 @@ Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
 }
 ```
 
-Replace the `0` placeholders with actual counts from the scanner results and agent analysis. All numeric fields must be integers, not strings.
+Replace the `0` placeholders with actual counts: scanner counts come from `$SCANNER_FILE`, and `agent_findings` comes from the `Agent findings: N` line the security-reviewer agent printed (do not read the full report back to recount). All numeric fields must be integers, not strings.
 
 After writing the sidecar, sum the byte sizes of all output files in the step's output folder and add `context_size_bytes` to the sidecar.
