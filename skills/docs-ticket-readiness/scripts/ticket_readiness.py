@@ -18,15 +18,12 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 DEFAULT_READY_STATUSES = ["Done", "Closed", "Resolved", "In Review", "Code Review"]
 WARN_STATUSES = ["In Progress", "In Development", "In QE Review", "QE Review"]
 PR_URL_PATTERN = re.compile(
     r"https?://(?:github\.com/.+/pull/\d+|gitlab\.com/.+/-/merge_requests/\d+)"
 )
-REPO_URL_PATTERN = re.compile(
-    r"https?://(?:github\.com|gitlab\.com)/[^/]+/[^/]+"
-)
+REPO_URL_PATTERN = re.compile(r"https?://(?:github\.com|gitlab\.com)/[^/]+/[^/]+")
 
 
 def load_env():
@@ -83,9 +80,7 @@ def fetch_graph_data(jira_reader_path: str, issue_key: str) -> dict:
 
 def fetch_jql_data(jira_reader_path: str, jql: str, max_results: int = 10) -> list:
     """Fetch ticket list via jira_reader.py --jql."""
-    data = run_jira_reader(
-        jira_reader_path, ["--jql", jql, "--max-results", str(max_results)]
-    )
+    data = run_jira_reader(jira_reader_path, ["--jql", jql, "--max-results", str(max_results)])
     if isinstance(data, dict) and "error" in data:
         return data
     if isinstance(data, dict):
@@ -171,7 +166,10 @@ def check_pr_linkage(issue_data: dict, graph_data: dict, pr_states: dict | None 
     elif collected["commits"] or collected["repos"]:
         checks["git_links_present"] = {
             "status": "warn",
-            "detail": f"Repo/commit links found but no PRs: {', '.join(collected['repos'] or collected['commits'][:3])}",
+            "detail": (
+                "Repo/commit links found but no PRs: "
+                f"{', '.join(collected['repos'] or collected['commits'][:3])}"
+            ),
         }
     else:
         checks["git_links_present"] = {
@@ -283,7 +281,10 @@ def check_relationships(issue_data: dict, graph_data: dict) -> dict:
     if parent:
         checks["parent_epic"] = {
             "status": "pass",
-            "detail": f"{parent['key']} ({parent.get('issuetype', 'Unknown')}: {parent.get('summary', 'N/A')})",
+            "detail": (
+                f"{parent['key']} ({parent.get('issuetype', 'Unknown')}:"
+                f" {parent.get('summary', 'N/A')})"
+            ),
         }
     else:
         checks["parent_epic"] = {"status": "fail", "detail": "Orphan ticket (no parent or epic)"}
@@ -296,7 +297,10 @@ def check_relationships(issue_data: dict, graph_data: dict) -> dict:
     elif child_count > 0:
         checks["children"] = {"status": "pass", "detail": f"{child_count} children"}
     else:
-        checks["children"] = {"status": "pass", "detail": "No children (not required for this issue type)"}
+        checks["children"] = {
+            "status": "pass",
+            "detail": "No children (not required for this issue type)",
+        }
 
     # Grandchildren PRs — check children's git links
     if children:
@@ -321,7 +325,6 @@ def check_relationships(issue_data: dict, graph_data: dict) -> dict:
         checks["grandchildren_prs"] = {"status": "info", "detail": "No children to check"}
 
     # Siblings
-    siblings = graph_data.get("siblings", {}).get("issues", [])
     sibling_count = graph_data.get("siblings", {}).get("total", 0)
     if sibling_count > 0:
         checks["siblings"] = {"status": "info", "detail": f"{sibling_count} siblings under parent"}
@@ -380,7 +383,11 @@ def build_relationship_map(graph_data: dict) -> dict:
             # Grandchildren from issue_links
             grandchildren = []
             for link in child.get("issue_links", {}).get("links", []):
-                gc = {"key": link["key"], "summary": link.get("summary", ""), "type": link.get("issuetype", "Unknown")}
+                gc = {
+                    "key": link["key"],
+                    "summary": link.get("summary", ""),
+                    "type": link.get("issuetype", "Unknown"),
+                }
                 if link.get("git_links"):
                     gc["pr"] = link["git_links"][0]
                 grandchildren.append(gc)
@@ -391,7 +398,11 @@ def build_relationship_map(graph_data: dict) -> dict:
     siblings = graph_data.get("siblings", {}).get("issues", [])
     if siblings:
         rel_map["siblings"] = [
-            {"key": s["key"], "summary": s.get("summary", ""), "type": s.get("issuetype", "Unknown")}
+            {
+                "key": s["key"],
+                "summary": s.get("summary", ""),
+                "type": s.get("issuetype", "Unknown"),
+            }
             for s in siblings
         ]
 
@@ -538,7 +549,9 @@ def format_comment(result: dict) -> str:
         lines.extend(_format_dimension_gaps(dims, warns_only=False))
 
     lines.append("")
-    lines.append(f"_Assessed by docs-ticket-readiness on {datetime.now(timezone.utc).strftime('%Y-%m-%d')}_")
+    lines.append(
+        f"_Assessed by docs-ticket-readiness on {datetime.now(timezone.utc).strftime('%Y-%m-%d')}_"
+    )
     return "\n".join(lines)
 
 
@@ -642,7 +655,13 @@ def handle_post_comment() -> int:
     results = []
     for ticket in tickets:
         if ticket.get("error"):
-            results.append({"status": "skipped", "ticket": ticket.get("ticket", "?"), "reason": "assessment had errors"})
+            results.append(
+                {
+                    "status": "skipped",
+                    "ticket": ticket.get("ticket", "?"),
+                    "reason": "assessment had errors",
+                }
+            )
             continue
         comment = format_comment(ticket)
         result = post_jira_comment(ticket["ticket"], comment, jira_url, email, token)
@@ -711,7 +730,9 @@ def format_markdown_report(result: dict) -> str:
             for check_name, check in checks.items():
                 check_status = check.get("status", "pass")
                 detail = check.get("detail", "")
-                icon = {"pass": "pass", "warn": "WARN", "fail": "FAIL", "info": "info"}.get(check_status, check_status)
+                icon = {"pass": "pass", "warn": "WARN", "fail": "FAIL", "info": "info"}.get(
+                    check_status, check_status
+                )
                 lines.append(f"- {check_name}: [{icon}] {detail}")
 
         lines.append("")
@@ -721,17 +742,23 @@ def format_markdown_report(result: dict) -> str:
         lines.append("")
         parent = rel_map.get("parent")
         if parent:
-            lines.append(f"- **Parent:** {parent['key']} ({parent.get('type', '?')}: {parent.get('summary', '')})")
+            ptype = parent.get("type", "?")
+            psum = parent.get("summary", "")
+            lines.append(f"- **Parent:** {parent['key']} ({ptype}: {psum})")
 
         children = rel_map.get("children", [])
         if children:
             lines.append("- **Children:**")
             for child in children:
                 pr_info = f" — PR: {child['pr']}" if child.get("pr") else ""
-                lines.append(f"  - {child['key']} ({child.get('type', '?')}: {child.get('summary', '')}){pr_info}")
+                ctype = child.get("type", "?")
+                csum = child.get("summary", "")
+                lines.append(f"  - {child['key']} ({ctype}: {csum}){pr_info}")
                 for gc in child.get("children", []):
                     gc_pr = f" — PR: {gc['pr']}" if gc.get("pr") else ""
-                    lines.append(f"    - {gc['key']} ({gc.get('type', '?')}: {gc.get('summary', '')}){gc_pr}")
+                    gtype = gc.get("type", "?")
+                    gsum = gc.get("summary", "")
+                    lines.append(f"    - {gc['key']} ({gtype}: {gsum}){gc_pr}")
 
         siblings = rel_map.get("siblings", [])
         if siblings:

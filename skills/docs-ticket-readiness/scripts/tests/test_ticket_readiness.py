@@ -1,22 +1,21 @@
 """Tests for ticket_readiness.py dimension checks."""
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from ticket_readiness import (
-    check_pr_linkage,
     check_metadata,
+    check_pr_linkage,
     check_relationships,
     compute_overall_status,
-    build_relationship_map,
     format_comment,
     format_markdown_report,
 )
 
-
 # --- Mock data fixtures ---
+
 
 def make_issue_data(**overrides):
     """Build a mock --issue response with sensible defaults."""
@@ -83,7 +82,10 @@ def make_graph_data(**overrides):
                     "priority": "Medium",
                     "assignee": "Dev A",
                     "git_links": ["https://github.com/org/repo/pull/55"],
-                    "auto_discovered_urls": {"pull_requests": ["https://github.com/org/repo/pull/55"], "google_docs": []},
+                    "auto_discovered_urls": {
+                        "pull_requests": ["https://github.com/org/repo/pull/55"],
+                        "google_docs": [],
+                    },
                     "issue_links": {"total": 0, "showing": 0, "skipped": 0, "links": []},
                 },
                 {
@@ -116,7 +118,11 @@ def make_graph_data(**overrides):
         "web_links": {
             "total": 1,
             "links": [
-                {"title": "GitHub PR", "url": "https://github.com/org/repo/pull/42", "type": "pull_request"}
+                {
+                    "title": "GitHub PR",
+                    "url": "https://github.com/org/repo/pull/42",
+                    "type": "pull_request",
+                }
             ],
         },
         "auto_discovered_urls": {
@@ -129,6 +135,7 @@ def make_graph_data(**overrides):
 
 
 # --- Dimension 2: PR/source linkage ---
+
 
 class TestCheckPrLinkage:
     def test_pass_pr_on_ticket(self):
@@ -154,9 +161,14 @@ class TestCheckPrLinkage:
         graph = make_graph_data()
         graph["children"]["issues"] = [
             {
-                "key": "PROJ-456", "summary": "No PR child", "status": "Done",
-                "issuetype": "Sub-task", "priority": "Medium", "assignee": "Dev",
-                "git_links": [], "auto_discovered_urls": {"pull_requests": [], "google_docs": []},
+                "key": "PROJ-456",
+                "summary": "No PR child",
+                "status": "Done",
+                "issuetype": "Sub-task",
+                "priority": "Medium",
+                "assignee": "Dev",
+                "git_links": [],
+                "auto_discovered_urls": {"pull_requests": [], "google_docs": []},
                 "issue_links": {"total": 0, "showing": 0, "skipped": 0, "links": []},
             }
         ]
@@ -169,7 +181,16 @@ class TestCheckPrLinkage:
         issue = make_issue_data(git_links=["https://github.com/org/repo/commit/abc123"])
         graph = make_graph_data()
         graph["children"]["issues"] = []
-        graph["web_links"] = {"total": 1, "links": [{"title": "Commit", "url": "https://github.com/org/repo/commit/abc123", "type": "other"}]}
+        graph["web_links"] = {
+            "total": 1,
+            "links": [
+                {
+                    "title": "Commit",
+                    "url": "https://github.com/org/repo/commit/abc123",
+                    "type": "other",
+                }
+            ],
+        }
         graph["auto_discovered_urls"] = {"pull_requests": [], "google_docs": []}
         result = check_pr_linkage(issue, graph)
         assert result["checks"]["git_links_present"]["status"] == "warn"
@@ -181,11 +202,14 @@ class TestCheckPrLinkage:
         graph["children"]["issues"] = []
         graph["web_links"] = {"total": 0, "links": []}
         graph["auto_discovered_urls"] = {"pull_requests": [], "google_docs": []}
-        result = check_pr_linkage(issue, graph, pr_states={"https://github.com/org/repo/pull/42": "draft"})
+        result = check_pr_linkage(
+            issue, graph, pr_states={"https://github.com/org/repo/pull/42": "draft"}
+        )
         assert result["checks"]["pr_state"]["status"] == "warn"
 
 
 # --- Dimension 3: Metadata completeness ---
+
 
 class TestCheckMetadata:
     def test_pass_all_fields(self):
@@ -226,6 +250,7 @@ class TestCheckMetadata:
 
 # --- Dimension 4: Relationship context ---
 
+
 class TestCheckRelationships:
     def test_pass_has_parent(self):
         issue = make_issue_data()
@@ -263,6 +288,7 @@ class TestCheckRelationships:
 
 
 # --- Overall verdict ---
+
 
 class TestComputeOverallStatus:
     def test_ready_all_pass(self):
@@ -304,6 +330,7 @@ class TestComputeOverallStatus:
 
 # --- Comment formatting ---
 
+
 class TestFormatComment:
     def test_ready_comment(self):
         result = {
@@ -326,7 +353,11 @@ class TestFormatComment:
             "ticket": "PROJ-123",
             "overall_status": "not_ready",
             "dimensions": {
-                "description_quality": {"status": "fail", "score": 1, "gaps": ["No acceptance criteria"]},
+                "description_quality": {
+                    "status": "fail",
+                    "score": 1,
+                    "gaps": ["No acceptance criteria"],
+                },
                 "pr_source_linkage": {
                     "status": "fail",
                     "checks": {
@@ -393,6 +424,7 @@ class TestFormatComment:
 
 # --- Markdown report ---
 
+
 class TestFormatMarkdownReport:
     def test_report_has_header(self):
         result = {
@@ -402,9 +434,18 @@ class TestFormatMarkdownReport:
             "overall_status": "ready",
             "dimensions": {
                 "description_quality": {"status": "pass", "score": 4, "gaps": []},
-                "pr_source_linkage": {"status": "pass", "checks": {"git_links_present": {"status": "pass", "detail": "1 PR"}}},
-                "metadata_completeness": {"status": "pass", "checks": {"fix_versions": {"status": "pass", "detail": "4.15"}}},
-                "relationship_context": {"status": "pass", "checks": {"parent_epic": {"status": "pass", "detail": "PROJ-100"}}},
+                "pr_source_linkage": {
+                    "status": "pass",
+                    "checks": {"git_links_present": {"status": "pass", "detail": "1 PR"}},
+                },
+                "metadata_completeness": {
+                    "status": "pass",
+                    "checks": {"fix_versions": {"status": "pass", "detail": "4.15"}},
+                },
+                "relationship_context": {
+                    "status": "pass",
+                    "checks": {"parent_epic": {"status": "pass", "detail": "PROJ-100"}},
+                },
             },
             "relationship_map": {
                 "parent": {"key": "PROJ-100", "summary": "Platform", "type": "Epic"},
@@ -422,7 +463,11 @@ class TestFormatMarkdownReport:
             "url": "https://redhat.atlassian.net/browse/PROJ-456",
             "overall_status": "not_ready",
             "dimensions": {
-                "description_quality": {"status": "fail", "score": 1, "gaps": ["One-liner", "No ACs"]},
+                "description_quality": {
+                    "status": "fail",
+                    "score": 1,
+                    "gaps": ["One-liner", "No ACs"],
+                },
                 "pr_source_linkage": {"status": "pass", "checks": {}},
                 "metadata_completeness": {
                     "status": "fail",
@@ -457,7 +502,12 @@ class TestFormatMarkdownReport:
             "relationship_map": {
                 "parent": {"key": "PROJ-100", "summary": "Platform", "type": "Epic"},
                 "children": [
-                    {"key": "PROJ-456", "summary": "API", "type": "Story", "pr": "https://github.com/org/repo/pull/42"},
+                    {
+                        "key": "PROJ-456",
+                        "summary": "API",
+                        "type": "Story",
+                        "pr": "https://github.com/org/repo/pull/42",
+                    },
                 ],
                 "siblings": [
                     {"key": "PROJ-457", "summary": "UI", "type": "Story"},
