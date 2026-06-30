@@ -27,7 +27,7 @@ The runtime working directory is the **project root**, not the skill directory. 
 python3 ${CLAUDE_SKILL_DIR}/scripts/detect_language.py --repo /path/to/repo
 
 # Same-skill call (PEP 723 script with external deps)
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py -- --issue PROJ-123
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --issue PROJ-123
 
 # Cross-skill call
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/learn-code/scripts/detect_language.py --repo /path

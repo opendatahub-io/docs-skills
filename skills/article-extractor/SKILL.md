@@ -25,22 +25,22 @@ The skill uses a Python script that downloads and parses HTML content.
 
 **Extract article from a URL:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/article_extractor.py -- --url "https://example.com/page"
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/article_extractor.py --url "https://example.com/page"
 ```
 
 **Extract with specific output format:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/article_extractor.py -- --url "https://example.com/page" --format markdown
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/article_extractor.py --url "https://example.com/page" --format markdown
 ```
 
 **Save to file:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/article_extractor.py -- --url "https://example.com/page" --output article.md
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/article_extractor.py --url "https://example.com/page" --output article.md
 ```
 
 **Extract with custom article selector:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/article_extractor.py -- --url "https://example.com/page" --selector "article.main-content"
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/article_extractor.py --url "https://example.com/page" --selector "article.main-content"
 ```
 
 ### Command Line Options
@@ -68,7 +68,7 @@ Strips all HTML tags and returns plain text content.
 ### Red Hat Documentation
 ```bash
 # Extract from Red Hat OpenShift Lightspeed documentation
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/article_extractor.py -- \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/article_extractor.py \
   --url "https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/install/ols-installing-lightspeed" \
   --format markdown \
   --output openshift-lightspeed-install.md
@@ -77,7 +77,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/article_extractor.py -- \
 ### Generic Documentation Site
 ```bash
 # Extract from any site with article tags
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/article_extractor.py -- \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/article_extractor.py \
   --url "https://example.com/docs/guide" \
   --selector "article.documentation" \
   --format text

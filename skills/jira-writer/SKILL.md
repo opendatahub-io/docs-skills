@@ -38,42 +38,42 @@ The script loads `.env` files automatically — do **not** prepend `source ~/.en
 
 **Push a release note:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py -- --issue INFERENG-5233 --release-note "Fixed issue with..."
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py --issue INFERENG-5233 --release-note "Fixed issue with..."
 ```
 
 **Update release note status:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py -- --issue INFERENG-5233 --status Proposed
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py --issue INFERENG-5233 --status Proposed
 ```
 
 **Update custom field:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py -- --issue INFERENG-5233 --custom-field customfield_10783 --value "Release note content"
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py --issue INFERENG-5233 --custom-field customfield_10783 --value "Release note content"
 ```
 
 **Batch update multiple issues:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py -- --issue INFERENG-5233 --issue INFERENG-5049 --status Approved
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py --issue INFERENG-5233 --issue INFERENG-5049 --status Approved
 ```
 
 **Read release note from file:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py -- --issue INFERENG-5233 --release-note-file /path/to/note.txt
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py --issue INFERENG-5233 --release-note-file /path/to/note.txt
 ```
 
 **Add a label:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py -- --issue PROJ-123 --labels-add docs-in-progress
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py --issue PROJ-123 --labels-add docs-in-progress
 ```
 
 **Swap labels (remove + add in one API call):**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py -- --issue PROJ-123 --labels-remove docs-ready --labels-add docs-in-progress
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py --issue PROJ-123 --labels-remove docs-ready --labels-add docs-in-progress
 ```
 
 **Batch label update:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py -- --issue PROJ-123 --issue PROJ-456 --labels-add docs-complete
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_writer.py --issue PROJ-123 --issue PROJ-456 --labels-add docs-complete
 ```
 
 ## Output Format

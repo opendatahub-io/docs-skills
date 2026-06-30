@@ -43,3 +43,15 @@ jobs:
 
     - name: Run shellcheck
       run: find . -name '*.sh' -type f -exec shellcheck {} +
+
+    - name: Reject "--" separator in uv run --script invocations
+      run: |
+        # uv passes a "--" after the script path straight into the script's
+        # argv; flag-first scripts (e.g. jira_reader --issue) then fail with
+        # "unrecognized arguments: --". Invoke as: uv run --script <path> <args>.
+        if grep -rnE 'uv run --script [^[:space:]]+\.py +-- ' \
+             --include='*.md' --include='*.py' \
+             --exclude-dir=.git --exclude-dir=.venv .; then
+          echo "::error::Remove the '--' separator after 'uv run --script <path>' (see lines above)."
+          exit 1
+        fi
