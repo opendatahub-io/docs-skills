@@ -40,7 +40,7 @@ All sidecars share these fields:
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
 | `title` | string | First heading from requirements.md (max 80 chars, ticket prefix stripped) | `create_merge_request.sh` — PR/MR title |
-| `requirement_count` | integer | Number of requirements discovered in pass 1 | Informational (orchestrator summary) |
+| `requirement_count` | integer | Number of requirements discovered in pass 1 | Orchestrator — `when: has_many_requirements` condition for quality-gate |
 
 ### scope-req-audit
 
