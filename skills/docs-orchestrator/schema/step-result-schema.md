@@ -326,7 +326,6 @@ When an existing linked ticket is found:
   "step": "quality-gate",
   "ticket": "PROJ-123",
   "completed_at": "2026-04-23T15:50:00Z",
-  "doc_quality": 4,
   "intent_alignment": 3,
   "passed": false,
   "iteration": 1,
@@ -346,7 +345,6 @@ When an existing linked ticket is found:
     }
   ],
   "rationales": {
-    "doc_quality": "Full judge rationale text...",
     "intent_alignment": "Full judge rationale text with per-acceptance-criteria coverage assessments..."
   }
 }
@@ -354,9 +352,8 @@ When an existing linked ticket is found:
 
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
-| `doc_quality` | integer | Doc quality score (1-5) from Opus judge agent | Orchestrator — iteration logic |
-| `intent_alignment` | integer | Intent alignment score (1-5) from Opus judge agent | Orchestrator — iteration logic |
-| `passed` | boolean | Whether intent_alignment >= 4 (doc_quality is informational only) | Orchestrator — iteration logic |
+| `intent_alignment` | integer | Intent alignment score (1-5) from Opus judge agent | Orchestrator — informational; rationale drives the feedback brief |
+| `passed` | boolean | Authoritative gate verdict: every acceptance criterion `covered` or `correctly_absent` (falls back to `intent_alignment >= 4` when there are no acceptance criteria) | Orchestrator — iteration logic |
 | `iteration` | integer | Which iteration of the quality gate loop (1-based) | Orchestrator |
 | `coverage_check` | object\|null | Per-acceptance-criteria quote-based coverage verification summary (null if no acceptance criteria items found) | Quality gate iteration |
 | `coverage_check.total` | integer | Total acceptance criteria checked | Informational |
@@ -369,8 +366,7 @@ When an existing linked ticket is found:
 | `gaps[].action` | string | Recommended action: `"document_as_unsupported"`, `"expand_with_evidence"`, `"add_missing_section"`, or `"investigate"` | Quality gate iteration |
 | `gaps[].file` | string\|null | AsciiDoc filename where the fix should be applied | Quality gate iteration — targeted file edits |
 | `gaps[].section` | string\|null | Section heading or insertion point within the file | Quality gate iteration — targeted section edits |
-| `rationales` | object | Full judge rationale texts for the feedback brief | Quality gate iteration |
-| `rationales.doc_quality` | string | Complete doc_quality judge rationale | Quality gate iteration — included verbatim in feedback brief |
+| `rationales` | object | Full judge rationale text for the feedback brief | Quality gate iteration |
 | `rationales.intent_alignment` | string | Complete intent_alignment judge rationale with per-acceptance-criteria coverage assessments, missing artifacts, scope analysis | Quality gate iteration — included verbatim in feedback brief |
 
 ### action-comments

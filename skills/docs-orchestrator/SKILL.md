@@ -188,12 +188,12 @@ Loop up to 3 iterations until confidence is acceptable:
 
 ## Quality gate iteration
 
-Loop up to 2 iterations until `intent_alignment >= 4`:
+Loop up to 2 iterations until `passed` is true:
 
-1. Invoke `docs-workflow-quality-gate`. Read `quality-gate/step-result.json` — stop if missing or incomplete (needs `doc_quality`, `intent_alignment`, `passed`)
-2. `intent_alignment >= 4` → done (warn if `doc_quality < 4`). Otherwise continue
+1. Invoke `docs-workflow-quality-gate`. Read `quality-gate/step-result.json` — stop if missing or incomplete (needs `intent_alignment`, `passed`, `gaps`)
+2. `passed == true` → done. Otherwise continue
 3. Fix via `docs-workflow-writing --fix-from <BASE_PATH>/quality-gate/feedback-brief-<iteration>.md` (verify file exists first; pass all `--repo` flags), then re-run quality gate
-4. After 2 iterations: `intent_alignment >= 3` → accept with warning. `< 3` → ask user
+4. After 2 iterations still not passed: accept with warning, listing the unresolved `gaps[]` (the human MR review is the backstop)
 
 ### `when: has_many_requirements` condition
 

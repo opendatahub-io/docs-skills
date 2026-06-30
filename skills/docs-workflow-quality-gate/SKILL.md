@@ -1,15 +1,17 @@
 ---
 name: docs-workflow-quality-gate
-description: Score documentation quality and intent alignment using LLM judge agents. Dispatches two judge agents in parallel (doc_quality, intent_alignment), extracts specific gaps from acceptance criteria coverage analysis, and cross-references against scope-req-audit evidence. Produces pass/fail gate with actionable gap list. Iteration logic is owned by the orchestrator, not this skill.
+description: Score documentation intent alignment against the JIRA ticket and verify per-acceptance-criteria coverage with quote-grounded subagents. Dispatches one intent_alignment judge plus one coverage subagent per acceptance criterion, cross-references gaps against scope-req-audit evidence, and gates on coverage (every acceptance criterion must be covered or correctly documented as unsupported). Produces a pass/fail gate with an actionable gap list. Iteration logic is owned by the orchestrator, not this skill.
 argument-hint: <ticket> --base-path <path>
 allowed-tools: Read, Write, Bash, Glob, Grep, Agent
 ---
 
 # Quality Gate
 
-Score the pipeline's documentation output before creating a merge request. This skill dispatches two judge agents in parallel — one for doc_quality, one for intent_alignment. The agents return structured JSON via schema validation.
+Score the pipeline's documentation output before creating a merge request. The gate has two parts: a per-acceptance-criteria coverage check (one quote-grounded subagent per criterion) that is the **authoritative pass/fail signal**, and a single `intent_alignment` judge that supplies a holistic score plus a narrative rationale (scope match, audience fit, focus) for the feedback brief.
 
-The quality gate produces a pass/fail verdict and, when intent alignment is below threshold, a structured list of gaps with recommended actions and a feedback brief (`feedback-brief.md`) ready for the orchestrator to dispatch the writer in fix mode.
+The gate passes only when every acceptance criterion is either **covered** (a verified supporting quote exists in the docs) or **correctly absent** (no code evidence exists, so it is documented as unsupported). When it fails, the skill writes a structured list of gaps with recommended actions and a feedback brief (`feedback-brief-<iteration>.md`) ready for the orchestrator to dispatch the writer in fix mode.
+
+> **Note:** The `doc_quality` judge was removed. Structural and technical correctness — fabricated commands, modular-doc structure, style — are already covered by the `technical-review` and `style-review` steps. The quality gate now focuses solely on requirements coverage and intent, the dimension those steps do not assess.
 
 ## Arguments
 
@@ -40,13 +42,13 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py prepare \
   --base-path "${BASE_PATH}"
 ```
 
-This reads the writing output and ticket context, then writes two prompt files and reports where each judge must write its result. The prompt files already instruct each judge to write its result JSON to the path below and to print only a confirmation — so the (large) rationale never enters the orchestrator's context. The script's JSON output includes:
-- `dq_prompt` / `ia_prompt` — judge prompt file paths
-- `dq_result` (`${BASE_PATH}/quality-gate/dq-result.json`) / `ia_result` (`${BASE_PATH}/quality-gate/ia-result.json`) — where each judge writes its structured result
+This reads the writing output and ticket context, then writes the intent_alignment prompt file and reports where the judge must write its result. The prompt file already instructs the judge to write its result JSON to the path below and to print only a confirmation — so the (large) rationale never enters the orchestrator's context. The script's JSON output includes:
+- `ia_prompt` — judge prompt file path
+- `ia_result` (`${BASE_PATH}/quality-gate/ia-result.json`) — where the judge writes its structured result
 
 ### 3. Per-acceptance-criteria coverage verification
 
-Per-acceptance-criteria coverage check before the judge agents. Each acceptance criteria item gets its own subagent with only that one item and the full documentation — no other acceptance criteria, no judge context.
+This is the gate's authoritative signal and is **mandatory** whenever the ticket has acceptance criteria. Each acceptance criteria item gets its own subagent with only that one item and the full documentation — no other acceptance criteria, no judge context. The classify step (step 6) **fails loudly** if acceptance criteria exist but `coverage-check.json` is missing, so steps 3a–3c must not be skipped. Only skip this step when there are no acceptance criteria at all (3a reports an empty `items` array).
 
 #### 3a. Prepare coverage check prompts
 
@@ -101,23 +103,18 @@ Classifications:
 - `unverified` — Agent claimed coverage but the quote was not found in the document. Investigate.
 - `investigate` — acceptance criteria item is not covered and evidence status is unknown.
 
-### 4. Dispatch judge agents
+### 4. Dispatch the intent_alignment judge
 
-Dispatch **two agents in parallel** (both are independent reads of the same docs). Each judge writes its own result file to disk and returns only a two-line confirmation (`Written <path>` + `score=<N>`) — do **not** request schema output, and do **not** read the result files back here.
-
-#### doc_quality agent
-
-- **Model**: opus
-- **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/dq-prompt.md` and use it as the agent prompt. The prompt directs the agent to write `{score, rationale}` to `dq_result` and print only the confirmation.
+Dispatch **one agent**. It writes its result file to disk and returns only a two-line confirmation (`Written <path>` + `score=<N>`) — do **not** request schema output, and do **not** read the result file back here.
 
 #### intent_alignment agent
 
 - **Model**: opus
 - **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/ia-prompt.md` and use it as the agent prompt. The prompt directs the agent to write `{score, rationale, missed_items}` to `ia_result` and print only the confirmation.
 
-### 5. Verify judge result files
+### 5. Verify the judge result file
 
-Confirm both `dq_result` and `ia_result` files exist on disk before classifying. If either is missing, the corresponding judge failed — report the error and stop. Do not read their contents into context; the classify script reads and validates them.
+Confirm the `ia_result` file exists on disk before classifying. If it is missing, the judge failed — report the error and stop. Do not read its contents into context; the classify script reads and validates it.
 
 ### 6. Classify gaps and write outputs
 
@@ -127,17 +124,18 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py classify \
   --base-path "${BASE_PATH}"
 ```
 
-The script reads `dq-result.json` and `ia-result.json` from `${BASE_PATH}/quality-gate/` by default (override with `--dq-result`/`--ia-result`). It:
-1. Reads and validates both judge result files (fails loudly on a missing or malformed result)
-2. Reads `coverage-check.json` if it exists (from step 3c) and merges coverage defects into the gaps array, deduplicating by acceptance criteria text (coverage check classification takes precedence)
-3. Cross-references `missed_items` against evidence status to classify each gap:
+The script reads `ia-result.json` from `${BASE_PATH}/quality-gate/` by default (override with `--ia-result`). It:
+1. Reads and validates the intent_alignment judge result (fails loudly on a missing or malformed result)
+2. Reads `coverage-check.json` (from step 3c). If acceptance criteria exist but the file is missing, **fails loudly** — coverage is mandatory. Merges coverage defects into the gaps array, deduplicating by acceptance criteria text (coverage check classification takes precedence)
+3. Cross-references the judge's `missed_items` against evidence status, recovering the requirement id from the `REQ-NNN:` prefix, to classify each remaining gap:
    - `absent` → `document_as_unsupported` (add "not supported in this release" note)
    - `partial` → `expand_with_evidence` (expand with available code evidence)
    - `grounded` → `add_missing_section` (writing step missed it — re-include from plan)
    - `unknown` → `investigate` (evidence status unavailable)
-3. Writes `quality-gate/judge-results.json` (assembled artifact), `quality-gate/step-result.json`, and `quality-gate/judge-results.md`
-4. When `passed` is false, also writes `quality-gate/feedback-brief-<iteration>.md` (see step 6)
-5. Outputs the step-result JSON to stdout
+4. Computes the verdict: when coverage ran, `passed` is true only if **every** acceptance criterion is `covered` or `correctly_absent`; with no acceptance criteria, falls back to `intent_alignment >= 4`
+5. Writes `quality-gate/judge-results.json` (assembled artifact), `quality-gate/step-result.json`, and `quality-gate/judge-results.md`
+6. When `passed` is false, also writes `quality-gate/feedback-brief-<iteration>.md` (see step 7)
+7. Outputs the step-result JSON to stdout
 
 The iteration number is determined automatically from the briefs already on disk (first run → `1`, after one fix pass → `2`), so the brief and sidecar match the orchestrator's `feedback-brief-<iteration>.md` reference without an extra argument. Override with `--iteration <N>` only if you need to force a value.
 
@@ -150,7 +148,6 @@ Verify the brief exists when `passed` is false; do not read it back into context
 ### 8. Verify output (always runs)
 
 Read `${BASE_PATH}/quality-gate/step-result.json` and verify it contains:
-- `doc_quality` (integer 1-5)
 - `intent_alignment` (integer 1-5)
 - `passed` (boolean)
 - `gaps` (array)
@@ -159,8 +156,8 @@ If the file is missing or malformed, report the error.
 
 ### 9. Report results
 
-Report the scores and pass/fail status:
-- "Quality gate: doc_quality=N/5, intent_alignment=N/5, passed=true/false, gaps=N"
+Report the score and pass/fail status:
+- "Quality gate: intent_alignment=N/5, passed=true/false, gaps=N"
 - If coverage check ran: "Coverage: N/M acceptance criteria items addressed with verified quotes"
 - If gaps exist, list each gap's `ac_item`, `judge`, and `action`
 
@@ -198,7 +195,6 @@ Report the scores and pass/fail status:
   "step": "quality-gate",
   "ticket": "PROJ-123",
   "completed_at": "2026-06-11T16:00:00+00:00",
-  "doc_quality": 5,
   "intent_alignment": 4,
   "passed": false,
   "iteration": 1,
@@ -218,7 +214,6 @@ Report the scores and pass/fail status:
     }
   ],
   "rationales": {
-    "doc_quality": "Full judge rationale text...",
     "intent_alignment": "Full judge rationale text with per-acceptance-criteria coverage assessments..."
   }
 }
@@ -226,7 +221,7 @@ Report the scores and pass/fail status:
 
 ### judge-results.md
 
-Human-readable summary with rationales from both judges and the gap list.
+Human-readable summary with the intent_alignment judge rationale and the gap list.
 
 ### coverage-prompts/ and coverage-results/
 
@@ -238,10 +233,11 @@ Structured feedback document containing full judge rationales and classified gap
 
 ## Thresholds
 
-- `intent_alignment >= 4` → `passed = true`
-- `doc_quality` is reported but does **not** trigger a fix pass. If `doc_quality < 4`, the orchestrator logs a warning ("manual review recommended") but proceeds. Only intent_alignment gaps — specific missed acceptance criteria items — are actionable via targeted rewrites
-- When `passed = false`, this skill produces `feedback-brief-<iteration>.md` alongside the sidecar. The orchestrator dispatches the writer in fix mode with this file, or accepts with warning after max iterations
+- **Coverage gate (authoritative)**: `passed = true` only when every acceptance criterion is `covered` (a verified quote exists) or `correctly_absent` (no code evidence — documented as unsupported). Any `real_defect`, `unverified`, or `investigate` item fails the gate.
+- **Fallback**: when the ticket has no acceptance criteria, there is nothing to verify, so the gate falls back to `intent_alignment >= 4`.
+- `intent_alignment` is always reported and its rationale drives the feedback brief, but its score is not the gate when coverage ran.
+- When `passed = false`, this skill produces `feedback-brief-<iteration>.md` alongside the sidecar. The orchestrator dispatches the writer in fix mode with this file, or accepts with warning after max iterations.
 
 ## Model
 
-Judge agents use Opus. The model is specified via the Agent tool's `model` parameter — no separate API key or credentials required.
+The intent_alignment judge uses Opus. The per-acceptance-criteria coverage subagents use the default model (simple yes/no + quote tasks). The model is specified via the Agent tool's `model` parameter — no separate API key or credentials required.

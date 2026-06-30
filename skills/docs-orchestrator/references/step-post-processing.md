@@ -49,7 +49,7 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 ## quality-gate
 
-- Log: `"Quality gate: doc_quality=<N>/5, intent_alignment=<N>/5, passed=<true|false>, gaps=<N>"`
+- Log: `"Quality gate: intent_alignment=<N>/5, passed=<true|false>, coverage=<covered>/<total>, gaps=<N>"`
 - If `passed` is false → enter [Quality gate iteration](../SKILL.md#quality-gate-iteration) loop
 
 ## pipeline-diagnostics

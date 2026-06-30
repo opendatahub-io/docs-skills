@@ -1,28 +1,18 @@
 # Quality Gate
 
-The quality gate is a documentation quality assurance step in the docs-orchestrator workflow. It scores documentation on two dimensions using independent LLM judge agents (Opus), produces a pass/fail verdict, and triggers automated fix iterations when documentation falls short of intent alignment.
+The quality gate is a documentation quality assurance step in the docs-orchestrator workflow. It verifies that every acceptance criterion in the JIRA ticket is addressed by the documentation, produces a pass/fail verdict from a deterministic per-acceptance-criteria coverage check, and triggers automated fix iterations when criteria are missed.
 
 ## Purpose
 
 The quality gate answers: **"Did we write what was asked for?"** It evaluates documentation after the writing, technical-review, style-review, and security-review steps, before a merge request is created. It is orthogonal to technical review (which checks accuracy) — the quality gate checks **completeness and intent alignment** against the original JIRA ticket and its acceptance criteria.
 
-## Scoring dimensions
+The gate has two components: a **per-acceptance-criteria coverage check** (the authoritative pass/fail signal) and a single **intent_alignment judge** (a holistic score and narrative rationale that feeds the feedback brief).
 
-Two parallel Opus judge agents evaluate the documentation independently:
+> **Removed: the `doc_quality` judge.** Earlier versions ran a second Opus judge that scored documentation on production readiness (technical accuracy, modular structure, absence of fabrication). That dimension is already covered by the `technical-review` and `style-review` steps, and in practice the score was non-discriminating (near-constant 4/5) and never gated. It was removed so the quality gate focuses solely on the requirements-coverage dimension those steps do not assess.
 
-### doc_quality (1-5)
+## The intent_alignment judge
 
-Production readiness: technical accuracy, completeness, modular structure (concept/procedure/reference modules), and absence of fabricated content.
-
-| Score | Meaning |
-|-------|---------|
-| 1 | Unusable |
-| 2 | Major issues |
-| 3 | Acceptable with caveats |
-| 4 | Good |
-| 5 | Excellent |
-
-This score is **informational only** — it does not trigger fix iterations. If `doc_quality < 4`, the orchestrator logs a warning recommending manual review.
+A single Opus judge scores the documentation against the ticket intent.
 
 ### intent_alignment (1-5)
 
@@ -46,7 +36,7 @@ When `intent_alignment < 4`, the judge returns a `missed_items` array identifyin
 
 ## Per-acceptance-criteria coverage verification
 
-Before the judge agents score the documentation, a deterministic coverage check verifies each acceptance criterion is addressed with a grounded quote. This runs on every quality gate invocation (initial and re-runs), providing a verifiable signal independent of the LLM judges.
+The deterministic coverage check is the authoritative gate signal. It verifies each acceptance criterion is addressed with a grounded quote, independent of the LLM judge. It is **mandatory** whenever the ticket has acceptance criteria and runs on every quality gate invocation (initial and re-runs); the `classify` step fails loudly if acceptance criteria exist but the coverage results are missing.
 
 ### Procedure
 
@@ -69,22 +59,26 @@ Before the judge agents score the documentation, a deterministic coverage check 
 
 The key insight: `real_defect` (absent from doc, present in code) means "fix it" — the documentation is genuinely missing content. `correctly_absent` (absent from doc, absent in code) means "leave it" — the feature doesn't exist, so document it as unsupported. This distinction is automatic because it joins two independent signals.
 
-### Relationship to judge agents
+### Relationship to the intent judge
 
-The coverage check and judge agents serve different purposes:
-- **Coverage check**: deterministic, per-acceptance-criteria, quote-grounded. Answers "is this specific acceptance criteria item addressed, provably?"
-- **Judge agents**: holistic quality and intent alignment scoring. Answers "is the documentation good and on-target?"
+The coverage check and the intent judge serve different purposes:
+- **Coverage check**: deterministic, per-acceptance-criteria, quote-grounded. Answers "is this specific acceptance criteria item addressed, provably?" — and is the gate.
+- **Intent judge**: holistic scoring and narrative. Answers "is the documentation on-target for the audience and scope?" — its rationale drives the feedback brief and its `missed_items` supplement the gap list.
 
 Coverage check defects are merged into the gaps array alongside judge-derived gaps. When both identify the same gap, the coverage check classification takes precedence because it includes a deterministic quote verification. The `judge` field distinguishes the source (`"coverage_check"` vs `"intent_alignment"`).
 
 ## Pass/fail criteria
 
+The gate is coverage-driven. It passes only when **every** acceptance criterion is `covered` or `correctly_absent`:
+
 | Condition | Result |
 |-----------|--------|
-| `intent_alignment >= 4` | **Pass** — proceed to merge request |
-| `intent_alignment < 4` | **Fail** — enter iteration loop |
-| After 2 iterations, `intent_alignment >= 3` | **Accept with warning** |
-| After 2 iterations, `intent_alignment < 3` | **Ask user** — proceed or stop |
+| Every acceptance criterion `covered` or `correctly_absent` | **Pass** — proceed to merge request |
+| Any `real_defect`, `unverified`, or `investigate` criterion | **Fail** — enter iteration loop |
+| No acceptance criteria exist (nothing to verify) | Fall back to `intent_alignment >= 4` |
+| After 2 iterations, still failing | **Accept with warning**, listing unresolved gaps |
+
+A `correctly_absent` criterion (missing from the docs and absent from the code) does not block the gate — the feature genuinely does not exist — but is still surfaced as a gap with a `document_as_unsupported` action.
 
 ## Conditional execution
 
@@ -115,13 +109,13 @@ When the quality gate fails (`passed = false`), the orchestrator enters an itera
 
 1. Quality gate runs, produces `step-result.json`
 2. If `passed = false`, build `feedback-brief-<N>.md` containing:
-   - Full judge rationales (verbatim from both judges)
+   - The full intent_alignment judge rationale (verbatim)
    - Classified gap list with recommended actions
    - Priority ordering for fixes
    - Prior-attempt guidance (iteration 2+)
 3. Dispatch the writer in fix mode: `docs-workflow-writing --fix-from feedback-brief-<N>.md`
 4. Re-run the quality gate on the updated documentation
-5. After 2 iterations: accept with warning if `intent_alignment >= 3`, otherwise ask the user
+5. After 2 iterations still failing: accept with warning, listing the unresolved gaps (the human MR review is the backstop)
 
 ## Gap classification
 
@@ -156,9 +150,8 @@ The quality gate writes to `.agent_workspace/<ticket>/quality-gate/`:
 | `coverage-prompts/<id>.md` | Per-acceptance-criteria prompt file with doc content |
 | `coverage-results/<id>.json` | Per-acceptance-criteria agent result (`covered`, `quote`) |
 | `coverage-check.json` | Classified results with quote verification and evidence status join |
-| `dq-prompt.md` | Doc quality judge prompt with documentation content interpolated |
 | `ia-prompt.md` | Intent alignment judge prompt with documentation and ticket context |
-| `judge-results.json` | Raw structured outputs from both judge agents |
+| `judge-results.json` | Raw structured output from the intent_alignment judge |
 | `judge-results.md` | Human-readable summary with rationales |
 | `step-result.json` | Sidecar metadata: scores, passed flag, gaps, coverage summary, rationales |
 | `feedback-brief-<N>.md` | Fix instructions for writer iteration (only when `passed = false`) |
@@ -171,7 +164,6 @@ The quality gate writes to `.agent_workspace/<ticket>/quality-gate/`:
   "step": "quality-gate",
   "ticket": "PROJ-123",
   "completed_at": "2026-04-23T15:50:00Z",
-  "doc_quality": 4,
   "intent_alignment": 3,
   "passed": false,
   "iteration": 1,
@@ -191,7 +183,6 @@ The quality gate writes to `.agent_workspace/<ticket>/quality-gate/`:
     }
   ],
   "rationales": {
-    "doc_quality": "Full judge rationale text...",
     "intent_alignment": "Full judge rationale text with per-acceptance-criteria coverage..."
   }
 }
@@ -200,7 +191,7 @@ The quality gate writes to `.agent_workspace/<ticket>/quality-gate/`:
 ## Implementation
 
 - **Skill**: `docs-workflow-quality-gate` (`skills/docs-workflow-quality-gate/SKILL.md`)
-- **Script**: `skills/docs-workflow-quality-gate/scripts/quality_gate.py` — subcommands: `prepare` (build judge prompts), `verify` (per-acceptance-criteria coverage check), `classify` (cross-reference gaps, write sidecar)
+- **Script**: `skills/docs-workflow-quality-gate/scripts/quality_gate.py` — subcommands: `prepare` (build the intent judge prompt), `verify` (per-acceptance-criteria coverage check), `classify` (compute the coverage verdict, cross-reference gaps, write sidecar)
 - **Condition logic**: `skills/docs-orchestrator/references/quality-gate-conditions.md`
 - **Post-processing**: `skills/docs-orchestrator/references/step-post-processing.md`
 - **Workflow definition**: `skills/docs-orchestrator/defaults/docs-workflow.yaml` (step 10 of 12)

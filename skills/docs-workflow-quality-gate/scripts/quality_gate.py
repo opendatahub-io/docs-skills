@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 _SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+_REQ_ID_RE = re.compile(r"\b(REQ-\d+)\b", re.IGNORECASE)
 
 
 def _safe_artifact_id(value):
@@ -52,25 +53,6 @@ documentation VERBATIM — copy it exactly as written, including punctuation.
 4. If no, set covered to false and quote to null.
 5. Return JSON only, with this exact shape:
    {{"covered": true, "quote": "verbatim sentence"}} or {{"covered": false, "quote": null}}
-"""
-
-DOC_QUALITY_PROMPT = """\
-You are evaluating AI-generated AsciiDoc documentation for a Red Hat product feature.
-
-Score the documentation on a 1-5 scale:
-1 - Unusable: major errors, fabricated content, or missing critical sections
-2 - Poor: significant gaps in coverage or accuracy
-3 - Acceptable: covers the basics correctly but lacks depth or polish
-4 - Good: comprehensive, accurate, well-structured, minor issues only
-5 - Excellent: production-ready quality, matches what a senior tech writer would produce
-
-Consider: technical accuracy, completeness relative to the JIRA ticket scope,
-modular documentation structure (concept/procedure/reference separation),
-and absence of fabricated commands, flags, or API details.
-
-## Documentation to evaluate
-
-{doc_content}
 """
 
 INTENT_ALIGNMENT_PROMPT = """\
@@ -129,9 +111,6 @@ commentary. Print ONLY these two lines:
     Written {result_path}
     score=<N>
 """
-
-DQ_SCHEMA = """The JSON object must have exactly these fields:
-{"score": <integer 1-5>, "rationale": "<detailed rationale for the score>"}"""
 
 IA_SCHEMA = """The JSON object must have these fields:
 {"score": <integer 1-5>,
@@ -275,15 +254,27 @@ def classify_gaps(missed_items, evidence_status):
     for item in missed_items:
         ac_text = item.get("ac_item", "")
         ac_lower = ac_text.lower()
+
+        # The intent judge does not emit an `id` field, so recover the
+        # requirement id from the `REQ-NNN:` prefix the judge prepends to each
+        # ac_item (e.g. "REQ-003: Document async handoffs ...").
         req_id = item.get("id", "")
+        if not req_id:
+            match = _REQ_ID_RE.search(ac_text)
+            if match:
+                req_id = match.group(1).upper()
 
         ev_status = "unknown"
         action = "investigate"
 
         if req_id and req_id in reqs_by_id:
             ev_status = reqs_by_id[req_id].get("status", "unknown")
-        elif ac_lower in reqs_by_title:
-            ev_status = reqs_by_title[ac_lower].get("status", "unknown")
+        else:
+            # Fall back to matching an evidence title contained in the ac_item.
+            for title_lower, req in reqs_by_title.items():
+                if title_lower in ac_lower:
+                    ev_status = req.get("status", "unknown")
+                    break
 
         if ev_status == "absent":
             action = "document_as_unsupported"
@@ -378,28 +369,39 @@ def classify_coverage(manifest, doc_content, evidence_status, output_dir):
     }
 
 
-def write_results(
-    output_dir, ticket, doc_quality_result, intent_result, gaps, iteration, coverage_check=None
-):
+def compute_passed(ia_score, coverage_check):
+    """Determine the gate verdict.
+
+    When the per-AC coverage check ran, the gate is coverage-driven: every
+    acceptance criterion must be `covered` (verified quote) or `correctly_absent`
+    (no code evidence — documented as unsupported). Any `real_defect`,
+    `unverified`, or `investigate` item fails the gate. When there are no
+    acceptance criteria to check, fall back to the holistic intent score.
+    """
+    if coverage_check and coverage_check.get("items"):
+        return all(
+            item["classification"] in ("covered", "correctly_absent")
+            for item in coverage_check["items"]
+        )
+    return ia_score >= PASS_THRESHOLD_INTENT
+
+
+def write_results(output_dir, ticket, intent_result, gaps, iteration, passed, coverage_check=None):
     """Write step-result.json and judge-results.md."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    dq_score = doc_quality_result.get("score", 0)
     ia_score = intent_result.get("score", 0)
-    passed = ia_score >= PASS_THRESHOLD_INTENT
 
     sidecar = {
         "schema_version": 1,
         "step": "quality-gate",
         "ticket": ticket,
         "completed_at": datetime.now(timezone.utc).isoformat(),
-        "doc_quality": dq_score,
         "intent_alignment": ia_score,
         "passed": passed,
         "iteration": iteration,
         "gaps": gaps,
         "rationales": {
-            "doc_quality": doc_quality_result.get("rationale", ""),
             "intent_alignment": intent_result.get("rationale", ""),
         },
     }
@@ -413,13 +415,10 @@ def write_results(
 
     md_lines = [
         f"# Quality Gate Results — {ticket}\n",
-        f"**doc_quality**: {dq_score}/5",
         f"**intent_alignment**: {ia_score}/5",
         f"**passed**: {passed}",
         f"**iteration**: {iteration}\n",
-        "## Doc Quality Rationale\n",
-        doc_quality_result.get("rationale", "(none)"),
-        "\n## Intent Alignment Rationale\n",
+        "## Intent Alignment Rationale\n",
         intent_result.get("rationale", "(none)"),
     ]
 
@@ -466,10 +465,10 @@ def load_judge_result(path, label, require_missed):
     return data
 
 
-def build_feedback_brief(output_dir, ticket, iteration, dq_result, ia_result, gaps):
+def build_feedback_brief(output_dir, ticket, iteration, ia_result, gaps):
     """Write feedback-brief-<iteration>.md for the writer's fix pass.
 
-    Deterministic template assembly — the full judge rationales and classified
+    Deterministic template assembly — the full judge rationale and classified
     gaps are written to disk, never returned into the orchestrator's context.
     """
     lines = [
@@ -478,10 +477,6 @@ def build_feedback_brief(output_dir, ticket, iteration, dq_result, ia_result, ga
         "## Intent Alignment Judge Assessment",
         "",
         ia_result.get("rationale") or "(none)",
-        "",
-        "## Doc Quality Judge Assessment",
-        "",
-        dq_result.get("rationale") or "(none)",
         "",
         "## Classified Gaps with Recommended Actions",
         "",
@@ -538,24 +533,18 @@ def cmd_prepare(args):
     doc_content = read_doc_content(base_path)
     ticket_context = read_ticket_context(base_path)
 
-    dq_result_path = output_dir / "dq-result.json"
     ia_result_path = output_dir / "ia-result.json"
 
-    dq_prompt = DOC_QUALITY_PROMPT.format(doc_content=doc_content)
-    dq_prompt += JUDGE_OUTPUT_INSTRUCTIONS.format(result_path=dq_result_path, schema=DQ_SCHEMA)
     ia_prompt = INTENT_ALIGNMENT_PROMPT.format(
         ticket_context=ticket_context,
         doc_content=doc_content,
     )
     ia_prompt += JUDGE_OUTPUT_INSTRUCTIONS.format(result_path=ia_result_path, schema=IA_SCHEMA)
 
-    (output_dir / "dq-prompt.md").write_text(dq_prompt)
     (output_dir / "ia-prompt.md").write_text(ia_prompt)
 
     result = {
-        "dq_prompt": str(output_dir / "dq-prompt.md"),
         "ia_prompt": str(output_dir / "ia-prompt.md"),
-        "dq_result": str(dq_result_path),
         "ia_result": str(ia_result_path),
     }
     json.dump(result, sys.stdout, indent=2)
@@ -636,10 +625,7 @@ def cmd_classify(args):
     base_path = Path(args.base_path)
     output_dir = base_path / "quality-gate"
 
-    dq_path = Path(args.dq_result) if args.dq_result else output_dir / "dq-result.json"
     ia_path = Path(args.ia_result) if args.ia_result else output_dir / "ia-result.json"
-
-    dq_result = load_judge_result(dq_path, "doc_quality", require_missed=False)
     ia_result = load_judge_result(ia_path, "intent_alignment", require_missed=True)
 
     # Determine the iteration from briefs already on disk unless forced, so the
@@ -650,19 +636,33 @@ def cmd_classify(args):
     else:
         iteration = len(list(output_dir.glob("feedback-brief-*.md"))) + 1
 
-    # Persist the assembled judge results as an artifact for debugging continuity.
+    # Persist the judge result as an artifact for debugging continuity.
     (output_dir / "judge-results.json").write_text(
-        json.dumps({"doc_quality": dq_result, "intent_alignment": ia_result}, indent=2)
+        json.dumps({"intent_alignment": ia_result}, indent=2)
     )
+
+    # The per-AC coverage check is the authoritative gate. It is mandatory
+    # whenever the ticket has acceptance criteria: a missing coverage-check.json
+    # means the coverage agents (step 3) were never dispatched, so fail loudly
+    # rather than silently gate on the holistic judge alone.
+    coverage_path = output_dir / "coverage-check.json"
+    coverage_check = None
+    if coverage_path.exists():
+        coverage_check = json.loads(coverage_path.read_text())
+    elif read_ac_items(base_path):
+        print(
+            "ERROR: coverage-check.json missing but the ticket has acceptance "
+            "criteria — run `verify --prepare`, dispatch the coverage agents, "
+            "then `verify --classify` before classify",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     evidence_status = read_evidence_status(base_path)
     missed_items = ia_result.get("missed_items", [])
     gaps = classify_gaps(missed_items, evidence_status)
 
-    coverage_check = None
-    coverage_path = output_dir / "coverage-check.json"
-    if coverage_path.exists():
-        coverage_check = json.loads(coverage_path.read_text())
+    if coverage_check is not None:
         judge_ac_texts = {g["ac_item"].lower() for g in gaps}
         for item in coverage_check.get("items", []):
             if item["classification"] == "covered":
@@ -686,20 +686,22 @@ def cmd_classify(args):
                     }
                 )
 
+    passed = compute_passed(ia_result.get("score", 0), coverage_check)
+
     sidecar = write_results(
         output_dir,
         args.ticket,
-        dq_result,
         ia_result,
         gaps,
         iteration,
+        passed,
         coverage_check=coverage_check,
     )
 
     # When the gate fails, write the writer-facing feedback brief here (not
-    # inline in the orchestrator) so the full rationales stay out of context.
+    # inline in the orchestrator) so the full rationale stays out of context.
     if not sidecar["passed"]:
-        build_feedback_brief(output_dir, args.ticket, iteration, dq_result, ia_result, gaps)
+        build_feedback_brief(output_dir, args.ticket, iteration, ia_result, gaps)
 
     json.dump(sidecar, sys.stdout, indent=2)
     print()
@@ -716,11 +718,6 @@ def main():
     classify = subparsers.add_parser("classify", help="Classify judge results")
     classify.add_argument("--ticket", required=True)
     classify.add_argument("--base-path", required=True)
-    classify.add_argument(
-        "--dq-result",
-        help="Path to the doc_quality judge result JSON "
-        "(default: <base-path>/quality-gate/dq-result.json)",
-    )
     classify.add_argument(
         "--ia-result",
         help="Path to the intent_alignment judge result JSON "
