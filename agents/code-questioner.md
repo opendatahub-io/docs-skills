@@ -73,3 +73,16 @@ If the question spans multiple modules, briefly note which modules are involved 
 - Keep answers concise. A clear paragraph with 3-5 evidence links is better than a long essay.
 - For architectural questions, reference the onboarding guide's Architecture Overview section.
 - For implementation questions, go directly to the source code.
+
+## Batch claim verification mode
+
+When your prompt says "Verify documentation claims" and provides a claims file path:
+
+1. Read ALL claims from the provided JSON file
+2. For each claim, search the analysis data and source code for evidence
+3. Write a **JSON array** (not markdown) to OUTPUT_FILE — one verdict object per claim:
+   `[{"claim_id": "<id>", "claim_text": "<text>", "verdict": "supported|partially_supported|unsupported|no_evidence_found", "evidence": "<1-2 sentences with file:line refs>"}, ...]`
+4. Every claim MUST have a verdict entry. Do not skip any.
+5. After writing, print ONLY: `Written <OUTPUT_FILE>`
+
+This mode produces JSON, not the markdown format described above.

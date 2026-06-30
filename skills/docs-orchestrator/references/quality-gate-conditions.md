@@ -11,7 +11,8 @@ The `quality-gate` step uses `when: has_many_requirements`. This condition is ev
 
 ## Phase 2 — After technical-review step completes (re-evaluation)
 
-- If the step was already `skipped` in Phase 1, no change
+- If the step was already `skipped` in Phase 1 **and** `confidence` is `LOW` → override the Phase 1 skip: mark quality-gate as `pending`. A LOW confidence result after review iterations is a strong signal that intent alignment should be checked, regardless of requirement count. MEDIUM confidence does not override (acceptable risk). Log: `"Overriding quality-gate skip: technical review confidence is LOW"`
+- If the step was already `skipped` in Phase 1 and `confidence` is not `LOW` → no change
 - Read `confidence` from `steps.technical-review.result`
 - If `confidence` is `HIGH` → the tech review validated all claims against source code, indicating strong requirements comprehension by the writer. Intent drift is unlikely. Mark quality-gate as `skipped` with `skip_reason: "high_confidence_review"`. Log: `"Skipping quality-gate: technical review reached HIGH confidence"`
 - If `confidence` is `MEDIUM` or `LOW` → condition is met, mark as `pending`. The tech review could not fully validate the writing, so an independent intent-alignment check adds value

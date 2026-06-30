@@ -37,7 +37,7 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 ## technical-review
 
-- After the [Technical review iteration](../SKILL.md#technical-review-iteration) loop completes, re-evaluate `when: has_many_requirements` Phase 2 for the quality-gate step (see [`when: has_many_requirements` condition](../SKILL.md#when-has_many_requirements-condition))
+- After the [Technical review iteration](../SKILL.md#technical-review-iteration) loop completes, re-evaluate `when: has_many_requirements` Phase 2 for the quality-gate step (see [`when: has_many_requirements` condition](../SKILL.md#when-has_many_requirements-condition)). Note: if confidence is `LOW` and the quality-gate was `skipped` in Phase 1 (few requirements), override the skip and mark quality-gate as `pending`
 
 ## create-merge-request
 

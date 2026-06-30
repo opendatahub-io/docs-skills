@@ -105,7 +105,7 @@ Start the review report with the scanner results:
 **You MUST use the Agent tool** to invoke the `security-reviewer` subagent. Do NOT read the checklist or apply it yourself — the agent reads the source files and the Layer 2 checklist in its own isolated context and appends findings directly to the report, so neither the doc content nor the checklist enters the orchestrator's context.
 
 **Agent tool parameters:**
-- `subagent_type`: `security-reviewer`
+- `subagent_type`: `docs-skills:security-reviewer`
 - `description`: `Security Layer 2 review for <TICKET>`
 
 **Prompt** (substitute `<SOURCE_FILES>` with the file list from step 2 and `<OUTPUT_FILE>` with the report path):
