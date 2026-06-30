@@ -6,11 +6,14 @@ file per source doc file. Each batch file holds the full claim objects for
 that doc, so the code-questioner agents can read their claims from disk
 instead of receiving claim text inline in their dispatch prompt.
 
+When a single doc file produces more claims than ``--max-batch-size``, the
+claims are split into numbered sub-batches (``-part1``, ``-part2``, …).
+
 This keeps claim text out of the orchestrator's context: stdout carries only
 counts and sanitized batch identifiers, never claim text.
 
 Usage:
-  split_claims.py --claims-list <path> --output-dir <dir>
+  split_claims.py --claims-list <path> --output-dir <dir> [--max-batch-size N]
 
 Emits a JSON object on stdout:
   {
@@ -25,9 +28,12 @@ Emits a JSON object on stdout:
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
+
+DEFAULT_MAX_BATCH_SIZE = 15
 
 
 def sanitize(filename: str) -> str:
@@ -44,6 +50,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--claims-list", required=True, help="Path to claims-list.json")
     parser.add_argument("--output-dir", required=True, help="Directory to write batch files")
+    parser.add_argument(
+        "--max-batch-size",
+        type=int,
+        default=DEFAULT_MAX_BATCH_SIZE,
+        help=f"Max claims per batch file (default: {DEFAULT_MAX_BATCH_SIZE}). "
+        "Files with more claims are split into numbered sub-batches.",
+    )
     args = parser.parse_args()
 
     claims_path = Path(args.claims_list)
@@ -59,6 +72,11 @@ def main() -> int:
 
     if not isinstance(claims, list):
         print("ERROR: claims list must be a JSON array.", file=sys.stderr)
+        return 1
+
+    max_size = args.max_batch_size
+    if max_size < 1:
+        print("ERROR: --max-batch-size must be >= 1.", file=sys.stderr)
         return 1
 
     output_dir = Path(args.output_dir)
@@ -81,16 +99,34 @@ def main() -> int:
             )
             return 1
         seen_sanitized[sanitized] = doc
-        claims_file = output_dir / f"batch-claims-{sanitized}.json"
-        claims_file.write_text(json.dumps(doc_claims, indent=2))
-        batches.append(
-            {
-                "sanitized": sanitized,
-                "file": doc,
-                "count": len(doc_claims),
-                "claims_file": str(claims_file),
-            }
-        )
+
+        if len(doc_claims) <= max_size:
+            claims_file = output_dir / f"batch-claims-{sanitized}.json"
+            claims_file.write_text(json.dumps(doc_claims, indent=2))
+            batches.append(
+                {
+                    "sanitized": sanitized,
+                    "file": doc,
+                    "count": len(doc_claims),
+                    "claims_file": str(claims_file),
+                }
+            )
+        else:
+            num_parts = math.ceil(len(doc_claims) / max_size)
+            for part_idx in range(num_parts):
+                start = part_idx * max_size
+                chunk = doc_claims[start : start + max_size]
+                part_label = f"{sanitized}-part{part_idx + 1}"
+                claims_file = output_dir / f"batch-claims-{part_label}.json"
+                claims_file.write_text(json.dumps(chunk, indent=2))
+                batches.append(
+                    {
+                        "sanitized": part_label,
+                        "file": doc,
+                        "count": len(chunk),
+                        "claims_file": str(claims_file),
+                    }
+                )
 
     json.dump(
         {"total_claims": len(claims), "batch_count": len(batches), "batches": batches},

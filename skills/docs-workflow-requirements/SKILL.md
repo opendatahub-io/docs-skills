@@ -68,7 +68,42 @@ Agent:
 
 The PR URL bullet list is conditional — include those bullets only if `--pr` URLs were provided.
 
-After the agent completes, read `<DISCOVERY_FILE>`.
+After the agent completes, verify the discovery output before proceeding.
+
+### 2a. Verify discovery output
+
+**Path recovery:** Check if `$DISCOVERY_FILE` exists. If not, search for the output at alternate locations:
+
+```bash
+if [ ! -f "$DISCOVERY_FILE" ]; then
+  # Search OUTPUT_DIR and BASE_PATH for any .json the agent may have written
+  FOUND=$(find "$OUTPUT_DIR" "$BASE_PATH" -maxdepth 1 -name "*.json" -newer "$OUTPUT_DIR" -type f 2>/dev/null | head -1)
+  if [ -n "$FOUND" ]; then
+    cp "$FOUND" "$DISCOVERY_FILE"
+    echo "WARNING: Discovery agent wrote to wrong path ($FOUND). Copied to $DISCOVERY_FILE."
+  fi
+fi
+```
+
+If `$DISCOVERY_FILE` still does not exist after recovery, STOP with error: "Discovery agent did not produce output. Check agent logs."
+
+**Format validation:** After reading `$DISCOVERY_FILE`, verify it matches the expected discovery schema:
+
+```bash
+python3 -c "
+import json, sys
+d = json.load(open('$DISCOVERY_FILE'))
+if 'comments' in d or 'total_comments' in d:
+    print('ERROR: Discovery file contains raw JIRA API output, not structured discovery JSON.', file=sys.stderr)
+    sys.exit(1)
+if 'requirements' not in d:
+    print('ERROR: Discovery file missing \"requirements\" key.', file=sys.stderr)
+    sys.exit(1)
+print('OK')
+"
+```
+
+If validation fails (raw JIRA output or missing `requirements` key), STOP with error including the validation message. The orchestrator should retry the discoverer agent with a more explicit prompt, or report the failure for manual intervention.
 
 If the discovery JSON has an `error` field set, STOP and report the error (likely an access failure).
 
