@@ -6,12 +6,15 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from ticket_readiness import (
+    assess_ticket,
+    build_relationship_map,
     check_metadata,
     check_pr_linkage,
     check_relationships,
     compute_overall_status,
     format_comment,
     format_markdown_report,
+    parse_args,
 )
 
 # --- Mock data fixtures ---
@@ -518,3 +521,79 @@ class TestFormatMarkdownReport:
         assert "PROJ-100" in report
         assert "PROJ-456" in report
         assert "PROJ-457" in report
+
+
+# --- Relationship map ---
+
+
+class TestBuildRelationshipMap:
+    def test_basic_map(self):
+        graph = make_graph_data()
+        rel_map = build_relationship_map(graph)
+        assert rel_map["parent"]["key"] == "PROJ-100"
+        assert len(rel_map["children"]) == 2
+        assert rel_map["children"][0]["key"] == "PROJ-456"
+        assert len(rel_map["siblings"]) == 1
+
+    def test_map_without_parent(self):
+        graph = make_graph_data(parent=None, ancestors=[])
+        rel_map = build_relationship_map(graph)
+        assert "parent" not in rel_map
+
+    def test_map_child_with_pr(self):
+        graph = make_graph_data()
+        rel_map = build_relationship_map(graph)
+        child_with_pr = next(c for c in rel_map["children"] if c["key"] == "PROJ-456")
+        assert "pr" in child_with_pr
+
+
+# --- End-to-end assess_ticket ---
+
+
+class TestAssessTicket:
+    def test_all_pass(self):
+        issue = make_issue_data()
+        graph = make_graph_data()
+        result = assess_ticket(issue, graph)
+        assert result["ticket"] == "PROJ-123"
+        assert result["overall_status"] in ("ready", "ready_with_warnings")
+        assert result["dimensions"]["description_quality"] is None
+        assert result["dimensions"]["pr_source_linkage"]["status"] == "pass"
+        assert result["relationship_map"]["parent"]["key"] == "PROJ-100"
+        assert "description_text" in result
+
+    def test_not_ready_missing_metadata(self):
+        issue = make_issue_data(
+            custom_fields={},
+            priority="Undefined",
+            status="Backlog",
+        )
+        graph = make_graph_data()
+        result = assess_ticket(issue, graph)
+        assert result["dimensions"]["metadata_completeness"]["status"] == "fail"
+
+
+# --- Arg parsing ---
+
+
+class TestParseArgs:
+    def test_issue_mode(self):
+        args = parse_args(["--issue", "PROJ-123"])
+        assert args.issue == "PROJ-123"
+        assert args.jql is None
+
+    def test_jql_mode(self):
+        args = parse_args(["--jql", "project=PROJ"])
+        assert args.jql == "project=PROJ"
+        assert args.issue is None
+
+    def test_post_comment_mode(self):
+        args = parse_args(["--post-comment"])
+        assert args.post_comment is True
+
+    def test_optional_flags(self):
+        args = parse_args(
+            ["--issue", "PROJ-123", "--output-dir", "/tmp/reports", "--max-results", "5"]
+        )
+        assert args.output_dir == "/tmp/reports"
+        assert args.max_results == 5
