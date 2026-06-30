@@ -194,7 +194,7 @@ Log: `"Module tiers: <full_count> full, <api_guided_count> api-guided, <api_only
 
 ### 3.4 Pre-extract public API (AST-aware)
 
-For each module, run the language-appropriate AST extraction: Python uses `extract_public_api.py --files <files> --lang python --module <name>`. Go/JS/TS use `uv run --script ${CLAUDE_SKILL_DIR}/scripts/extract_public_api_treesitter.py -- --files <files> --lang <lang> --module <name>`. Log warning and continue if extraction fails for a module.
+For each module, run the language-appropriate AST extraction: Python uses `extract_public_api.py --files <files> --lang python --module <name>`. Go/JS/TS use `uv run --script ${CLAUDE_SKILL_DIR}/scripts/extract_public_api_treesitter.py --files <files> --lang <lang> --module <name>`. Log warning and continue if extraction fails for a module.
 
 ### 3.5 Generate api-only entries (no agent dispatch)
 

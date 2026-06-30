@@ -47,37 +47,37 @@ The script loads `.env` files automatically — do **not** prepend `source ~/.en
 
 **Fetch a single issue:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py -- --issue INFERENG-5233
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --issue INFERENG-5233
 ```
 
 **Fetch issue with comments:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py -- --issue INFERENG-5233 --include-comments
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --issue INFERENG-5233 --include-comments
 ```
 
 **Fetch multiple issues:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py -- --issue INFERENG-5233 --issue INFERENG-5049
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --issue INFERENG-5233 --issue INFERENG-5049
 ```
 
 **Search issues by JQL (FAST - returns summaries):**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py -- --jql "project=INFERENG AND status='In Progress'"
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --jql "project=INFERENG AND status='In Progress'"
 ```
 
 **Search with full details (SLOW - fetches all fields):**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py -- --jql "project=INFERENG AND status='In Progress'" --fetch-details
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --jql "project=INFERENG AND status='In Progress'" --fetch-details
 ```
 
 **Traverse the ticket graph:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py -- --graph INFERENG-5233
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --graph INFERENG-5233
 ```
 
 **Graph with custom limits:**
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py -- --graph INFERENG-5233 --max-children 10 --max-siblings 10 --max-links 20
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --graph INFERENG-5233 --max-children 10 --max-siblings 10 --max-links 20
 ```
 
 ## Performance Modes

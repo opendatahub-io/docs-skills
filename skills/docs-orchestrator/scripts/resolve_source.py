@@ -145,7 +145,7 @@ def _resolve_pr_info(pr_url):
     Returns (repo_url, branch) where branch is None for merged PRs.
     """
     result = subprocess.run(  # noqa: S603
-        ["uv", "run", "--script", _git_pr_reader_path(), "--", "resolve", pr_url, "--json"],  # noqa: S607
+        ["uv", "run", "--script", _git_pr_reader_path(), "resolve", pr_url, "--json"],  # noqa: S607
         capture_output=True,
         text=True,
         timeout=60,
@@ -335,7 +335,6 @@ def _clone_repo(repo_url, clone_dir, ref=None, pr_url=None, dry_run=False):
         "run",
         "--script",
         _git_pr_reader_path(),
-        "--",
         "clone",
         repo_url,
         "--output-dir",
@@ -370,7 +369,6 @@ def _verify_existing_clone(clone_dir, ref=None, expected_repo_url=None, dry_run=
         "run",
         "--script",
         _git_pr_reader_path(),
-        "--",
         "clone",
         "--verify",
         str(clone_dir),

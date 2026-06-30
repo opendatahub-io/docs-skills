@@ -36,77 +36,77 @@ Unified interface for GitHub Pull Requests and GitLab Merge Requests — read, r
 #### read — Read PR/MR data with diffs and file filtering
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- read --url "https://github.com/owner/repo/pull/123"
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- read --url "https://gitlab.com/group/project/-/merge_requests/456" --format markdown
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- read --url "https://github.com/owner/repo/pull/123" --no-filter
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py read --url "https://github.com/owner/repo/pull/123"
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py read --url "https://gitlab.com/group/project/-/merge_requests/456" --format markdown
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py read --url "https://github.com/owner/repo/pull/123" --no-filter
 ```
 
 #### info — Get PR/MR information
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- info https://github.com/owner/repo/pull/123 --json
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py info https://github.com/owner/repo/pull/123 --json
 ```
 
 #### files — List changed files
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- files https://github.com/owner/repo/pull/123
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- files https://github.com/owner/repo/pull/123 --filter "*.adoc" --json
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py files https://github.com/owner/repo/pull/123
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py files https://github.com/owner/repo/pull/123 --filter "*.adoc" --json
 ```
 
 #### comments — List review comments
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- comments https://github.com/owner/repo/pull/123
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- comments https://github.com/owner/repo/pull/123 --include-resolved --json
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py comments https://github.com/owner/repo/pull/123
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py comments https://github.com/owner/repo/pull/123 --include-resolved --json
 ```
 
 #### diff — Get unified diff
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- diff https://github.com/owner/repo/pull/123
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py diff https://github.com/owner/repo/pull/123
 ```
 
 #### post — Post review comments
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- post https://github.com/owner/repo/pull/123 comments.json
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- post https://github.com/owner/repo/pull/123 comments.json --review-type technical
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- post https://github.com/owner/repo/pull/123 comments.json --review-type style --dry-run
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py post https://github.com/owner/repo/pull/123 comments.json
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py post https://github.com/owner/repo/pull/123 comments.json --review-type technical
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py post https://github.com/owner/repo/pull/123 comments.json --review-type style --dry-run
 ```
 
 #### reply — Reply to an existing review comment
 
 ```bash
 # Reply to a GitHub review comment
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- reply https://github.com/owner/repo/pull/123 --comment-id 12345 --body "Applied the fix."
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py reply https://github.com/owner/repo/pull/123 --comment-id 12345 --body "Applied the fix."
 
 # Reply to a GitLab discussion
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- reply https://gitlab.com/group/project/-/merge_requests/456 --discussion-id "abc123" --body "Fixed." --signoff "CI bot"
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py reply https://gitlab.com/group/project/-/merge_requests/456 --discussion-id "abc123" --body "Fixed." --signoff "CI bot"
 
 # Dry run
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- reply https://github.com/owner/repo/pull/123 --comment-id 12345 --body "Test" --dry-run
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py reply https://github.com/owner/repo/pull/123 --comment-id 12345 --body "Test" --dry-run
 ```
 
 #### extract — Extract line numbers from diff
 
 ```bash
 # Find line number for a pattern
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- extract https://github.com/owner/repo/pull/123 path/to/file.adoc "pattern"
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py extract https://github.com/owner/repo/pull/123 path/to/file.adoc "pattern"
 
 # Dump all added/modified lines
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- extract --dump https://github.com/owner/repo/pull/123 path/to/file.adoc
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py extract --dump https://github.com/owner/repo/pull/123 path/to/file.adoc
 
 # Validate a comments JSON file against the diff
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- extract --validate https://github.com/owner/repo/pull/123 comments.json
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py extract --validate https://github.com/owner/repo/pull/123 comments.json
 ```
 
 #### metadata — Get combined PR/MR metadata
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- metadata https://github.com/owner/repo/pull/123
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- metadata https://gitlab.com/group/project/-/merge_requests/456
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- metadata https://github.com/owner/repo/pull/123 --diff-output /path/to/diff.patch
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py metadata https://github.com/owner/repo/pull/123
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py metadata https://gitlab.com/group/project/-/merge_requests/456
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py metadata https://github.com/owner/repo/pull/123 --diff-output /path/to/diff.patch
 ```
 
 Returns combined metadata: platform, pr_number, title, description, state, author, base_branch, head_branch, labels, commits, changed_files, and url. With `--diff-output`, also saves the unified diff to the specified file.
@@ -114,8 +114,8 @@ Returns combined metadata: platform, pr_number, title, description, state, autho
 #### detect — Auto-detect PR/MR for current branch
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- detect
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py -- detect --json
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py detect
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py detect --json
 ```
 
 ### Authentication

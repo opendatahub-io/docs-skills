@@ -234,7 +234,6 @@ def _traverse_linked_tickets(graph_data, jira_reader_path):
                     "run",
                     "--script",
                     jira_reader_path,
-                    "--",
                     "--graph",
                     key,
                     "--max-graph-tokens",

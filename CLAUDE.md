@@ -60,10 +60,10 @@ The runtime working directory is the **project root**, not the skill directory. 
 Scripts with external dependencies use PEP 723 inline metadata and must be invoked via `uv run --script`:
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py -- --issue PROJ-123
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --issue PROJ-123
 ```
 
-Note the `--` separator between the script path and its arguments.
+Do **not** insert a `--` separator between the script path and its arguments. With `uv run --script <path>`, uv passes everything after the path straight to the script, so a `--` ends up in the script's `argv`. Subcommand-first scripts (e.g. `git_pr_reader resolve`) tolerate it, but flag-first scripts like `jira_reader --issue` fail with `error: unrecognized arguments: --`. The lint workflow rejects any `uv run --script <path> -- …` invocation.
 
 ### Stdlib-only scripts
 
@@ -76,7 +76,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/detect_language.py --repo /path/to/repo
 ### Cross-skill calls
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py -- --issue PROJ-123
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --issue PROJ-123
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/learn-code/scripts/detect_language.py --repo /path
 ```
 

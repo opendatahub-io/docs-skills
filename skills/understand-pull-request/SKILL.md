@@ -285,7 +285,7 @@ python3 ${LEARN_CODE_SCRIPTS}/extract_public_api.py \
 
 **Go, JavaScript, TypeScript:**
 ```bash
-uv run --script ${LEARN_CODE_SCRIPTS}/extract_public_api_treesitter.py -- \
+uv run --script ${LEARN_CODE_SCRIPTS}/extract_public_api_treesitter.py \
   --files <file1> <file2> ... \
   --lang <lang> --module <module-name>
 ```

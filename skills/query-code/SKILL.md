@@ -51,7 +51,7 @@ CLONE_DIR="${BASE_PATH}/_clone"
 5. If neither the clone nor analysis exists, clone:
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py -- clone "<URL>" --output-dir "${CLONE_DIR}"
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py clone "<URL>" --output-dir "${CLONE_DIR}"
 ```
 
 Then offer to run `learn-code` (see step 3 below).
