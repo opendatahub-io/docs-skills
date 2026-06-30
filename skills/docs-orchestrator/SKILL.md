@@ -179,12 +179,12 @@ Triggers only when requirements completes AND `options.source` is still null. Ru
 
 ## Technical review iteration
 
-Loop up to 3 iterations until confidence is acceptable:
+Loop up to 2 iterations until confidence is acceptable (one review, one fix-and-confirm):
 
 1. Invoke `docs-workflow-tech-review`. Read confidence from the sidecar (`step-result.json`), falling back to grep on `review.md` for `Overall technical confidence:`. Update `steps.technical-review.result`
 2. `HIGH` → done. `MEDIUM` with `critical=0` AND `significant=0` → acceptable (log, proceed). Otherwise continue
-3. If `MEDIUM` (with fixable issues) or `LOW` → fix via `docs-workflow-writing --fix-from <base_path>/technical-review/review.md` (pass all `--repo` flags), then re-run reviewer
-4. After 3 iterations: `MEDIUM` → proceed with warning. `LOW` → ask user
+3. If `MEDIUM` (with fixable issues) or `LOW` → fix via `docs-workflow-writing --fix-from <base_path>/technical-review/review.md` (pass all `--repo` flags), then re-run reviewer. The re-run revalidates only the claims the fix changed (see the tech-review step's incremental claim validation), so the reviewer gets fresh evidence cheaply
+4. After 2 iterations: `MEDIUM` → proceed with warning. `LOW` → ask user. A fix that has not reached acceptable confidence after one attempt is escalated here rather than retried again — a second failed automated fix is a signal for SME/human review, not another rewrite
 
 ## Quality gate iteration
 

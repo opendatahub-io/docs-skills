@@ -82,17 +82,9 @@ Source drafts location: `<DRAFTS_DIR>/`
 
 When code-learner analysis is available from the code-analysis step, validate documentation claims against the analysis data before dispatching the reviewer agent.
 
-#### Reuse check (iterations 2+)
+#### Incremental validation (iterations 2+)
 
-Before running validation, check if `claim-validation.json` and `validation-summary.md` both exist in `$OUTPUT_DIR` (from a prior iteration). If both files exist and are non-empty:
-
-- Set `HAS_CLAIMS=true`
-- Skip steps 3a–3d entirely — reuse the existing files
-- Log: `"Reusing claim validation from prior iteration"`
-
-If only `claim-validation.json` exists but `validation-summary.md` is missing (possible from a partial prior run), skip steps 3a-3c and re-run step 3d only to generate the summary.
-
-This is safe because iterations only change the documentation (via the fix cycle), not the source code analysis. The validation from iteration 1 remains valid.
+A verdict is a function of the claim text and the source code. Across iterations the source code never changes — only the documentation does — so claims the fix did not touch keep their prior verdicts, and only new or changed claims need re-validation. Step 3a always extracts fresh claims; step 3b then carries forward unchanged verdicts and validates only what changed. This gives the reviewer **fresh** evidence for exactly the claims the fix edited (a blunt all-or-nothing reuse would feed the reviewer stale verdicts for the very claims it needs to re-judge), while keeping re-validation proportional to the change.
 
 #### 3a. Extract claims from draft documentation
 
@@ -128,7 +120,9 @@ Agent:
     After writing, print ONLY: Written <OUTPUT_DIR>/claims-list.json
 ```
 
-After the agent completes, split the claims into per-doc-file batch files on disk. The script writes one `batch-claims-<sanitized>.json` per doc file and prints **only** counts and sanitized batch identifiers — never claim text — so claim details stay out of the orchestrator's context:
+After the agent completes, determine which claims need code validation and split them into per-doc-file batch files on disk. Both paths below print **only** counts and sanitized batch identifiers — never claim text — so claim details stay out of the orchestrator's context.
+
+**Iteration 1** — no prior `claim-validation.json` exists in `$OUTPUT_DIR`. Batch all claims:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/split_claims.py \
@@ -136,7 +130,27 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/split_claims.py \
   --output-dir <OUTPUT_DIR>
 ```
 
-The script emits a JSON object:
+**Iterations 2+** — a prior `claim-validation.json` exists. Carry forward unchanged verdicts and batch only the claims the fix changed:
+
+```bash
+# Drop stale batch files from the prior iteration (their claim ids no longer match).
+rm -f <OUTPUT_DIR>/batch-claims-*.json <OUTPUT_DIR>/batch-verdict-*.json
+
+# Diff fresh claims against the prior validation: write carried-forward verdicts
+# (batch-verdict-carryover.json) and the changed/new claims (claims-to-validate.json).
+python3 ${CLAUDE_SKILL_DIR}/scripts/incremental_claims.py \
+  --claims-list <OUTPUT_DIR>/claims-list.json \
+  --prior-validation <OUTPUT_DIR>/claim-validation.json \
+  --output-dir <OUTPUT_DIR>
+# prints: {"total_claims": N, "reused_count": N, "revalidate_count": N}
+
+# Batch only the claims that need re-validation.
+python3 ${CLAUDE_SKILL_DIR}/scripts/split_claims.py \
+  --claims-list <OUTPUT_DIR>/claims-to-validate.json \
+  --output-dir <OUTPUT_DIR>
+```
+
+In both cases `split_claims.py` emits a JSON object:
 
 ```json
 {
@@ -149,7 +163,7 @@ The script emits a JSON object:
 }
 ```
 
-This gives the orchestrator the batch list (sanitized name, doc filename, count, claims file path) — enough to dispatch one code-questioner agent per batch without loading any claim text into context.
+This gives the orchestrator the batch list (sanitized name, doc filename, count, claims file path) — enough to dispatch one code-questioner agent per batch without loading any claim text into context. On iterations 2+ the batch list covers only the changed claims; if `revalidate_count` is `0`, `batches` is empty and step 3b dispatches no agents — the carried-forward verdicts alone feed the merge in step 3d.
 
 #### 3b. Dispatch code-questioner agents for validation (batched by doc file)
 
@@ -209,7 +223,7 @@ For any missing batch verdict files (agent failed or was skipped), the merge scr
 
 #### 3d. Assemble claim-validation.json and validation summary via merge script
 
-Assembling the validation output is deterministic JSON work — no judgment — so it runs as a script, not a subagent. The script reads `claims-list.json`, every `batch-verdict-*.json`, and the analysis `registry.json`, then writes both output files and prints only confirmation lines. The full validation data never enters the orchestrator's context.
+Assembling the validation output is deterministic JSON work — no judgment — so it runs as a script, not a subagent. The script reads `claims-list.json`, every `batch-verdict-*.json`, and the analysis `registry.json`, then writes both output files and prints only confirmation lines. The full validation data never enters the orchestrator's context. On iterations 2+ the `batch-verdict-*.json` set includes `batch-verdict-carryover.json` (the unchanged claims' carried-forward verdicts), so the merged output covers every claim — carried-forward and freshly re-validated alike.
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/merge_verdicts.py \
@@ -293,36 +307,33 @@ The report should also include a `Severity counts: critical=N significant=N mino
 
 ### 6. Write step-result.json
 
-Extract the two metadata lines from `<OUTPUT_FILE>` **without reading the full report into context** — grep only the lines you need:
+Write the sidecar with the script. It greps only the confidence and severity-count lines from `<OUTPUT_FILE>` (the full report never enters context), auto-detects the iteration from any prior sidecar, and stamps a real wall-clock timestamp:
 
 ```bash
-grep -m1 -E '^Overall technical confidence:' "<OUTPUT_FILE>"
-grep -m1 -E '^Severity counts:' "<OUTPUT_FILE>"
+python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+  --ticket "<TICKET>" \
+  --review-file "<OUTPUT_FILE>" \
+  --sidecar "${BASE_PATH}/technical-review/step-result.json" \
+  --code-grounded <true|false>
 ```
 
-1. From the confidence line, extract the `HIGH|MEDIUM|LOW` value
-2. From the severity line, extract each count (default to `0` if the line is missing)
-
-Write the sidecar to `${BASE_PATH}/technical-review/step-result.json`:
+Pass `--code-grounded true` when the reviewer received claim-validation evidence (`HAS_CLAIMS`), otherwise `--code-grounded false`. The script writes:
 
 ```json
 {
   "schema_version": 1,
   "step": "technical-review",
   "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>",
+  "completed_at": "<ISO 8601 timestamp>",
   "confidence": "<HIGH|MEDIUM|LOW>",
-  "severity_counts": {
-    "critical": "<N>",
-    "significant": "<N>",
-    "minor": "<N>",
-    "sme": "<N>"
-  },
+  "severity_counts": {"critical": 0, "significant": 0, "minor": 3, "sme": 2},
   "iteration": 1,
-  "code_grounded": <true|false>
+  "code_grounded": true
 }
 ```
 
-The `iteration` field is `1` for the first review pass. If the orchestrator re-invokes this skill after a fix cycle, it passes the current iteration count — increment it for the sidecar.
-
-The `code_grounded` field records whether code-learner analysis was available for claim validation — either from running the validation (`HAS_CLAIMS`) or from reusing prior iteration files. Set to `true` if the reviewer agent received claim validation evidence in its prompt, regardless of whether the validation ran in this invocation or a prior one.
+Behavior:
+- `iteration` auto-detects from the existing sidecar (prior iteration + 1, or `1` on the first pass), so it stays correct across the orchestrator's review/fix loop without an extra argument.
+- `severity_counts` are integers; each defaults to `0` when the severity line is absent.
+- If the `Overall technical confidence:` line is missing, the script exits non-zero — the orchestrator treats a missing confidence as a step failure (see step 5).
+- `code_grounded` records whether the reviewer received claim-validation evidence (freshly computed or carried forward).
