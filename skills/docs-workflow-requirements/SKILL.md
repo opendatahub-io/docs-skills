@@ -103,7 +103,7 @@ print('OK')
 "
 ```
 
-If validation fails (raw JIRA output or missing `requirements` key), STOP with error including the validation message. The orchestrator should retry the discoverer agent with a more explicit prompt, or report the failure for manual intervention.
+If validation fails (raw JIRA output or missing `requirements` key), STOP with error including the validation message.
 
 If the discovery JSON has an `error` field set, STOP and report the error (likely an access failure).
 
