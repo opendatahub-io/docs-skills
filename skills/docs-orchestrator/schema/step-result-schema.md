@@ -330,11 +330,6 @@ When an existing linked ticket is found:
   "intent_alignment": 3,
   "passed": false,
   "iteration": 1,
-  "coverage_check": {
-    "total": 12,
-    "covered": 9,
-    "uncovered": 3
-  },
   "gaps": [
     {
       "ac_item": "Document confidence scores",
@@ -347,7 +342,7 @@ When an existing linked ticket is found:
   ],
   "rationales": {
     "doc_quality": "Full judge rationale text...",
-    "intent_alignment": "Full judge rationale text with per-acceptance-criteria coverage assessments..."
+    "intent_alignment": "Full judge rationale text with per-AC coverage assessments..."
   }
 }
 ```
@@ -358,20 +353,16 @@ When an existing linked ticket is found:
 | `intent_alignment` | integer | Intent alignment score (1-5) from Opus judge agent | Orchestrator — iteration logic |
 | `passed` | boolean | Whether intent_alignment >= 4 (doc_quality is informational only) | Orchestrator — iteration logic |
 | `iteration` | integer | Which iteration of the quality gate loop (1-based) | Orchestrator |
-| `coverage_check` | object\|null | Per-acceptance-criteria quote-based coverage verification summary (null if no acceptance criteria items found) | Quality gate iteration |
-| `coverage_check.total` | integer | Total acceptance criteria checked | Informational |
-| `coverage_check.covered` | integer | acceptance criteria items with verified quotes in the documentation | Quality gate iteration |
-| `coverage_check.uncovered` | integer | acceptance criteria items not covered or with unverified quotes | Quality gate iteration |
 | `gaps` | array | Identified gaps with evidence status and recommended action | Quality gate iteration — inline fix dispatch |
 | `gaps[].ac_item` | string | The acceptance criteria item that was missed | Quality gate iteration |
-| `gaps[].judge` | string | Which judge flagged the gap: `"intent_alignment"` or `"coverage_check"` | Informational |
+| `gaps[].judge` | string | Which judge flagged the gap (e.g., `"intent_alignment"`) | Informational |
 | `gaps[].evidence_status` | string | Cross-referenced against scope-req-audit: `"grounded"`, `"partial"`, `"absent"`, or `"unknown"` | Quality gate iteration — determines fix strategy |
 | `gaps[].action` | string | Recommended action: `"document_as_unsupported"`, `"expand_with_evidence"`, `"add_missing_section"`, or `"investigate"` | Quality gate iteration |
 | `gaps[].file` | string\|null | AsciiDoc filename where the fix should be applied | Quality gate iteration — targeted file edits |
 | `gaps[].section` | string\|null | Section heading or insertion point within the file | Quality gate iteration — targeted section edits |
 | `rationales` | object | Full judge rationale texts for the feedback brief | Quality gate iteration |
 | `rationales.doc_quality` | string | Complete doc_quality judge rationale | Quality gate iteration — included verbatim in feedback brief |
-| `rationales.intent_alignment` | string | Complete intent_alignment judge rationale with per-acceptance-criteria coverage assessments, missing artifacts, scope analysis | Quality gate iteration — included verbatim in feedback brief |
+| `rationales.intent_alignment` | string | Complete intent_alignment judge rationale with per-AC coverage assessments, missing artifacts, scope analysis | Quality gate iteration — included verbatim in feedback brief |
 
 ### action-comments
 
