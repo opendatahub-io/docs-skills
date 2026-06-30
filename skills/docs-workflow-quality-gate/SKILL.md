@@ -46,7 +46,7 @@ This reads the writing output and ticket context, then writes two prompt files:
 
 ### 3. Per-AC coverage verification
 
-Run a deterministic coverage check on every acceptance criterion before the judge agents. Each AC item gets its own subagent with a fresh context containing only that one AC item and the full documentation — no other ACs, no judge context, no conversation history.
+Per-AC coverage check before the judge agents. Each AC item gets its own subagent with only that one AC item and the full documentation — no other ACs, no judge context.
 
 #### 3a. Prepare coverage check prompts
 
@@ -92,7 +92,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py verify \
   --classify
 ```
 
-This reads each agent's result, validates that quoted text actually appears in the documentation (whitespace-normalized substring match), cross-references against scope-req-audit evidence status, and writes `${BASE_PATH}/quality-gate/coverage-check.json`.
+Validates quotes against the documentation (whitespace-normalized substring match), joins to scope-req-audit evidence status, and writes `${BASE_PATH}/quality-gate/coverage-check.json`.
 
 Classifications:
 - `covered` — AC is addressed with a verified quote. No action needed.
@@ -214,12 +214,8 @@ AC coverage: <covered>/<total> acceptance criteria addressed with verified quote
   - Evidence status: <evidence_status>
   - Action: <action description>
 
-[Map classification codes to instructions:]
-- `real_defect` with action `add_missing_section` → "This acceptance criterion is supported by code but not addressed in the documentation. Add content covering it."
-- `real_defect` with action `expand_with_evidence` → "This acceptance criterion is partially supported by code. Expand existing documentation to address it."
-- `correctly_absent` → "This acceptance criterion is not supported by the codebase. Add a note stating this is not supported in this release."
-- `unverified` → "An agent claimed this was covered but the supporting quote could not be verified in the document. Review whether this criterion is actually addressed."
-- `investigate` → "Coverage status could not be determined. Review whether this criterion should be documented."
+[Map classification to fix instructions — same mappings as step 3c plus:]
+- `unverified` → "Quote could not be verified in the document. Review whether this criterion is actually addressed."
 
 [If coverage-check.json does not exist, omit this section.]
 
@@ -298,18 +294,6 @@ Report the scores and pass/fail status:
       "evidence_status": "grounded",
       "classification": "covered",
       "action": null
-    },
-    {
-      "id": "REQ-002_AC01",
-      "req_id": "REQ-002",
-      "ac_index": 1,
-      "ac_text": "Default CA bundle path is documented in the reference table",
-      "covered": false,
-      "quote": null,
-      "quote_verified": false,
-      "evidence_status": "grounded",
-      "classification": "real_defect",
-      "action": "add_missing_section"
     }
   ]
 }

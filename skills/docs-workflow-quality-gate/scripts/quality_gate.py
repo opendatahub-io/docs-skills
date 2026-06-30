@@ -29,6 +29,7 @@ def _resolve_under(path, root):
         raise ValueError(f"path outside workspace: {resolved}")
     return resolved
 
+
 PASS_THRESHOLD_INTENT = 4
 
 COVERAGE_CHECK_PROMPT = """\
@@ -134,11 +135,13 @@ def read_ac_items(base_path):
     for req in data.get("requirements", []):
         req_id = req.get("id", "")
         for i, ac_text in enumerate(req.get("acceptance_criteria", [])):
-            items.append({
-                "req_id": req_id,
-                "ac_index": i,
-                "ac_text": ac_text,
-            })
+            items.append(
+                {
+                    "req_id": req_id,
+                    "ac_index": i,
+                    "ac_text": ac_text,
+                }
+            )
     return items
 
 
@@ -301,18 +304,20 @@ def classify_coverage(manifest, doc_content, evidence_status, output_dir):
             classification = "investigate"
             action = "investigate"
 
-        results.append({
-            "id": entry["id"],
-            "req_id": req_id,
-            "ac_index": entry["ac_index"],
-            "ac_text": entry["ac_text"],
-            "covered": agent_covered and quote_verified,
-            "quote": quote if quote_verified else None,
-            "quote_verified": quote_verified,
-            "evidence_status": ev_status,
-            "classification": classification,
-            "action": action,
-        })
+        results.append(
+            {
+                "id": entry["id"],
+                "req_id": req_id,
+                "ac_index": entry["ac_index"],
+                "ac_text": entry["ac_text"],
+                "covered": agent_covered and quote_verified,
+                "quote": quote if quote_verified else None,
+                "quote_verified": quote_verified,
+                "evidence_status": ev_status,
+                "classification": classification,
+                "action": action,
+            }
+        )
 
     covered_count = sum(1 for r in results if r["classification"] == "covered")
     return {
@@ -323,8 +328,9 @@ def classify_coverage(manifest, doc_content, evidence_status, output_dir):
     }
 
 
-def write_results(output_dir, ticket, doc_quality_result, intent_result, gaps, iteration,
-                  coverage_check=None):
+def write_results(
+    output_dir, ticket, doc_quality_result, intent_result, gaps, iteration, coverage_check=None
+):
     """Write step-result.json and judge-results.md."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -440,19 +446,19 @@ def cmd_verify(args):
             prompt_file = prompts_dir / f"{item_id}.md"
             prompt_file.write_text(prompt)
 
-            manifest_items.append({
-                "id": item_id,
-                "req_id": item["req_id"],
-                "ac_index": item["ac_index"],
-                "ac_text": item["ac_text"],
-                "prompt_file": str(prompt_file),
-                "result_file": str(results_dir / f"{item_id}.json"),
-            })
+            manifest_items.append(
+                {
+                    "id": item_id,
+                    "req_id": item["req_id"],
+                    "ac_index": item["ac_index"],
+                    "ac_text": item["ac_text"],
+                    "prompt_file": str(prompt_file),
+                    "result_file": str(results_dir / f"{item_id}.json"),
+                }
+            )
 
         manifest = {"items": manifest_items}
-        (prompts_dir / "manifest.json").write_text(
-            json.dumps(manifest, indent=2)
-        )
+        (prompts_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
         json.dump(manifest, sys.stdout, indent=2)
         print()
 
@@ -505,13 +511,15 @@ def cmd_classify(args):
                         g["classification"] = item["classification"]
                         break
             else:
-                gaps.append({
-                    "ac_item": item["ac_text"],
-                    "judge": "coverage_check",
-                    "evidence_status": item["evidence_status"],
-                    "action": item["action"],
-                    "classification": item["classification"],
-                })
+                gaps.append(
+                    {
+                        "ac_item": item["ac_text"],
+                        "judge": "coverage_check",
+                        "evidence_status": item["evidence_status"],
+                        "action": item["action"],
+                        "classification": item["classification"],
+                    }
+                )
 
     sidecar = write_results(
         output_dir,
@@ -545,17 +553,14 @@ def main():
     )
     classify.add_argument("--iteration", type=int, default=1)
 
-    verify_parser = subparsers.add_parser(
-        "verify", help="Per-AC coverage verification"
-    )
+    verify_parser = subparsers.add_parser("verify", help="Per-AC coverage verification")
     verify_parser.add_argument("--ticket", required=True)
     verify_parser.add_argument("--base-path", required=True)
     verify_mode = verify_parser.add_mutually_exclusive_group(required=True)
+    verify_mode.add_argument("--prepare", action="store_true", help="Write per-AC prompt files")
     verify_mode.add_argument(
-        "--prepare", action="store_true", help="Write per-AC prompt files"
-    )
-    verify_mode.add_argument(
-        "--classify", action="store_true",
+        "--classify",
+        action="store_true",
         help="Validate quotes, classify coverage",
     )
 
