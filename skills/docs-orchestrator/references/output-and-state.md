@@ -130,13 +130,27 @@ The `workflow` field and filename prefix match the YAML's `workflow.name`. This 
       "output": null,
       "result": null
     }
-  }
+  },
+  "workarounds": []
 }
 ```
 
 The `output` field records the step's output folder path (e.g., `.agent_workspace/proj-123/writing/`) once completed.
 
 The `result` field stores selected sidecar data after each step completes. This lets the orchestrator make downstream decisions and display summaries without re-reading sidecar files from disk — especially important on resume. Set to `null` until the step completes; then populated from `step-result.json` (see Step-specific post-processing in the main skill file).
+
+The `workarounds` field is an optional array (initialized to `[]`) that records cases where the orchestrator bypassed a failed script or applied a manual fix during a step. Each entry has:
+
+```json
+{
+  "step": "<step-name>",
+  "issue": "<what failed — e.g., build_writing_args.sh exit 1 due to set -e bug>",
+  "action": "<what the orchestrator did instead — e.g., computed JSON args manually>",
+  "timestamp": "<ISO 8601>"
+}
+```
+
+The pipeline-diagnostics step reads this array and surfaces workarounds in its report. Workarounds indicate scripts that need fixing — the orchestrator completed the step, but the automation was broken.
 
 ### Status values
 

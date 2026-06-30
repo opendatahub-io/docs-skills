@@ -115,6 +115,7 @@ Analyze the workflow run for orchestrator-level problems — not content quality
 | **Step order vs YAML mismatch** | Compare `step_order` array against the workflow YAML's step list. Missing or extra entries indicate manual edits or schema rot | medium |
 | **Deferred step never resolved** | A `deferred` step remained deferred at workflow end — its `when` condition was never evaluated | medium |
 | **Hook errors during run** | If `--ci-log` was provided, grep for `Stop hook error:` or `hook.*error` lines | high |
+| **Script workarounds applied** | The progress file's `workarounds` array is non-empty — the orchestrator bypassed one or more failed scripts. The steps completed, but the automation was broken | medium |
 | **Active-workflow marker left behind** | `.agent_workspace/.active-workflow` still exists after workflow completed — will block future sessions | low |
 | **Timestamp gaps** | File mtime gap > 10 min between consecutive steps suggests context compaction or manual intervention | low |
 
@@ -138,6 +139,13 @@ Write `$REPORT_FILE` using this template:
 ### <step-name>: <failure type>
 - **Root cause**: ...
 - **Fix**: ...
+
+## Workarounds
+<!-- For each workaround in progress file -->
+- **<step>**: <issue> — Orchestrator action: <action>
+
+<!-- If no workarounds: -->
+No script workarounds were applied.
 
 ## Bottlenecks
 <!-- For each bottleneck -->
@@ -179,6 +187,7 @@ Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
   "high_severity_failure_count": 0,
   "bottleneck_count": 0,
   "orchestrator_issue_count": 0,
+  "workaround_count": 0,
   "recommendation_count": 0,
   "total_duration_min": 0
 }

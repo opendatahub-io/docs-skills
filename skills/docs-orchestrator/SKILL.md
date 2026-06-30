@@ -163,6 +163,21 @@ Skill: <step.skill>, args: "<constructed args>"
 5. Run [step-specific post-processing](#step-specific-post-processing)
 6. Re-read the progress file from disk before the next step (post-step context refresh)
 
+### Logging workarounds
+
+When a step's build script fails but the orchestrator can work around the failure (e.g., by computing arguments manually, bypassing a broken script, or applying a manual fix), append an entry to the progress file's `workarounds` array **before proceeding with the step**:
+
+```json
+{
+  "step": "<step-name>",
+  "issue": "<what failed — e.g., build_writing_args.sh exit 1 due to set -e bug in find_code_analysis_dir>",
+  "action": "<what the orchestrator did instead — e.g., computed JSON args manually and dispatched agent directly>",
+  "timestamp": "<ISO 8601>"
+}
+```
+
+This makes workarounds visible to pipeline-diagnostics, which surfaces them in the diagnostic report. Without this, script failures that the orchestrator silently works around appear as clean runs — masking bugs in the automation layer.
+
 ### Step-specific post-processing
 
 After each step completes, apply the per-step rules from [step post-processing](references/step-post-processing.md). When rules reference sidecar fields, read from `steps.<step-name>.result` in the progress file. Key triggers: requirements triggers post-requirements source resolution if `options.source` is null; planning stops on 0 modules; writing skips create-merge-request if no files; quality-gate enters the iteration loop if `passed` is false.

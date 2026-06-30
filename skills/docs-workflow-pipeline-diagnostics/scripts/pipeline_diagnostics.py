@@ -649,10 +649,16 @@ def detect_bottlenecks(timeline: list[dict]) -> list[dict]:
     return sorted(bottlenecks, key=lambda b: b["duration_s"], reverse=True)
 
 
+def extract_workarounds(progress: dict) -> list[dict]:
+    """Read workaround entries from the progress file."""
+    return progress.get("workarounds", [])
+
+
 def build_recommendations(
     failures: list[dict],
     bottlenecks: list[dict],
     context_pressure: dict,
+    workarounds: list[dict] | None = None,
 ) -> list[str]:
     """Generate actionable recommendations from analysis."""
     recs = []
@@ -709,6 +715,15 @@ def build_recommendations(
             "Large artifact footprints increase disk I/O and context re-read overhead on resume"
         )
 
+    if workarounds:
+        step_names = ", ".join(
+            sorted({w.get("step", "unknown") for w in workarounds})
+        )
+        recs.append(
+            f"{len(workarounds)} script workaround(s) applied during steps: {step_names}. "
+            "The underlying scripts should be fixed so the orchestrator does not need to bypass them"
+        )
+
     if not recs:
         recs.append("No significant issues detected. Pipeline health looks good.")
 
@@ -760,7 +775,8 @@ def analyze(progress_path: str) -> dict:
     failures = detect_failures(step_order, steps, base_path)
     bottlenecks = detect_bottlenecks(timeline)
     context_pressure = estimate_context_pressure(step_order, steps, base_path, dir_cache)
-    recommendations = build_recommendations(failures, bottlenecks, context_pressure)
+    workarounds = extract_workarounds(progress)
+    recommendations = build_recommendations(failures, bottlenecks, context_pressure, workarounds)
 
     # Compute total duration from file mtimes (first and last step)
     completed_mtimes = [
@@ -789,6 +805,7 @@ def analyze(progress_path: str) -> dict:
         },
         "timeline": timeline,
         "loop_groups": loop_groups,
+        "workarounds": workarounds,
         "failures": failures,
         "bottlenecks": bottlenecks,
         "context_pressure": context_pressure,
