@@ -467,8 +467,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         result = handle_batch(jira_reader, args.jql, args.max_results, ready_statuses)
 
-    if args.output_dir and not isinstance(result, dict) or "error" not in result:
-        write_markdown_reports(result, args.output_dir)
+    if args.output_dir:
+        if isinstance(result, dict) and "error" not in result:
+            write_markdown_reports(result, args.output_dir)
 
     print(json.dumps(result, indent=2))
     return 0
@@ -651,9 +652,130 @@ def handle_post_comment() -> int:
     return 0
 
 
+def format_markdown_report(result: dict) -> str:
+    """Format a per-ticket readiness report as markdown."""
+    ticket = result.get("ticket", "UNKNOWN")
+    summary = result.get("summary", "")
+    url = result.get("url", "")
+    overall = result.get("overall_status", "not_ready")
+    dims = result.get("dimensions", {})
+    rel_map = result.get("relationship_map", {})
+
+    status_label = {
+        "ready": "READY",
+        "ready_with_warnings": "READY (with warnings)",
+        "not_ready": "NOT READY",
+    }.get(overall, overall.upper())
+
+    lines = [
+        f"# {ticket} — Readiness Assessment",
+        "",
+        f"**Summary:** {summary}",
+        f"**URL:** {url}",
+        f"**Verdict:** {status_label}",
+        "",
+        "---",
+        "",
+        "## Dimension Results",
+        "",
+    ]
+
+    dim_labels = {
+        "description_quality": "Description Quality",
+        "pr_source_linkage": "PR/Source Linkage",
+        "metadata_completeness": "Metadata Completeness",
+        "relationship_context": "Relationship Context",
+    }
+
+    for dim_key, label in dim_labels.items():
+        dim = dims.get(dim_key)
+        if dim is None:
+            lines.append(f"### {label}: _skipped_")
+            lines.append("")
+            continue
+
+        dim_status = dim.get("status", "pass").upper()
+        lines.append(f"### {label}: {dim_status}")
+        lines.append("")
+
+        if dim_key == "description_quality":
+            score = dim.get("score", "?")
+            lines.append(f"- Score: {score}/5")
+            gaps = dim.get("gaps", [])
+            if gaps:
+                lines.append("- Gaps:")
+                for gap in gaps:
+                    lines.append(f"  - {gap}")
+        else:
+            checks = dim.get("checks", {})
+            for check_name, check in checks.items():
+                check_status = check.get("status", "pass")
+                detail = check.get("detail", "")
+                icon = {"pass": "pass", "warn": "WARN", "fail": "FAIL", "info": "info"}.get(check_status, check_status)
+                lines.append(f"- {check_name}: [{icon}] {detail}")
+
+        lines.append("")
+
+    if rel_map:
+        lines.append("## Relationship Map")
+        lines.append("")
+        parent = rel_map.get("parent")
+        if parent:
+            lines.append(f"- **Parent:** {parent['key']} ({parent.get('type', '?')}: {parent.get('summary', '')})")
+
+        children = rel_map.get("children", [])
+        if children:
+            lines.append("- **Children:**")
+            for child in children:
+                pr_info = f" — PR: {child['pr']}" if child.get("pr") else ""
+                lines.append(f"  - {child['key']} ({child.get('type', '?')}: {child.get('summary', '')}){pr_info}")
+                for gc in child.get("children", []):
+                    gc_pr = f" — PR: {gc['pr']}" if gc.get("pr") else ""
+                    lines.append(f"    - {gc['key']} ({gc.get('type', '?')}: {gc.get('summary', '')}){gc_pr}")
+
+        siblings = rel_map.get("siblings", [])
+        if siblings:
+            lines.append("- **Siblings:**")
+            for sib in siblings:
+                lines.append(f"  - {sib['key']} ({sib.get('type', '?')}: {sib.get('summary', '')})")
+
+        lines.append("")
+
+    failing_dims = [
+        (dim_labels.get(k, k), v)
+        for k, v in dims.items()
+        if v and v.get("status") in ("fail", "warn")
+    ]
+    if failing_dims:
+        lines.append("## Recommendations")
+        lines.append("")
+        for label, dim in failing_dims:
+            if dim.get("status") == "fail":
+                lines.append(f"- **{label}** — must be addressed before starting the docs workflow")
+            else:
+                lines.append(f"- **{label}** — consider addressing for better workflow results")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def write_markdown_reports(result: dict, output_dir: str) -> None:
-    """Placeholder — implemented in Task 3."""
-    pass
+    """Write per-ticket markdown reports to the output directory."""
+    os.makedirs(output_dir, exist_ok=True)
+
+    if "tickets" in result:
+        tickets = result["tickets"]
+    else:
+        tickets = [result]
+
+    for ticket in tickets:
+        if ticket.get("error"):
+            continue
+        key = ticket.get("ticket", "unknown")
+        report = format_markdown_report(ticket)
+        path = os.path.join(output_dir, f"{key}-readiness.md")
+        with open(path, "w") as f:
+            f.write(report)
 
 
 if __name__ == "__main__":

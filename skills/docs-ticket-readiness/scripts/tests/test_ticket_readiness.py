@@ -12,6 +12,7 @@ from ticket_readiness import (
     compute_overall_status,
     build_relationship_map,
     format_comment,
+    format_markdown_report,
 )
 
 
@@ -388,3 +389,82 @@ class TestFormatComment:
         comment = format_comment(result)
         assert "PR/source linkage" not in comment
         assert "Metadata" not in comment
+
+
+# --- Markdown report ---
+
+class TestFormatMarkdownReport:
+    def test_report_has_header(self):
+        result = {
+            "ticket": "PROJ-123",
+            "summary": "Add widget API docs",
+            "url": "https://redhat.atlassian.net/browse/PROJ-123",
+            "overall_status": "ready",
+            "dimensions": {
+                "description_quality": {"status": "pass", "score": 4, "gaps": []},
+                "pr_source_linkage": {"status": "pass", "checks": {"git_links_present": {"status": "pass", "detail": "1 PR"}}},
+                "metadata_completeness": {"status": "pass", "checks": {"fix_versions": {"status": "pass", "detail": "4.15"}}},
+                "relationship_context": {"status": "pass", "checks": {"parent_epic": {"status": "pass", "detail": "PROJ-100"}}},
+            },
+            "relationship_map": {
+                "parent": {"key": "PROJ-100", "summary": "Platform", "type": "Epic"},
+            },
+        }
+        report = format_markdown_report(result)
+        assert "# PROJ-123" in report
+        assert "READY" in report
+        assert "Add widget API docs" in report
+
+    def test_report_includes_failing_dimension_details(self):
+        result = {
+            "ticket": "PROJ-456",
+            "summary": "Fix bug",
+            "url": "https://redhat.atlassian.net/browse/PROJ-456",
+            "overall_status": "not_ready",
+            "dimensions": {
+                "description_quality": {"status": "fail", "score": 1, "gaps": ["One-liner", "No ACs"]},
+                "pr_source_linkage": {"status": "pass", "checks": {}},
+                "metadata_completeness": {
+                    "status": "fail",
+                    "checks": {
+                        "fix_versions": {"status": "fail", "detail": "not set"},
+                        "release_note_type": {"status": "pass", "detail": "Bug Fix"},
+                        "priority": {"status": "pass", "detail": "Major"},
+                        "ticket_status": {"status": "pass", "detail": "Done"},
+                    },
+                },
+                "relationship_context": {"status": "pass", "checks": {}},
+            },
+            "relationship_map": {},
+        }
+        report = format_markdown_report(result)
+        assert "NOT READY" in report
+        assert "One-liner" in report
+        assert "fix_versions" in report or "Fix versions" in report
+
+    def test_report_includes_relationship_map(self):
+        result = {
+            "ticket": "PROJ-123",
+            "summary": "Feature",
+            "url": "https://redhat.atlassian.net/browse/PROJ-123",
+            "overall_status": "ready",
+            "dimensions": {
+                "description_quality": {"status": "pass", "score": 4, "gaps": []},
+                "pr_source_linkage": {"status": "pass", "checks": {}},
+                "metadata_completeness": {"status": "pass", "checks": {}},
+                "relationship_context": {"status": "pass", "checks": {}},
+            },
+            "relationship_map": {
+                "parent": {"key": "PROJ-100", "summary": "Platform", "type": "Epic"},
+                "children": [
+                    {"key": "PROJ-456", "summary": "API", "type": "Story", "pr": "https://github.com/org/repo/pull/42"},
+                ],
+                "siblings": [
+                    {"key": "PROJ-457", "summary": "UI", "type": "Story"},
+                ],
+            },
+        }
+        report = format_markdown_report(result)
+        assert "PROJ-100" in report
+        assert "PROJ-456" in report
+        assert "PROJ-457" in report
