@@ -30,7 +30,7 @@ Determine mode:
 Run the readiness script to fetch JIRA data and perform Dimensions 2–4 (PR linkage, metadata, relationships):
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/ticket_readiness.py -- \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/ticket_readiness.py \
   --issue <TICKET_KEY> \
   --plugin-root ${CLAUDE_PLUGIN_ROOT} \
   [--ready-statuses <list>]
@@ -39,7 +39,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/ticket_readiness.py -- \
 For batch mode:
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/ticket_readiness.py -- \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/ticket_readiness.py \
   --jql "<JQL_QUERY>" \
   --max-results <N> \
   --plugin-root ${CLAUDE_PLUGIN_ROOT} \
@@ -105,7 +105,7 @@ If the user declines, skip comment posting.
 **Post comments:** Pipe the final merged JSON (with description_quality filled in) into the script's `--post-comment` mode:
 
 ```bash
-echo '<MERGED_JSON>' | uv run --script ${CLAUDE_SKILL_DIR}/scripts/ticket_readiness.py -- --post-comment
+echo '<MERGED_JSON>' | uv run --script ${CLAUDE_SKILL_DIR}/scripts/ticket_readiness.py --post-comment
 ```
 
 Report the comment posting results to the user.
