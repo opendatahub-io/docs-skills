@@ -92,7 +92,7 @@ Read the YAML file and extract the ordered step list. Each step has: `name`, `sk
 | `create_merge_request` | Run only if `--create-merge-request` was passed |
 | `has_pr` | Run only if a PR/MR URL is available (from `--pr`, JIRA discovery, or `options.pr_urls`) |
 | `has_source_repo` | If `--no-source-repo` → `skipped`. If source resolved pre-flight → `pending`. Otherwise → `deferred` until post-requirements resolution |
-| `has_review_issues` | Deferred until technical-review step completes. See [`when: has_review_issues` condition](#when-has_review_issues-condition) |
+| `has_many_requirements` | Deferred until requirements step completes. See [`when: has_many_requirements` condition](#when-has_many_requirements-condition) |
 | _(none)_ | Always runs |
 
 Steps that don't meet their condition and can't be deferred are marked `skipped`.
@@ -210,9 +210,9 @@ Loop up to 2 iterations until `intent_alignment >= 4`:
 3. Fix via `docs-workflow-writing --fix-from <BASE_PATH>/quality-gate/feedback-brief-<iteration>.md` (verify file exists first; pass all `--repo` flags), then re-run quality gate
 4. After 2 iterations: `intent_alignment >= 3` → accept with warning. `< 3` → ask user
 
-### `when: has_review_issues` condition
+### `when: has_many_requirements` condition
 
-The `quality-gate` step uses `when: has_review_issues`. Evaluated after the technical-review iteration loop completes. The gate runs when the tech review found critical or significant issues (`severity_counts.critical > 0` or `severity_counts.significant > 0`), or when confidence is `LOW` (safety net). Skipped when no critical/significant issues and confidence is not LOW. See [quality gate conditions](references/quality-gate-conditions.md) for the full evaluation logic and rationale.
+The `quality-gate` step uses `when: has_many_requirements`. Evaluated in two phases: Phase 1 after requirements (threshold: `requirement_count >= 6`), Phase 2 after technical-review (skip if `confidence == HIGH`). See [quality gate conditions](references/quality-gate-conditions.md) for the full evaluation logic and rationale.
 
 ## Commit confirmation gate
 

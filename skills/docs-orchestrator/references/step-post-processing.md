@@ -6,6 +6,7 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 - Log the `title` field: `"Requirements extracted: <title>"`
 - Record `requirement_count` from the sidecar. Log: `"Requirements: <requirement_count> requirements discovered"`
+- Evaluate `when: has_many_requirements` for any deferred steps (see [`when: has_many_requirements` condition](../SKILL.md#when-has_many_requirements-condition))
 - If `options.source` is `null` → run [Post-requirements source resolution](../SKILL.md#post-requirements-source-resolution). This may change `deferred` steps to `pending` or `skipped`
 
 ## code-analysis
@@ -36,7 +37,7 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 ## technical-review
 
-- After the [Technical review iteration](../SKILL.md#technical-review-iteration) loop completes, evaluate `when: has_review_issues` for the quality-gate step (see [`when: has_review_issues` condition](../SKILL.md#when-has_review_issues-condition)). Run the gate if `severity_counts.critical > 0` or `severity_counts.significant > 0`, or if confidence is `LOW`. Skip if no critical/significant issues and confidence is not LOW
+- After the [Technical review iteration](../SKILL.md#technical-review-iteration) loop completes, re-evaluate `when: has_many_requirements` Phase 2 for the quality-gate step (see [`when: has_many_requirements` condition](../SKILL.md#when-has_many_requirements-condition))
 
 ## create-merge-request
 

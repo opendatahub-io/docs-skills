@@ -88,14 +88,24 @@ Coverage check defects are merged into the gaps array alongside judge-derived ga
 
 ## Conditional execution
 
-The quality gate runs conditionally (`when: has_review_issues`) to avoid unnecessary overhead when the tech review found no serious problems. The condition is evaluated after the technical-review iteration loop completes:
+The quality gate runs conditionally (`when: has_many_requirements`) to avoid unnecessary overhead on simple tickets. The condition is evaluated in two phases:
+
+### Phase 1 — After requirements step
 
 | Condition | Result |
 |-----------|--------|
-| `severity_counts.critical > 0` or `severity_counts.significant > 0` | **Pending** — gate runs. Critical or significant issues warrant an intent-alignment check |
-| `critical == 0` and `significant == 0` and `confidence == LOW` | **Pending** — gate runs. LOW confidence is a safety net for broad comprehension problems |
-| `critical == 0` and `significant == 0` and `confidence != LOW` | **Skipped** — no serious issues found |
-| Technical-review was skipped | **Pending** — no signal available, gate runs |
+| `requirement_count < 6` | **Skipped** — too few requirements to warrant a gate |
+| `requirement_count >= 6` | **Deferred** — provisionally needed, pending tech review |
+| `requirement_count` missing | **Deferred** — backward compatibility default |
+
+### Phase 2 — After technical-review step
+
+| Condition | Result |
+|-----------|--------|
+| Already skipped in Phase 1 | No change |
+| Tech review confidence = `HIGH` | **Skipped** — strong writer comprehension makes intent drift unlikely |
+| Tech review confidence = `MEDIUM` or `LOW` | **Pending** — gate runs |
+| Technical-review was skipped | **Pending** — no confidence signal, gate runs |
 
 Custom workflow YAMLs can override this logic by always including or excluding the quality-gate step.
 

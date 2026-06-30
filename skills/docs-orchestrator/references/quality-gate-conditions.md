@@ -1,23 +1,24 @@
-# `when: has_review_issues` Condition
+# `when: has_many_requirements` Condition
 
-The `quality-gate` step uses `when: has_review_issues`. This condition is evaluated after the technical-review step completes. The quality gate runs only when the tech review found critical or significant issues — direct evidence that intent alignment should be checked.
+The `quality-gate` step uses `when: has_many_requirements`. This condition is evaluated in two phases:
 
-## Evaluation — After technical-review step completes
+## Phase 1 — After requirements step completes (initial evaluation)
 
-- Read `severity_counts` and `confidence` from `steps.technical-review.result` in the progress file
-- If `severity_counts.critical > 0` OR `severity_counts.significant > 0` → condition is met, mark quality-gate as `pending`. Critical or significant issues indicate potential intent drift regardless of ticket complexity. Log: `"Quality-gate enabled: technical review found <critical> critical + <significant> significant issue(s)"`
-- If `severity_counts.critical == 0` AND `severity_counts.significant == 0` AND `confidence` is `LOW` → condition is met, mark quality-gate as `pending`. LOW confidence after review iterations signals broad comprehension problems even without specific high-severity findings. Log: `"Quality-gate enabled: technical review confidence is LOW"`
-- If `severity_counts.critical == 0` AND `severity_counts.significant == 0` AND `confidence` is not `LOW` → condition is not met, mark quality-gate as `skipped` with `skip_reason: "no_critical_or_significant_issues"`. Log: `"Skipping quality-gate: no critical or significant issues found"`
-- If technical-review was `skipped` → condition is met, mark quality-gate as `pending` (no signal available). Log: `"Quality-gate enabled: technical review was skipped (no signal)"`
+- Read `requirement_count` from `steps.requirements.result` in the progress file
+- If `requirement_count < 6` → condition is not met, mark the step as `skipped` with `skip_reason: "few_requirements"`. Log: `"Skipping quality-gate: <requirement_count> requirements (threshold: 6)"`
+- If `requirement_count >= 6` → mark as `deferred`. The gate is provisionally needed but the tech-review result may change that (see Phase 2)
+- If `requirement_count` is missing from the sidecar (backward compatibility) → treat as `deferred`. Log a warning: `"requirement_count missing from requirements sidecar — defaulting to quality-gate enabled"`
 
-## Initial status
+## Phase 2 — After technical-review step completes (re-evaluation)
 
-Before the technical-review step completes, the quality-gate step is `deferred`. It is only evaluated once: after the technical-review iteration loop finishes.
+- If the step was already `skipped` in Phase 1, no change
+- Read `confidence` from `steps.technical-review.result`
+- If `confidence` is `HIGH` → the tech review validated all claims against source code, indicating strong requirements comprehension by the writer. Intent drift is unlikely. Mark quality-gate as `skipped` with `skip_reason: "high_confidence_review"`. Log: `"Skipping quality-gate: technical review reached HIGH confidence"`
+- If `confidence` is `MEDIUM` or `LOW` → condition is met, mark as `pending`. The tech review could not fully validate the writing, so an independent intent-alignment check adds value
+- If technical-review was `skipped` → condition is met, mark as `pending` (no confidence signal available)
 
 ## Rationale
 
-The quality gate checks intent alignment — "did we write what was asked for?" — which is orthogonal to the tech review's accuracy check. However, when the tech review finds zero critical or significant issues and confidence is not LOW, the writing is likely solid enough that a full intent-alignment sweep adds cost without proportional value. Critical or significant issues in any ticket — even one with only 2–3 requirements — are worth checking for intent drift.
-
-The LOW confidence safety net covers edge cases where the reviewer could not verify claims but did not flag specific high-severity issues. LOW confidence after the tech review iteration loop (which attempts fixes before escalating) is rare and signals deeper comprehension problems that the quality gate can catch.
+The quality gate checks intent alignment — "did we write what was asked for?" — which is orthogonal to the tech review's accuracy check. However, both accuracy and completeness tend to follow from the same upstream quality: clear requirements, good code-analysis, and strong writer comprehension. When the tech review reaches HIGH, it signals that the writer had a solid grasp of the material, making coverage gaps less likely. Combining the requirement-count threshold (complexity filter) with the confidence signal (quality filter) skips the gate only when both indicators suggest it is unlikely to find gaps.
 
 The threshold and confidence logic can be overridden by using a custom workflow YAML that either always includes or always excludes quality-gate.
