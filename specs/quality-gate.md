@@ -38,20 +38,20 @@ How well the documentation fulfills the JIRA ticket's requirements:
 
 The intent_alignment judge evaluates:
 - **Scope match** — does the output match the ticket request?
-- **Acceptance criteria coverage** — are all AC items addressed?
+- **Acceptance criteria coverage** — are all acceptance criteria items addressed?
 - **Audience alignment** — does content match the target audience?
 - **Focus** — does the documentation stay on topic?
 
 When `intent_alignment < 4`, the judge returns a `missed_items` array identifying each gap with a severity (`missing` or `incomplete`), target file, and section location.
 
-## Per-AC coverage verification
+## Per-acceptance-criteria coverage verification
 
 Before the judge agents score the documentation, a deterministic coverage check verifies each acceptance criterion is addressed with a grounded quote. This runs on every quality gate invocation (initial and re-runs), providing a verifiable signal independent of the LLM judges.
 
 ### Procedure
 
-1. Each AC item from `requirements/discovery.json` gets its own subagent
-2. Each subagent receives only its single AC item and the full documentation — no other ACs, no judge context, no conversation history
+1. Each acceptance criteria item from `requirements/discovery.json` gets its own subagent
+2. Each subagent receives only its single acceptance criteria item and the full documentation — no other acceptance criteria, no judge context, no conversation history
 3. The subagent answers yes/no and, if yes, quotes the supporting sentence verbatim
 4. Python code verifies the quote actually exists in the documentation (whitespace-normalized substring match)
 5. Each result is joined to scope-req-audit evidence status to classify the gap
@@ -72,7 +72,7 @@ The key insight: `real_defect` (absent from doc, present in code) means "fix it"
 ### Relationship to judge agents
 
 The coverage check and judge agents serve different purposes:
-- **Coverage check**: deterministic, per-AC, quote-grounded. Answers "is this specific AC item addressed, provably?"
+- **Coverage check**: deterministic, per-acceptance-criteria, quote-grounded. Answers "is this specific acceptance criteria item addressed, provably?"
 - **Judge agents**: holistic quality and intent alignment scoring. Answers "is the documentation good and on-target?"
 
 Coverage check defects are merged into the gaps array alongside judge-derived gaps. When both identify the same gap, the coverage check classification takes precedence because it includes a deterministic quote verification. The `judge` field distinguishes the source (`"coverage_check"` vs `"intent_alignment"`).
@@ -88,24 +88,14 @@ Coverage check defects are merged into the gaps array alongside judge-derived ga
 
 ## Conditional execution
 
-The quality gate runs conditionally (`when: has_many_requirements`) to avoid unnecessary overhead on simple tickets. The condition is evaluated in two phases:
-
-### Phase 1 — After requirements step
+The quality gate runs conditionally (`when: has_review_issues`) to avoid unnecessary overhead when the tech review found no serious problems. The condition is evaluated after the technical-review iteration loop completes:
 
 | Condition | Result |
 |-----------|--------|
-| `requirement_count < 6` | **Skipped** — too few requirements to warrant a gate |
-| `requirement_count >= 6` | **Deferred** — provisionally needed, pending tech review |
-| `requirement_count` missing | **Deferred** — backward compatibility default |
-
-### Phase 2 — After technical-review step
-
-| Condition | Result |
-|-----------|--------|
-| Already skipped in Phase 1 | No change |
-| Tech review confidence = `HIGH` | **Skipped** — strong writer comprehension makes intent drift unlikely |
-| Tech review confidence = `MEDIUM` or `LOW` | **Pending** — gate runs |
-| Technical-review was skipped | **Pending** — no confidence signal, gate runs |
+| `severity_counts.critical > 0` or `severity_counts.significant > 0` | **Pending** — gate runs. Critical or significant issues warrant an intent-alignment check |
+| `critical == 0` and `significant == 0` and `confidence == LOW` | **Pending** — gate runs. LOW confidence is a safety net for broad comprehension problems |
+| `critical == 0` and `significant == 0` and `confidence != LOW` | **Skipped** — no serious issues found |
+| Technical-review was skipped | **Pending** — no signal available, gate runs |
 
 Custom workflow YAMLs can override this logic by always including or excluding the quality-gate step.
 
@@ -142,7 +132,7 @@ requirements → code-analysis → scope-req-audit → planning → writing
   → quality-gate → create-merge-request → pipeline-diagnostics
 ```
 
-**Inputs**: `writing` (the documentation files), `requirements` (ticket summary and AC items)
+**Inputs**: `writing` (the documentation files), `requirements` (ticket summary and acceptance criteria items)
 
 **Optional input**: `scope-req-audit` evidence status (for gap classification)
 
@@ -152,9 +142,9 @@ The quality gate writes to `.agent_workspace/<ticket>/quality-gate/`:
 
 | File | Description |
 |------|-------------|
-| `coverage-prompts/manifest.json` | Manifest of AC items with prompt/result file paths |
-| `coverage-prompts/<id>.md` | Per-AC prompt file with doc content |
-| `coverage-results/<id>.json` | Per-AC agent result (`covered`, `quote`) |
+| `coverage-prompts/manifest.json` | Manifest of acceptance criteria items with prompt/result file paths |
+| `coverage-prompts/<id>.md` | Per-acceptance-criteria prompt file with doc content |
+| `coverage-results/<id>.json` | Per-acceptance-criteria agent result (`covered`, `quote`) |
 | `coverage-check.json` | Classified results with quote verification and evidence status join |
 | `dq-prompt.md` | Doc quality judge prompt with documentation content interpolated |
 | `ia-prompt.md` | Intent alignment judge prompt with documentation and ticket context |
@@ -192,7 +182,7 @@ The quality gate writes to `.agent_workspace/<ticket>/quality-gate/`:
   ],
   "rationales": {
     "doc_quality": "Full judge rationale text...",
-    "intent_alignment": "Full judge rationale text with per-AC coverage..."
+    "intent_alignment": "Full judge rationale text with per-acceptance-criteria coverage..."
   }
 }
 ```
@@ -200,7 +190,7 @@ The quality gate writes to `.agent_workspace/<ticket>/quality-gate/`:
 ## Implementation
 
 - **Skill**: `docs-workflow-quality-gate` (`skills/docs-workflow-quality-gate/SKILL.md`)
-- **Script**: `skills/docs-workflow-quality-gate/scripts/quality_gate.py` — subcommands: `prepare` (build judge prompts), `verify` (per-AC coverage check), `classify` (cross-reference gaps, write sidecar)
+- **Script**: `skills/docs-workflow-quality-gate/scripts/quality_gate.py` — subcommands: `prepare` (build judge prompts), `verify` (per-acceptance-criteria coverage check), `classify` (cross-reference gaps, write sidecar)
 - **Condition logic**: `skills/docs-orchestrator/references/quality-gate-conditions.md`
 - **Post-processing**: `skills/docs-orchestrator/references/step-post-processing.md`
 - **Workflow definition**: `skills/docs-orchestrator/defaults/docs-workflow.yaml` (step 10 of 12)

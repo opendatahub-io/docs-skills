@@ -40,7 +40,7 @@ All sidecars share these fields:
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
 | `title` | string | First heading from requirements.md (max 80 chars, ticket prefix stripped) | `create_merge_request.sh` — PR/MR title |
-| `requirement_count` | integer | Number of requirements discovered in pass 1 | Orchestrator — `when: has_many_requirements` condition for quality-gate |
+| `requirement_count` | integer | Number of requirements discovered in pass 1 | Informational (orchestrator summary) |
 
 ### scope-req-audit
 
@@ -347,7 +347,7 @@ When an existing linked ticket is found:
   ],
   "rationales": {
     "doc_quality": "Full judge rationale text...",
-    "intent_alignment": "Full judge rationale text with per-AC coverage assessments..."
+    "intent_alignment": "Full judge rationale text with per-acceptance-criteria coverage assessments..."
   }
 }
 ```
@@ -358,10 +358,10 @@ When an existing linked ticket is found:
 | `intent_alignment` | integer | Intent alignment score (1-5) from Opus judge agent | Orchestrator — iteration logic |
 | `passed` | boolean | Whether intent_alignment >= 4 (doc_quality is informational only) | Orchestrator — iteration logic |
 | `iteration` | integer | Which iteration of the quality gate loop (1-based) | Orchestrator |
-| `coverage_check` | object\|null | Per-AC quote-based coverage verification summary (null if no AC items found) | Quality gate iteration |
+| `coverage_check` | object\|null | Per-acceptance-criteria quote-based coverage verification summary (null if no acceptance criteria items found) | Quality gate iteration |
 | `coverage_check.total` | integer | Total acceptance criteria checked | Informational |
-| `coverage_check.covered` | integer | AC items with verified quotes in the documentation | Quality gate iteration |
-| `coverage_check.uncovered` | integer | AC items not covered or with unverified quotes | Quality gate iteration |
+| `coverage_check.covered` | integer | acceptance criteria items with verified quotes in the documentation | Quality gate iteration |
+| `coverage_check.uncovered` | integer | acceptance criteria items not covered or with unverified quotes | Quality gate iteration |
 | `gaps` | array | Identified gaps with evidence status and recommended action | Quality gate iteration — inline fix dispatch |
 | `gaps[].ac_item` | string | The acceptance criteria item that was missed | Quality gate iteration |
 | `gaps[].judge` | string | Which judge flagged the gap: `"intent_alignment"` or `"coverage_check"` | Informational |
@@ -371,7 +371,7 @@ When an existing linked ticket is found:
 | `gaps[].section` | string\|null | Section heading or insertion point within the file | Quality gate iteration — targeted section edits |
 | `rationales` | object | Full judge rationale texts for the feedback brief | Quality gate iteration |
 | `rationales.doc_quality` | string | Complete doc_quality judge rationale | Quality gate iteration — included verbatim in feedback brief |
-| `rationales.intent_alignment` | string | Complete intent_alignment judge rationale with per-AC coverage assessments, missing artifacts, scope analysis | Quality gate iteration — included verbatim in feedback brief |
+| `rationales.intent_alignment` | string | Complete intent_alignment judge rationale with per-acceptance-criteria coverage assessments, missing artifacts, scope analysis | Quality gate iteration — included verbatim in feedback brief |
 
 ### action-comments
 
