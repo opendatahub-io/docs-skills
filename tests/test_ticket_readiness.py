@@ -1,10 +1,5 @@
 """Tests for ticket_readiness.py dimension checks."""
 
-import os
-import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 from ticket_readiness import (
     assess_ticket,
     build_relationship_map,
