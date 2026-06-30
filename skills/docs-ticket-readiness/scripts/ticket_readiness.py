@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -514,10 +515,140 @@ def handle_batch(
     }
 
 
+def format_comment(result: dict) -> str:
+    """Format a readiness verdict as a JIRA comment string."""
+    status = result.get("overall_status", "not_ready")
+    dims = result.get("dimensions", {})
+    lines = []
+
+    if status == "ready":
+        lines.append("*Docs readiness: READY*")
+        lines.append("")
+        lines.append("This ticket has sufficient information to begin the documentation workflow.")
+    elif status == "ready_with_warnings":
+        lines.append("*Docs readiness: READY (with warnings)*")
+        lines.append("")
+        lines.append("This ticket can proceed but has minor gaps:")
+        lines.extend(_format_dimension_gaps(dims, warns_only=True))
+    else:
+        lines.append("*Docs readiness: NOT READY*")
+        lines.append("")
+        lines.append("This ticket needs the following before documentation work can begin:")
+        lines.extend(_format_dimension_gaps(dims, warns_only=False))
+
+    lines.append("")
+    lines.append(f"_Assessed by docs-ticket-readiness on {datetime.now(timezone.utc).strftime('%Y-%m-%d')}_")
+    return "\n".join(lines)
+
+
+def _format_dimension_gaps(dims: dict, warns_only: bool) -> list[str]:
+    """Extract gap descriptions from non-passing dimensions."""
+    lines = []
+    dim_labels = {
+        "description_quality": "Description quality",
+        "pr_source_linkage": "PR/source linkage",
+        "metadata_completeness": "Metadata",
+        "relationship_context": "Relationships",
+    }
+
+    for dim_key, label in dim_labels.items():
+        dim = dims.get(dim_key)
+        if dim is None:
+            continue
+        dim_status = dim.get("status", "pass")
+        if dim_status == "pass" or dim_status == "info":
+            continue
+        if warns_only and dim_status == "fail":
+            continue
+
+        if dim_key == "description_quality":
+            gaps = dim.get("gaps", [])
+            score = dim.get("score", "?")
+            gap_text = ", ".join(gaps) if gaps else "insufficient detail"
+            lines.append(f"- *{label}:* {gap_text} (score: {score}/5)")
+            continue
+
+        checks = dim.get("checks", {})
+        failing_details = []
+        for check_name, check in checks.items():
+            if check.get("status") in ("fail", "warn"):
+                failing_details.append(check.get("detail", check_name))
+        if failing_details:
+            lines.append(f"- *{label}:* {', '.join(failing_details)}")
+
+    return lines
+
+
+def post_jira_comment(issue_key: str, comment: str, jira_url: str, email: str, token: str) -> dict:
+    """Post a comment to a JIRA ticket via REST API v3."""
+    import requests
+
+    url = f"{jira_url.rstrip('/')}/rest/api/3/issue/{issue_key}/comment"
+    body = {
+        "body": {
+            "version": 1,
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [{"type": "text", "text": line}],
+                }
+                for line in comment.split("\n")
+                if line.strip()
+            ],
+        }
+    }
+
+    resp = requests.post(
+        url,
+        json=body,
+        auth=(email, token),
+        headers={"Content-Type": "application/json"},
+        timeout=30,
+    )
+
+    if resp.status_code in (200, 201):
+        return {"status": "ok", "ticket": issue_key}
+    return {
+        "status": "error",
+        "ticket": issue_key,
+        "http_status": resp.status_code,
+        "detail": resp.text[:200],
+    }
+
+
 def handle_post_comment() -> int:
-    """Placeholder — implemented in Task 2."""
-    print(json.dumps({"error": "post-comment not yet implemented"}))
-    return 1
+    """Read merged verdict JSON from stdin and post comments to JIRA."""
+    try:
+        data = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        print(json.dumps({"error": f"Invalid JSON on stdin: {e}"}))
+        return 1
+
+    jira_url = os.environ.get("JIRA_URL", "https://redhat.atlassian.net")
+    email = os.environ.get("JIRA_EMAIL", "")
+    token = os.environ.get("JIRA_API_TOKEN", os.environ.get("JIRA_AUTH_TOKEN", ""))
+
+    if not email or not token:
+        print(json.dumps({"error": "JIRA_EMAIL and JIRA_API_TOKEN required for comment posting"}))
+        return 1
+
+    if "tickets" in data:
+        tickets = data["tickets"]
+    else:
+        tickets = [data]
+
+    results = []
+    for ticket in tickets:
+        if ticket.get("error"):
+            results.append({"status": "skipped", "ticket": ticket.get("ticket", "?"), "reason": "assessment had errors"})
+            continue
+        comment = format_comment(ticket)
+        result = post_jira_comment(ticket["ticket"], comment, jira_url, email, token)
+        results.append(result)
+
+    print(json.dumps({"comment_results": results}, indent=2))
+    return 0
 
 
 def write_markdown_reports(result: dict, output_dir: str) -> None:

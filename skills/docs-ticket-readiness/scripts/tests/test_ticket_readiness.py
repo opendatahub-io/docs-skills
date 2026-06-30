@@ -11,6 +11,7 @@ from ticket_readiness import (
     check_relationships,
     compute_overall_status,
     build_relationship_map,
+    format_comment,
 )
 
 
@@ -298,3 +299,92 @@ class TestComputeOverallStatus:
             "relationship_context": {"status": "pass"},
         }
         assert compute_overall_status(dims) == "ready"
+
+
+# --- Comment formatting ---
+
+class TestFormatComment:
+    def test_ready_comment(self):
+        result = {
+            "ticket": "PROJ-123",
+            "overall_status": "ready",
+            "dimensions": {
+                "description_quality": {"status": "pass", "score": 4, "gaps": []},
+                "pr_source_linkage": {"status": "pass", "checks": {}},
+                "metadata_completeness": {"status": "pass", "checks": {}},
+                "relationship_context": {"status": "pass", "checks": {}},
+            },
+        }
+        comment = format_comment(result)
+        assert "READY" in comment
+        assert "NOT READY" not in comment
+        assert "sufficient information" in comment.lower()
+
+    def test_not_ready_comment_includes_gaps(self):
+        result = {
+            "ticket": "PROJ-123",
+            "overall_status": "not_ready",
+            "dimensions": {
+                "description_quality": {"status": "fail", "score": 1, "gaps": ["No acceptance criteria"]},
+                "pr_source_linkage": {
+                    "status": "fail",
+                    "checks": {
+                        "git_links_present": {"status": "fail", "detail": "No git-related links"},
+                    },
+                },
+                "metadata_completeness": {
+                    "status": "fail",
+                    "checks": {
+                        "fix_versions": {"status": "fail", "detail": "not set"},
+                        "release_note_type": {"status": "fail", "detail": "not set"},
+                        "priority": {"status": "pass", "detail": "Major"},
+                        "ticket_status": {"status": "pass", "detail": "Done"},
+                    },
+                },
+                "relationship_context": {"status": "pass", "checks": {}},
+            },
+        }
+        comment = format_comment(result)
+        assert "NOT READY" in comment
+        assert "Description quality" in comment
+        assert "PR/source linkage" in comment
+        assert "Metadata" in comment
+        assert "Assessed by" in comment
+
+    def test_ready_with_warnings_comment(self):
+        result = {
+            "ticket": "PROJ-123",
+            "overall_status": "ready_with_warnings",
+            "dimensions": {
+                "description_quality": {"status": "pass", "score": 3, "gaps": []},
+                "pr_source_linkage": {"status": "pass", "checks": {}},
+                "metadata_completeness": {
+                    "status": "warn",
+                    "checks": {
+                        "release_note_type": {"status": "fail", "detail": "not set"},
+                        "fix_versions": {"status": "pass", "detail": "4.15"},
+                        "priority": {"status": "pass", "detail": "Major"},
+                        "ticket_status": {"status": "pass", "detail": "Done"},
+                    },
+                },
+                "relationship_context": {"status": "pass", "checks": {}},
+            },
+        }
+        comment = format_comment(result)
+        assert "READY (with warnings)" in comment
+        assert "not set" in comment.lower()
+
+    def test_comment_omits_passing_dimensions(self):
+        result = {
+            "ticket": "PROJ-123",
+            "overall_status": "not_ready",
+            "dimensions": {
+                "description_quality": {"status": "fail", "score": 1, "gaps": ["One-liner"]},
+                "pr_source_linkage": {"status": "pass", "checks": {}},
+                "metadata_completeness": {"status": "pass", "checks": {}},
+                "relationship_context": {"status": "pass", "checks": {}},
+            },
+        }
+        comment = format_comment(result)
+        assert "PR/source linkage" not in comment
+        assert "Metadata" not in comment
