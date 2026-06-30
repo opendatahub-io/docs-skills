@@ -61,6 +61,8 @@ def main() -> int:
         if not isinstance(data, list):
             continue
         for entry in data:
+            if not isinstance(entry, dict):
+                continue
             claim_id = entry.get("claim_id")
             if claim_id:
                 verdict_map[claim_id] = entry
