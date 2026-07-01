@@ -6,6 +6,25 @@ derives a compact module map (deterministic anchors + output paths), and decides
 whether the writing step should use the per-module subagent strategy or the
 default single-writer strategy.
 
+Design note — where the module ids/anchors come from
+----------------------------------------------------
+The design has an apparent tension: its data flow shows planning emitting a
+"module list + ids/anchors", but its Conventions constrain changes to
+``docs-workflow-writing`` (orchestrator and planning untouched) and defer the
+planning-side module-id emission to the separate step-interface-contracts spec.
+
+This script resolves that tension by **deriving** the map here, in the writing
+skill's own boundary: modular-docs anchors are deterministic from a module's
+title, and the plan already names every module up front, so parsing ``plan.md``
+yields the same map without changing planning. The planning-emitted id field is
+the *target end state* (arrives with the contracts spec), not a prerequisite for
+v1. When it lands, this script should prefer sidecar-provided ids/anchors over
+title-derived ones while keeping the same output contract.
+
+Until then, a plan that cannot be parsed into discrete modules yields the
+``no_module_ids`` fallback to the single-writer path — the design's explicit
+"Plan lacks module ids" edge case — so the feature ships independently.
+
 Stdlib only — invoke with ``python3``, never ``uv run``.
 """
 
