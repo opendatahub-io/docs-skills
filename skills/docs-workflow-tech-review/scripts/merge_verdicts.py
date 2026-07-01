@@ -56,16 +56,21 @@ def main() -> int:
 
     # Collect verdicts from every batch file, keyed by claim_id.
     verdict_map: dict[str, dict] = {}
-    for batch_file in sorted(output_dir.glob("batch-verdict-*.json")):
+    batch_files = sorted(output_dir.glob("batch-verdict-*.json"))
+    loaded_count = 0
+    for batch_file in batch_files:
         data = load_json(batch_file)
         if not isinstance(data, list):
             continue
+        loaded_count += 1
         for entry in data:
             if not isinstance(entry, dict):
                 continue
             claim_id = entry.get("claim_id")
             if claim_id:
                 verdict_map[claim_id] = entry
+
+    print(f"Batch verdicts found: {loaded_count}/{len(batch_files)}")
 
     # Cross-reference against the full claims list; fall back where missing.
     merged = []
