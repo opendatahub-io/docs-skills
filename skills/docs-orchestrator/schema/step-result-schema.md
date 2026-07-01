@@ -330,6 +330,8 @@ When an existing linked ticket is found:
   "intent_alignment": 3,
   "passed": false,
   "iteration": 1,
+  "evidence_expected": true,
+  "evidence_warning": null,
   "coverage_check": {
     "total": 12,
     "covered": 9,
@@ -358,6 +360,8 @@ When an existing linked ticket is found:
 | `intent_alignment` | integer | Intent alignment score (1-5) from Opus judge agent | Orchestrator — iteration logic |
 | `passed` | boolean | Whether intent_alignment >= 4 (doc_quality is informational only) | Orchestrator — iteration logic |
 | `iteration` | integer | Which iteration of the quality gate loop (1-based) | Orchestrator |
+| `evidence_expected` | boolean | Whether scope-req-audit ran and evidence-status.json was expected | Pipeline diagnostics |
+| `evidence_warning` | string\|null | Warning message when evidence was expected but not found; null otherwise | Pipeline diagnostics, orchestrator logging |
 | `coverage_check` | object\|null | Per-AC quote-based coverage verification summary (null if no AC items found) | Quality gate iteration |
 | `coverage_check.total` | integer | Total acceptance criteria checked | Informational |
 | `coverage_check.covered` | integer | AC items with verified quotes in the documentation | Quality gate iteration |

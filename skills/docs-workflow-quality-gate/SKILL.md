@@ -24,7 +24,7 @@ Reads from upstream steps by convention:
 |--------|------|----------|
 | Writing output | `<base-path>/writing/step-result.json` | Yes — files array lists AsciiDoc paths |
 | Requirements context | `<base-path>/requirements/discovery.json` | Yes — ticket summary and AC items |
-| Evidence status | `<base-path>/scope-req-audit/evidence-status.json` or `<base-path>/validate/evidence-status.json` | No — used to classify gaps by code evidence |
+| Evidence status | `<base-path>/scope-req-audit/evidence-status.json` or `<base-path>/validate/evidence-status.json` | No — used to classify gaps by code evidence. When scope-req-audit ran but the file is missing, the gate warns and records `evidence_warning` in the sidecar |
 
 ## Execution
 
@@ -85,11 +85,14 @@ Write each agent's JSON output to the item's `result_file` path from the manifes
 
 #### 3c. Classify coverage results
 
+Determine whether code evidence was expected: check if `${BASE_PATH}/scope-req-audit/` or `${BASE_PATH}/validate/` exists as a directory. If either exists, add `--evidence-expected` to the command.
+
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py verify \
   --ticket "${TICKET}" \
   --base-path "${BASE_PATH}" \
-  --classify
+  --classify \
+  [--evidence-expected]
 ```
 
 Validates quotes against the documentation (whitespace-normalized substring match), joins to scope-req-audit evidence status, and writes `${BASE_PATH}/quality-gate/coverage-check.json`.
@@ -164,11 +167,14 @@ After both agents return, write their structured outputs to `${BASE_PATH}/qualit
 
 ### 6. Classify gaps and write step-result.json
 
+Determine whether code evidence was expected: check if `${BASE_PATH}/scope-req-audit/` or `${BASE_PATH}/validate/` exists as a directory. If either exists, add `--evidence-expected` to the command.
+
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py classify \
   --ticket "${TICKET}" \
   --base-path "${BASE_PATH}" \
-  --judge-results "${BASE_PATH}/quality-gate/judge-results.json"
+  --judge-results "${BASE_PATH}/quality-gate/judge-results.json" \
+  [--evidence-expected]
 ```
 
 The script:
@@ -270,6 +276,7 @@ If the file is missing or malformed, report the error.
 
 Report the scores and pass/fail status:
 - "Quality gate: doc_quality=N/5, intent_alignment=N/5, passed=true/false, gaps=N"
+- If `evidence_warning` is not null: "WARNING: <evidence_warning>"
 - If coverage check ran: "Coverage: N/M AC items addressed with verified quotes"
 - If gaps exist, list each gap's `ac_item`, `judge`, and `action`
 
@@ -311,6 +318,8 @@ Report the scores and pass/fail status:
   "intent_alignment": 4,
   "passed": false,
   "iteration": 1,
+  "evidence_expected": true,
+  "evidence_warning": null,
   "coverage_check": {
     "total": 12,
     "covered": 9,

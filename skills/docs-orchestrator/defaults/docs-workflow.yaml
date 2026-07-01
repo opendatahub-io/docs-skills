@@ -56,7 +56,7 @@ workflow:
       skill: docs-workflow-quality-gate
       description: Score documentation quality and intent alignment
       when: has_many_requirements
-      inputs: [writing, requirements]
+      inputs: [writing, requirements, scope-req-audit]
 
     - name: create-merge-request
       skill: docs-workflow-create-merge-request
