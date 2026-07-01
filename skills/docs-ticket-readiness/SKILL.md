@@ -18,7 +18,7 @@ Standalone skill that evaluates whether a JIRA ticket has sufficient information
 - `--max-results <n>` — Max tickets for JQL mode (default: 10).
 - `--skip-description-check` — Skip LLM description quality assessment (mechanical checks only).
 - `--comment` — Post readiness verdict as a JIRA comment after assessment.
-- `--ready-statuses <list>` — Comma-separated JIRA statuses considered docs-ready (default: Done, Closed, Resolved, In Review, Code Review).
+- `--ready-statuses <list>` — Comma-separated JIRA statuses considered docs-ready (default: Done, Closed, Resolved, In Review, Code Review, Release Pending).
 
 Determine mode:
 - If first arg looks like a JIRA key (matches `^[A-Z][A-Z0-9]+-\d+$`): single ticket mode with `--issue <key>`.
@@ -47,6 +47,41 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/ticket_readiness.py \
 ```
 
 Capture the JSON output. If the output contains an `"error"` key at the top level, report the error to the user and STOP.
+
+## Step 1.5: PR relevance assessment
+
+If PRs were discovered in Step 1 (i.e., `dimensions.pr_source_linkage.checks.git_links_present.status` is `pass` or `warn`), assess whether each PR is actually relevant to the JIRA ticket.
+
+1. Collect all PR URLs from the Step 1 JSON. Look in:
+   - `dimensions.pr_source_linkage.checks.git_links_present.detail` (parse PR URLs)
+   - `relationship_map.children[].pr` entries
+   - `relationship_map.documented_by[].pr` entries
+
+2. For each unique PR URL, dispatch a subagent (using the Agent tool) **in parallel** (all Agent calls in one message). Each subagent should:
+
+   a. Run the git PR reader to fetch PR info:
+   ```bash
+   uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info <PR_URL>
+   ```
+
+   b. Compare the PR title and description against the JIRA ticket summary and description (from `description_text` in the Step 1 JSON).
+
+   c. Return a single-line JSON verdict:
+   ```json
+   {"url": "<PR_URL>", "relevant": true, "reason": "PR adds OpenClaw deployment manifests matching the ticket's scope"}
+   ```
+   or:
+   ```json
+   {"url": "<PR_URL>", "relevant": false, "reason": "PR is a CI pipeline fix unrelated to the feature"}
+   ```
+
+3. Collect all subagent verdicts and merge into the output:
+   - Add `dimensions.pr_source_linkage.checks.pr_relevance` with:
+     - `status`: `pass` if all PRs relevant, `warn` if any irrelevant, `info` if no PRs to check
+     - `detail`: summary (e.g., "2/2 PRs relevant" or "1/3 PRs irrelevant: github.com/org/repo/pull/99")
+     - `verdicts`: array of the per-PR verdict objects
+
+4. If a subagent fails (e.g., PR is private or token missing), set that PR's verdict to `{"url": "...", "relevant": null, "reason": "Could not fetch PR info"}` and do not count it toward pass/warn.
 
 ## Step 2: Description quality assessment (Dimension 1)
 
@@ -128,7 +163,7 @@ Alternatively, if the script was already run with `--output-dir` in Step 1, the 
 | Dimension | Status | Details |
 |-----------|--------|---------|
 | Description quality | PASS (4/5) | — |
-| PR/source linkage | PASS | 2 PRs found |
+| PR/source linkage | PASS | 2 PRs found (2/2 relevant) |
 | Metadata | WARN | Release note type not set |
 | Relationships | PASS | Parent: PROJ-100 (Epic) |
 
@@ -139,6 +174,8 @@ Alternatively, if the script was already run with `--output-dir` in Step 1, the 
 - Children:
   - PROJ-456 (Sub-task: Widget API endpoints) — PR: github.com/org/repo/pull/55
   - PROJ-457 (Sub-task: Widget UI components)
+- Documented by:
+  - PROJ-789 (Task: Update API reference) — PR: github.com/org/repo/pull/60
 ```
 
 **Batch — summary table:**

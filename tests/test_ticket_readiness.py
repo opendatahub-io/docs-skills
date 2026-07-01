@@ -112,7 +112,23 @@ def make_graph_data(**overrides):
                 }
             ],
         },
-        "issue_links": {"total": 0, "showing": 0, "skipped": 0, "links": []},
+        "issue_links": {
+            "total": 1,
+            "showing": 1,
+            "skipped": 0,
+            "links": [
+                {
+                    "key": "DOCS-100",
+                    "direction": "is documented by",
+                    "link_type": "Documented",
+                    "summary": "Document widget API",
+                    "status": "Open",
+                    "issuetype": "Task",
+                    "git_links": ["https://github.com/org/docs-repo/pull/10"],
+                    "auto_discovered_urls": {"pull_requests": [], "google_docs": []},
+                }
+            ],
+        },
         "web_links": {
             "total": 1,
             "links": [
@@ -235,6 +251,11 @@ class TestCheckMetadata:
         result = check_metadata(issue)
         assert result["checks"]["ticket_status"]["status"] == "warn"
 
+    def test_pass_status_release_pending(self):
+        issue = make_issue_data(status="Release Pending")
+        result = check_metadata(issue)
+        assert result["checks"]["ticket_status"]["status"] == "pass"
+
     def test_custom_ready_statuses(self):
         issue = make_issue_data(status="QE Review")
         result = check_metadata(issue, ready_statuses=["QE Review", "Done"])
@@ -284,6 +305,20 @@ class TestCheckRelationships:
         result = check_relationships(issue, graph)
         assert result["checks"]["grandchildren_prs"]["status"] in ("pass", "warn", "info")
 
+    def test_documented_by_found(self):
+        issue = make_issue_data()
+        graph = make_graph_data()
+        result = check_relationships(issue, graph)
+        assert result["checks"]["documented_by"]["status"] == "pass"
+        assert "DOCS-100" in result["checks"]["documented_by"]["detail"]
+
+    def test_documented_by_not_found(self):
+        issue = make_issue_data()
+        graph = make_graph_data()
+        graph["issue_links"] = {"total": 0, "showing": 0, "skipped": 0, "links": []}
+        result = check_relationships(issue, graph)
+        assert result["checks"]["documented_by"]["status"] == "info"
+
 
 # --- Overall verdict ---
 
@@ -329,7 +364,35 @@ class TestComputeOverallStatus:
 # --- Comment formatting ---
 
 
+def _adf_to_text(adf: dict) -> str:
+    """Recursively extract all text from an ADF document for assertion checks."""
+    parts = []
+    if adf.get("type") == "text":
+        parts.append(adf.get("text", ""))
+    elif adf.get("type") == "emoji":
+        parts.append(adf.get("attrs", {}).get("text", ""))
+    for child in adf.get("content", []):
+        parts.append(_adf_to_text(child))
+    return " ".join(parts)
+
+
 class TestFormatComment:
+    def test_returns_adf_document(self):
+        result = {
+            "ticket": "PROJ-123",
+            "overall_status": "ready",
+            "dimensions": {
+                "description_quality": {"status": "pass", "score": 4, "gaps": []},
+                "pr_source_linkage": {"status": "pass", "checks": {}},
+                "metadata_completeness": {"status": "pass", "checks": {}},
+                "relationship_context": {"status": "pass", "checks": {}},
+            },
+        }
+        adf = format_comment(result)
+        assert adf["type"] == "doc"
+        assert adf["version"] == 1
+        assert isinstance(adf["content"], list)
+
     def test_ready_comment(self):
         result = {
             "ticket": "PROJ-123",
@@ -341,10 +404,10 @@ class TestFormatComment:
                 "relationship_context": {"status": "pass", "checks": {}},
             },
         }
-        comment = format_comment(result)
-        assert "READY" in comment
-        assert "NOT READY" not in comment
-        assert "sufficient information" in comment.lower()
+        text = _adf_to_text(format_comment(result))
+        assert "READY" in text
+        assert "NOT READY" not in text
+        assert "sufficient information" in text.lower()
 
     def test_not_ready_comment_includes_gaps(self):
         result = {
@@ -374,12 +437,36 @@ class TestFormatComment:
                 "relationship_context": {"status": "pass", "checks": {}},
             },
         }
-        comment = format_comment(result)
-        assert "NOT READY" in comment
-        assert "Description quality" in comment
-        assert "PR/source linkage" in comment
-        assert "Metadata" in comment
-        assert "Assessed by" in comment
+        text = _adf_to_text(format_comment(result))
+        assert "NOT READY" in text
+        assert "Description quality" in text
+        assert "PR/source linkage" in text
+        assert "Metadata" in text
+        assert "Assessed by" in text
+
+    def test_not_ready_metadata_includes_field_names(self):
+        result = {
+            "ticket": "PROJ-123",
+            "overall_status": "not_ready",
+            "dimensions": {
+                "description_quality": None,
+                "pr_source_linkage": {"status": "pass", "checks": {}},
+                "metadata_completeness": {
+                    "status": "fail",
+                    "checks": {
+                        "fix_versions": {"status": "fail", "detail": "not set"},
+                        "release_note_type": {"status": "fail", "detail": "not set"},
+                        "priority": {"status": "pass", "detail": "Major"},
+                        "ticket_status": {"status": "fail", "detail": "Backlog"},
+                    },
+                },
+                "relationship_context": {"status": "pass", "checks": {}},
+            },
+        }
+        text = _adf_to_text(format_comment(result))
+        assert "Fix versions" in text
+        assert "Release note type" in text
+        assert "Status: Backlog" in text
 
     def test_ready_with_warnings_comment(self):
         result = {
@@ -400,9 +487,9 @@ class TestFormatComment:
                 "relationship_context": {"status": "pass", "checks": {}},
             },
         }
-        comment = format_comment(result)
-        assert "READY (with warnings)" in comment
-        assert "not set" in comment.lower()
+        text = _adf_to_text(format_comment(result))
+        assert "READY (with warnings)" in text
+        assert "not set" in text.lower()
 
     def test_comment_omits_passing_dimensions(self):
         result = {
@@ -415,9 +502,65 @@ class TestFormatComment:
                 "relationship_context": {"status": "pass", "checks": {}},
             },
         }
-        comment = format_comment(result)
-        assert "PR/source linkage" not in comment
-        assert "Metadata" not in comment
+        text = _adf_to_text(format_comment(result))
+        assert "PR/source linkage" not in text
+        assert "Metadata" not in text
+
+    def test_adf_has_heading_and_bullet_list(self):
+        result = {
+            "ticket": "PROJ-123",
+            "overall_status": "not_ready",
+            "dimensions": {
+                "description_quality": {"status": "fail", "score": 1, "gaps": ["One-liner"]},
+                "pr_source_linkage": {"status": "pass", "checks": {}},
+                "metadata_completeness": {"status": "pass", "checks": {}},
+                "relationship_context": {"status": "pass", "checks": {}},
+            },
+        }
+        adf = format_comment(result)
+        types = [node["type"] for node in adf["content"]]
+        assert "heading" in types
+        assert "bulletList" in types
+
+    def test_adf_bold_marks_on_dimension_labels(self):
+        result = {
+            "ticket": "PROJ-123",
+            "overall_status": "not_ready",
+            "dimensions": {
+                "description_quality": {"status": "fail", "score": 1, "gaps": ["Empty"]},
+                "pr_source_linkage": {"status": "pass", "checks": {}},
+                "metadata_completeness": {"status": "pass", "checks": {}},
+                "relationship_context": {"status": "pass", "checks": {}},
+            },
+        }
+        adf = format_comment(result)
+        bullet_list = next(n for n in adf["content"] if n["type"] == "bulletList")
+        first_item = bullet_list["content"][0]
+        paragraph = first_item["content"][0]
+        label_node = paragraph["content"][0]
+        assert label_node["marks"] == [{"type": "strong"}]
+        assert "Description quality" in label_node["text"]
+
+    def test_adf_footer_has_emoji_and_skill_name(self):
+        result = {
+            "ticket": "PROJ-123",
+            "overall_status": "ready",
+            "dimensions": {
+                "description_quality": {"status": "pass", "score": 4, "gaps": []},
+                "pr_source_linkage": {"status": "pass", "checks": {}},
+                "metadata_completeness": {"status": "pass", "checks": {}},
+                "relationship_context": {"status": "pass", "checks": {}},
+            },
+        }
+        adf = format_comment(result)
+        last_para = adf["content"][-1]
+        assert last_para["type"] == "paragraph"
+        emoji_node = last_para["content"][0]
+        assert emoji_node["type"] == "emoji"
+        assert emoji_node["attrs"]["shortName"] == ":robot:"
+        text_node = last_para["content"][1]
+        assert "/docs-ticket-readiness skill" in text_node["text"]
+        assert {"type": "em"} in text_node["marks"]
 
 
 # --- Markdown report ---
@@ -540,6 +683,19 @@ class TestBuildRelationshipMap:
         rel_map = build_relationship_map(graph)
         child_with_pr = next(c for c in rel_map["children"] if c["key"] == "PROJ-456")
         assert "pr" in child_with_pr
+
+    def test_map_documented_by(self):
+        graph = make_graph_data()
+        rel_map = build_relationship_map(graph)
+        assert "documented_by" in rel_map
+        assert rel_map["documented_by"][0]["key"] == "DOCS-100"
+        assert rel_map["documented_by"][0]["pr"] == "https://github.com/org/docs-repo/pull/10"
+
+    def test_map_no_documented_by(self):
+        graph = make_graph_data()
+        graph["issue_links"] = {"total": 0, "showing": 0, "skipped": 0, "links": []}
+        rel_map = build_relationship_map(graph)
+        assert "documented_by" not in rel_map
 
 
 # --- End-to-end assess_ticket ---

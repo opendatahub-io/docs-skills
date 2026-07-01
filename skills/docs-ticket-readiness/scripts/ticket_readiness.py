@@ -17,13 +17,16 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
-DEFAULT_READY_STATUSES = ["Done", "Closed", "Resolved", "In Review", "Code Review"]
+DEFAULT_READY_STATUSES = ["Done", "Closed", "Resolved", "In Review", "Code Review", "Release Pending"]
 WARN_STATUSES = ["In Progress", "In Development", "In QE Review", "QE Review"]
 PR_URL_PATTERN = re.compile(
     r"https?://(?:github\.com/.+/pull/\d+|gitlab\.com/.+/-/merge_requests/\d+)"
 )
 REPO_URL_PATTERN = re.compile(r"https?://(?:github\.com|gitlab\.com)/[^/]+/[^/]+")
+_SAFE_JIRA_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9]*-\d+$")
+_ALLOWED_JIRA_HOSTS = {"redhat.atlassian.net"}
 
 
 def load_env():
@@ -57,8 +60,11 @@ def resolve_jira_reader(plugin_root: str) -> str:
 
 def run_jira_reader(jira_reader_path: str, args: list[str]) -> dict | list:
     """Call jira_reader.py as a subprocess and return parsed JSON."""
-    cmd = [sys.executable, jira_reader_path] + args
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    cmd = ["uv", "run", "--script", jira_reader_path] + args
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    except (subprocess.TimeoutExpired, OSError) as e:
+        return {"error": f"Failed to invoke jira_reader.py: {e}"}
     if result.returncode != 0:
         error_msg = result.stderr.strip() or f"jira_reader.py exited with code {result.returncode}"
         return {"error": error_msg}
@@ -120,7 +126,7 @@ def _collect_all_git_links(issue_data: dict, graph_data: dict) -> dict:
     classify_links(issue_data.get("git_links", []), issue_data.get("issue_key", ""))
 
     # Web links from graph (top-level)
-    for wl in graph_data.get("web_links", {}).get("links", []):
+    for wl in (graph_data.get("web_links") or {}).get("links", []):
         if wl.get("type") == "pull_request":
             url = wl["url"]
             if url not in prs:
@@ -131,9 +137,9 @@ def _collect_all_git_links(issue_data: dict, graph_data: dict) -> dict:
                     repos.add(repo_match.group(0))
 
     # Children and their links
-    for child in graph_data.get("children", {}).get("issues", []):
+    for child in (graph_data.get("children") or {}).get("issues", []):
         classify_links(child.get("git_links", []), child["key"])
-        for pr_url in child.get("auto_discovered_urls", {}).get("pull_requests", []):
+        for pr_url in (child.get("auto_discovered_urls") or {}).get("pull_requests", []):
             if pr_url not in prs:
                 prs.append(pr_url)
                 sources.setdefault(child["key"], []).append(pr_url)
@@ -141,7 +147,7 @@ def _collect_all_git_links(issue_data: dict, graph_data: dict) -> dict:
                 if repo_match:
                     repos.add(repo_match.group(0))
         # Grandchildren via issue_links on children
-        for link in child.get("issue_links", {}).get("links", []):
+        for link in (child.get("issue_links") or {}).get("links", []):
             classify_links(link.get("git_links", []), link["key"])
 
     return {"prs": prs, "commits": commits, "repos": list(repos), "sources": sources}
@@ -227,14 +233,14 @@ def check_metadata(issue_data: dict, ready_statuses: list[str] | None = None) ->
     checks = {}
 
     # Fix versions
-    fix_versions = issue_data.get("custom_fields", {}).get("fix_versions", [])
+    fix_versions = (issue_data.get("custom_fields") or {}).get("fix_versions", [])
     if fix_versions:
         checks["fix_versions"] = {"status": "pass", "detail": ", ".join(fix_versions)}
     else:
         checks["fix_versions"] = {"status": "fail", "detail": "not set"}
 
     # Release note type
-    rn_type = issue_data.get("custom_fields", {}).get("release_note_type")
+    rn_type = (issue_data.get("custom_fields") or {}).get("release_note_type")
     if rn_type:
         checks["release_note_type"] = {"status": "pass", "detail": rn_type}
     else:
@@ -290,8 +296,8 @@ def check_relationships(issue_data: dict, graph_data: dict) -> dict:
         checks["parent_epic"] = {"status": "fail", "detail": "Orphan ticket (no parent or epic)"}
 
     # Children
-    children = graph_data.get("children", {}).get("issues", [])
-    child_count = graph_data.get("children", {}).get("total", 0)
+    children = (graph_data.get("children") or {}).get("issues", [])
+    child_count = (graph_data.get("children") or {}).get("total", 0)
     if is_container and child_count == 0:
         checks["children"] = {"status": "fail", "detail": f"{issue_type.title()} has no children"}
     elif child_count > 0:
@@ -304,7 +310,10 @@ def check_relationships(issue_data: dict, graph_data: dict) -> dict:
 
     # Grandchildren PRs — check children's git links
     if children:
-        with_prs = sum(1 for c in children if c.get("git_links"))
+        with_prs = sum(
+            1 for c in children
+            if c.get("git_links") or (c.get("auto_discovered_urls") or {}).get("pull_requests")
+        )
         without_prs = len(children) - with_prs
         if without_prs == 0:
             checks["grandchildren_prs"] = {
@@ -325,11 +334,29 @@ def check_relationships(issue_data: dict, graph_data: dict) -> dict:
         checks["grandchildren_prs"] = {"status": "info", "detail": "No children to check"}
 
     # Siblings
-    sibling_count = graph_data.get("siblings", {}).get("total", 0)
+    sibling_count = (graph_data.get("siblings") or {}).get("total", 0)
     if sibling_count > 0:
         checks["siblings"] = {"status": "info", "detail": f"{sibling_count} siblings under parent"}
     else:
         checks["siblings"] = {"status": "info", "detail": "No siblings"}
+
+    # "Is documented by" issue links
+    issue_links = (graph_data.get("issue_links") or {}).get("links", [])
+    doc_links = [
+        lnk for lnk in issue_links
+        if "documented" in lnk.get("direction", "").lower()
+    ]
+    if doc_links:
+        keys = [f"{lnk['key']} ({lnk.get('issuetype', 'Unknown')})" for lnk in doc_links]
+        checks["documented_by"] = {
+            "status": "pass",
+            "detail": ", ".join(keys),
+        }
+    else:
+        checks["documented_by"] = {
+            "status": "info",
+            "detail": "No 'Is documented by' links found",
+        }
 
     # Compute dimension status (info doesn't count as warn or fail)
     statuses = [c["status"] for c in checks.values() if c["status"] not in ("info",)]
@@ -369,7 +396,7 @@ def build_relationship_map(graph_data: dict) -> dict:
             "type": parent.get("issuetype", "Unknown"),
         }
 
-    children = graph_data.get("children", {}).get("issues", [])
+    children = (graph_data.get("children") or {}).get("issues", [])
     if children:
         rel_map["children"] = []
         for child in children:
@@ -378,24 +405,26 @@ def build_relationship_map(graph_data: dict) -> dict:
                 "summary": child.get("summary", ""),
                 "type": child.get("issuetype", "Unknown"),
             }
-            if child.get("git_links"):
-                child_entry["pr"] = child["git_links"][0]
+            pr_links = [u for u in child.get("git_links", []) if PR_URL_PATTERN.match(u)]
+            if pr_links:
+                child_entry["pr"] = pr_links[0]
             # Grandchildren from issue_links
             grandchildren = []
-            for link in child.get("issue_links", {}).get("links", []):
+            for link in (child.get("issue_links") or {}).get("links", []):
                 gc = {
                     "key": link["key"],
                     "summary": link.get("summary", ""),
                     "type": link.get("issuetype", "Unknown"),
                 }
-                if link.get("git_links"):
-                    gc["pr"] = link["git_links"][0]
+                gc_pr_links = [u for u in link.get("git_links", []) if PR_URL_PATTERN.match(u)]
+                if gc_pr_links:
+                    gc["pr"] = gc_pr_links[0]
                 grandchildren.append(gc)
             if grandchildren:
                 child_entry["children"] = grandchildren
             rel_map["children"].append(child_entry)
 
-    siblings = graph_data.get("siblings", {}).get("issues", [])
+    siblings = (graph_data.get("siblings") or {}).get("issues", [])
     if siblings:
         rel_map["siblings"] = [
             {
@@ -405,6 +434,24 @@ def build_relationship_map(graph_data: dict) -> dict:
             }
             for s in siblings
         ]
+
+    issue_links = (graph_data.get("issue_links") or {}).get("links", [])
+    doc_links = [
+        lnk for lnk in issue_links
+        if "documented" in lnk.get("direction", "").lower()
+    ]
+    if doc_links:
+        rel_map["documented_by"] = []
+        for lnk in doc_links:
+            entry = {
+                "key": lnk["key"],
+                "summary": lnk.get("summary", ""),
+                "type": lnk.get("issuetype", "Unknown"),
+            }
+            lnk_pr_links = [u for u in lnk.get("git_links", []) if PR_URL_PATTERN.match(u)]
+            if lnk_pr_links:
+                entry["pr"] = lnk_pr_links[0]
+            rel_map["documented_by"].append(entry)
 
     return rel_map
 
@@ -527,45 +574,93 @@ def handle_batch(
     }
 
 
-def format_comment(result: dict) -> str:
-    """Format a readiness verdict as a JIRA comment string."""
+def format_comment(result: dict) -> dict:
+    """Format a readiness verdict as an ADF document body for JIRA REST API v3."""
     status = result.get("overall_status", "not_ready")
     dims = result.get("dimensions", {})
-    lines = []
+    content = []
+
+    status_labels = {
+        "ready": "READY",
+        "ready_with_warnings": "READY (with warnings)",
+        "not_ready": "NOT READY",
+    }
+    heading_text = f"Docs readiness: {status_labels.get(status, status.upper())}"
+    content.append({
+        "type": "heading",
+        "attrs": {"level": 3},
+        "content": [{"type": "text", "text": heading_text}],
+    })
 
     if status == "ready":
-        lines.append("*Docs readiness: READY*")
-        lines.append("")
-        lines.append("This ticket has sufficient information to begin the documentation workflow.")
+        content.append(_adf_paragraph(
+            "This ticket has sufficient information to begin the documentation workflow."
+        ))
     elif status == "ready_with_warnings":
-        lines.append("*Docs readiness: READY (with warnings)*")
-        lines.append("")
-        lines.append("This ticket can proceed but has minor gaps:")
-        lines.extend(_format_dimension_gaps(dims, warns_only=True))
+        content.append(_adf_paragraph(
+            "This ticket can proceed but has minor gaps:"
+        ))
+        gap_items = _format_dimension_gaps(dims, warns_only=True)
+        if gap_items:
+            content.append({"type": "bulletList", "content": gap_items})
     else:
-        lines.append("*Docs readiness: NOT READY*")
-        lines.append("")
-        lines.append("This ticket needs the following before documentation work can begin:")
-        lines.extend(_format_dimension_gaps(dims, warns_only=False))
+        content.append(_adf_paragraph(
+            "This ticket needs the following before documentation work can begin:"
+        ))
+        gap_items = _format_dimension_gaps(dims, warns_only=False)
+        if gap_items:
+            content.append({"type": "bulletList", "content": gap_items})
 
-    lines.append("")
-    lines.append(
-        f"_Assessed by docs-ticket-readiness on {datetime.now(timezone.utc).strftime('%Y-%m-%d')}_"
-    )
-    return "\n".join(lines)
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    content.append({
+        "type": "paragraph",
+        "content": [
+            {"type": "emoji", "attrs": {"shortName": ":robot:", "text": "\U0001f916"}},
+            {
+                "type": "text",
+                "text": f" Assessed by /docs-ticket-readiness skill on {date_str}",
+                "marks": [{"type": "em"}],
+            },
+        ],
+    })
+
+    return {"version": 1, "type": "doc", "content": content}
 
 
-def _format_dimension_gaps(dims: dict, warns_only: bool) -> list[str]:
-    """Extract gap descriptions from non-passing dimensions."""
-    lines = []
-    dim_labels = {
-        "description_quality": "Description quality",
-        "pr_source_linkage": "PR/source linkage",
-        "metadata_completeness": "Metadata",
-        "relationship_context": "Relationships",
-    }
+def _adf_paragraph(text: str) -> dict:
+    """Build a simple ADF paragraph node."""
+    return {"type": "paragraph", "content": [{"type": "text", "text": text}]}
 
-    for dim_key, label in dim_labels.items():
+
+_DIM_LABELS = {
+    "description_quality": "Description quality",
+    "pr_source_linkage": "PR/source linkage",
+    "metadata_completeness": "Metadata",
+    "relationship_context": "Relationships",
+}
+
+_CHECK_LABELS = {
+    "fix_versions": "Fix versions",
+    "release_note_type": "Release note type",
+    "priority": "Priority",
+    "ticket_status": "Status",
+    "git_links_present": "Git links",
+    "pr_state": "PR state",
+    "pr_relevance": "PR relevance",
+    "source_repo": "Source repo",
+    "parent_epic": "Parent/epic",
+    "children": "Children",
+    "grandchildren_prs": "Children PRs",
+    "siblings": "Siblings",
+    "documented_by": "Documented by",
+}
+
+
+def _format_dimension_gaps(dims: dict, warns_only: bool) -> list[dict]:
+    """Build ADF listItem nodes for non-passing dimensions."""
+    items = []
+
+    for dim_key, label in _DIM_LABELS.items():
         dim = dims.get(dim_key)
         if dim is None:
             continue
@@ -579,47 +674,54 @@ def _format_dimension_gaps(dims: dict, warns_only: bool) -> list[str]:
             gaps = dim.get("gaps", [])
             score = dim.get("score", "?")
             gap_text = ", ".join(gaps) if gaps else "insufficient detail"
-            lines.append(f"- *{label}:* {gap_text} (score: {score}/5)")
+            detail_text = f" {gap_text} (score: {score}/5)"
+        else:
+            checks = dim.get("checks", {})
+            failing_details = []
+            for check_name, check in checks.items():
+                if check.get("status") in ("fail", "warn"):
+                    cl = _CHECK_LABELS.get(check_name, check_name.replace("_", " ").title())
+                    detail = check.get("detail", "")
+                    failing_details.append(f"{cl}: {detail}")
+            detail_text = f" {'; '.join(failing_details)}" if failing_details else ""
+
+        if not detail_text.strip():
             continue
 
-        checks = dim.get("checks", {})
-        failing_details = []
-        for check_name, check in checks.items():
-            if check.get("status") in ("fail", "warn"):
-                failing_details.append(check.get("detail", check_name))
-        if failing_details:
-            lines.append(f"- *{label}:* {', '.join(failing_details)}")
+        items.append({
+            "type": "listItem",
+            "content": [{
+                "type": "paragraph",
+                "content": [
+                    {"type": "text", "text": f"{label}:", "marks": [{"type": "strong"}]},
+                    {"type": "text", "text": detail_text},
+                ],
+            }],
+        })
 
-    return lines
+    return items
 
 
-def post_jira_comment(issue_key: str, comment: str, jira_url: str, email: str, token: str) -> dict:
-    """Post a comment to a JIRA ticket via REST API v3."""
+def post_jira_comment(issue_key: str, comment_adf: dict, jira_url: str, email: str, token: str) -> dict:
+    """Post a comment to a JIRA ticket via REST API v3.
+
+    comment_adf is an ADF document body dict (with version, type, content keys).
+    """
     import requests
 
     url = f"{jira_url.rstrip('/')}/rest/api/3/issue/{issue_key}/comment"
-    body = {
-        "body": {
-            "version": 1,
-            "type": "doc",
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [{"type": "text", "text": line}],
-                }
-                for line in comment.split("\n")
-                if line.strip()
-            ],
-        }
-    }
+    body = {"body": comment_adf}
 
-    resp = requests.post(
-        url,
-        json=body,
-        auth=(email, token),
-        headers={"Content-Type": "application/json"},
-        timeout=30,
-    )
+    try:
+        resp = requests.post(
+            url,
+            json=body,
+            auth=(email, token),
+            headers={"Content-Type": "application/json"},
+            timeout=30,
+        )
+    except requests.exceptions.RequestException as e:
+        return {"status": "error", "ticket": issue_key, "detail": str(e)}
 
     if resp.status_code in (200, 201):
         return {"status": "ok", "ticket": issue_key}
@@ -640,6 +742,10 @@ def handle_post_comment() -> int:
         return 1
 
     jira_url = os.environ.get("JIRA_URL", "https://redhat.atlassian.net")
+    if urlparse(jira_url).hostname not in _ALLOWED_JIRA_HOSTS:
+        print(json.dumps({"error": f"Refusing to post to untrusted JIRA_URL host: {jira_url}"}))
+        return 1
+
     email = os.environ.get("JIRA_EMAIL", "")
     token = os.environ.get("JIRA_API_TOKEN", os.environ.get("JIRA_AUTH_TOKEN", ""))
 
@@ -799,6 +905,8 @@ def write_markdown_reports(result: dict, output_dir: str) -> None:
         if ticket.get("error"):
             continue
         key = ticket.get("ticket", "unknown")
+        if not _SAFE_JIRA_KEY.match(key):
+            continue
         report = format_markdown_report(ticket)
         path = os.path.join(output_dir, f"{key}-readiness.md")
         with open(path, "w") as f:
