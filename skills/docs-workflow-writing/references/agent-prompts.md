@@ -117,7 +117,7 @@
 > ```text
 > <OUTPUT_DIR>/
 > ├── _index.md                     # Index of all modules
-> ├── assembly_<name>.adoc          # Assembly files at root
+> ├── <name>.adoc                  # Assembly files at root (:_mod-docs-content-type: ASSEMBLY)
 > └── modules/                      # All module files
 >     ├── <concept-name>.adoc
 >     ├── <procedure-name>.adoc

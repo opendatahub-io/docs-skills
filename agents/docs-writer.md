@@ -109,7 +109,7 @@ Example manifest for update-in-place mode:
 | /home/user/docs-repo/docs/modules/ROOT/pages/understanding-feature.adoc | CONCEPT | Overview of the feature |
 | /home/user/docs-repo/docs/modules/ROOT/pages/installing-feature.adoc | PROCEDURE | Steps to install |
 | /home/user/docs-repo/docs/modules/ROOT/pages/feature-parameters.adoc | REFERENCE | Configuration parameters |
-| /home/user/docs-repo/docs/modules/ROOT/pages/assembly_deploying-feature.adoc | ASSEMBLY | Deploying the feature |
+| /home/user/docs-repo/docs/modules/ROOT/pages/deploying-feature.adoc | ASSEMBLY | Deploying the feature |
 | /home/user/docs-repo/docs/modules/ROOT/nav.adoc | NAV | Added xref entries under "Configure" section |
 ```
 
@@ -160,6 +160,7 @@ Key principles: use outcome-driven titles, frame content around the user's job, 
 
    **For AsciiDoc (default):**
    - Use the appropriate AsciiDoc template for each module type
+   - Declare the module type with `:_mod-docs-content-type:` at the top of every file (not via a filename prefix)
    - Follow Red Hat style guidelines
    - Apply product attributes from `_attributes/attributes.adoc`
    - Create proper cross-references and includes
@@ -184,7 +185,7 @@ You MUST write complete documentation files. Each file must be:
 ```
 artifacts/drafts/<jira-id>/
 ├── _index.md                           # Index of all modules
-├── assembly_<name>.adoc                # Assembly files (root of jira-id folder)
+├── <name>.adoc                         # Assembly files (root of jira-id folder; :_mod-docs-content-type: ASSEMBLY)
 └── modules/                            # All module files
     ├── <concept-name>.adoc
     ├── <procedure-name>.adoc
@@ -210,7 +211,7 @@ artifacts/drafts/<jira-id>/
 3. For each module in the plan:
    - Write the complete AsciiDoc content
    - Save to `<output-dir>/modules/<module-name>.adoc`
-4. Write assembly files to `<output-dir>/assembly_<name>.adoc`
+4. Write assembly files to `<output-dir>/<name>.adoc` (with `:_mod-docs-content-type: ASSEMBLY`)
 5. Create an index file at `<output-dir>/_index.md`
 
 **Example workflow (MkDocs, draft mode):**
@@ -359,10 +360,12 @@ Extract the JIRA ID from:
 
 ## File naming
 
-- Use descriptive, lowercase names with hyphens
-- Do NOT use type prefixes (no `con-`, `proc-`, `ref-`) **unless the repo convention uses them** (in UPDATE-IN-PLACE mode, always match existing conventions)
+- Use descriptive, lowercase names with hyphens (kebab-case)
+- Do NOT use type prefixes (no `con-`, `proc-`, `ref-`, `assembly_`, or `snip-`). Declare the module type with the `:_mod-docs-content-type:` attribute (`CONCEPT`, `PROCEDURE`, `REFERENCE`, `ASSEMBLY`, or `SNIPPET`) at the top of the file instead
 - Do NOT include dates in module filenames
-- **AsciiDoc**: Use `.adoc` extension. Assembly files use `assembly_` prefix: `assembly_deploying-feature.adoc`
+- **AsciiDoc**: Use the `.adoc` extension. Assembly files are named like any other module (e.g. `deploying-feature.adoc`) with `:_mod-docs-content-type: ASSEMBLY` — distinguished by that attribute and their location, not a prefix
 - **MkDocs**: Use `.md` extension. No assembly files — use `mkdocs-nav.yml` for navigation structure
+
+In UPDATE-IN-PLACE mode this house convention yields to the target repo: if the repo already prefixes filenames, match it (see "Analyze repo conventions").
 
 Style compliance (self-referential text, product-centric writing, terminology, etc.) is enforced by Vale rules and verified by the docs-reviewer agent. See the quality checklist in `${CLAUDE_PLUGIN_ROOT}/reference/asciidoc-reference.md` or `${CLAUDE_PLUGIN_ROOT}/reference/mkdocs-reference.md` for the complete pre-save verification steps.
