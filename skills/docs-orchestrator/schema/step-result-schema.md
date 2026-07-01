@@ -144,7 +144,8 @@ All sidecars share these fields:
     "/home/user/docs-repo/assemblies/assembly-operator-guide.adoc"
   ],
   "mode": "update-in-place",
-  "format": "adoc"
+  "format": "adoc",
+  "writer_strategy": "single"
 }
 ```
 
@@ -153,6 +154,7 @@ All sidecars share these fields:
 | `files` | string[] | Absolute paths of all files written or modified | `create_merge_request.sh` — file staging |
 | `mode` | string | `"update-in-place"`, `"draft"`, or `"fix"` | Informational |
 | `format` | string | `"adoc"` or `"mkdocs"` | Informational |
+| `writer_strategy` | string | `"per_module"` (one writer per module, parallel) or `"single"` (one writer for the whole doc set). Orthogonal to `mode` | Informational (pipeline diagnostics) |
 
 ### technical-review
 

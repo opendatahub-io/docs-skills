@@ -15,6 +15,7 @@ _SCRIPT_DIRS = [
     _REPO_ROOT / "skills" / "docs-workflow-pipeline-diagnostics" / "scripts",
     _REPO_ROOT / "skills" / "docs-workflow-requirements" / "scripts",
     _REPO_ROOT / "skills" / "docs-workflow-scope-req-audit" / "scripts",
+    _REPO_ROOT / "skills" / "docs-workflow-writing" / "scripts",
     _REPO_ROOT / "skills" / "git-pr-reader" / "scripts",
 ]
 

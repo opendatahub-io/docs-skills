@@ -117,7 +117,7 @@
 > ```text
 > <OUTPUT_DIR>/
 > ├── _index.md                     # Index of all modules
-> ├── assembly_<name>.adoc          # Assembly files at root
+> ├── <name>.adoc                  # Assembly files at root (:_mod-docs-content-type: ASSEMBLY)
 > └── modules/                      # All module files
 >     ├── <concept-name>.adoc
 >     ├── <procedure-name>.adoc
@@ -176,6 +176,75 @@
 
 ---
 
+## Mode: `per-module write`
+
+Dispatched once **per module, in parallel**, when `writer_strategy` is
+`per_module`. Each writer is scoped to exactly **one** module and never sees
+sibling module prose — only the compact module map of the *other* modules.
+
+**Description:** `Write <FORMAT> module <MODULE_TITLE> for <TICKET>`
+
+**Prompt:**
+
+> Write exactly **one** documentation module — `<MODULE_TITLE>` (type
+> `<MODULE_TYPE>`) — for ticket `<TICKET>`. Do **not** write any other module.
+>
+> Read the full plan from `<INPUT_FILE>` and locate the entry for this module
+> (anchor `<MODULE_ANCHOR>`). Write only that module's content. Its one-line
+> scope is: `<MODULE_SCOPE>`.
+>
+> Output format: `<FORMAT>` (`adoc` = AsciiDoc, `mkdocs` = Material for MkDocs
+> Markdown). Follow the format reference your agent instructions point to.
+>
+> **[Include only if HAS_CODE_ANALYSIS=true]** Code-learner analysis is available
+> at `<CODE_ANALYSIS_DIR>`. Read `ONBOARDING.md` and only the `summaries/` entries
+> relevant to **this** module for accurate signatures and data flow. Prefer the
+> analysis over assumptions.
+>
+> **[Include only if HAS_PR_ANALYSIS=true]** PR analysis is available at
+> `<PR_ANALYSIS_DIR>`. Use it for change-specific context relevant to this module.
+>
+> **[Include only if SOURCE_REPO is not null]** Source code is at `<SOURCE_REPO>`.
+> Read specific files only when the analysis is insufficient for this module.
+>
+> **Module map (all *other* modules in this doc set).** Use this to write
+> cross-references inline as real `xref:`/links. Do not invent links to modules
+> not in this map:
+>
+> ```json
+> <MODULE_MAP_JSON>
+> ```
+>
+> **Placement mode: <PLACEMENT_MODE>**
+>
+> [If `update-in-place`: "The target repository is at `<DOCS_REPO_PATH>` (when
+> set, otherwise detect from `<SOURCE_REPO>`). Detect the build framework and
+> existing conventions, then write this one module to its correct repo location.
+> Do not modify navigation or other modules' files — the linking pass and
+> single-source dedup are handled centrally."]
+>
+> [If `draft`: "Write this one module to `<MODULE_OUTPUT_FILE>`. Create parent
+> directories as needed. Do not modify any existing repository files."]
+>
+> **IMPORTANT:** Write a COMPLETE module, not a summary or outline. Resolve any
+> cross-reference you can from the module map as a real inline link. Reserve
+> `xref_suggestions` for *uncertain or external* targets the map could not
+> resolve.
+>
+> **Report back.** End your final message with **only** this JSON object (no
+> prose after it):
+>
+> ```json
+> { "file": "<absolute path you wrote>", "status": "ok",
+>   "xref_suggestions": [ { "target": "<unresolved target>", "reason": "<why>" } ] }
+> ```
+>
+> If you could not write the module, set `"status": "error"` and put the reason
+> in a `"message"` field. Leave `xref_suggestions` as `[]` when every link
+> resolved from the map (the common case).
+
+---
+
 ## Mode: `fix`
 
 **Description:** `Fix documentation for <TICKET>`
@@ -199,3 +268,37 @@
 > **[Include only if ADDITIONAL_REPO_PATHS is non-empty]** Additional source code repositories are available at: <list each path from ADDITIONAL_REPO_PATHS>. Use these for cross-repo verification of review findings.
 
 In fix mode, the skill does not create new modules or restructure content.
+
+---
+
+## Mode: `linking pass`
+
+Dispatched **once, only if** one or more per-module writers reported non-empty
+`xref_suggestions`. Skipped entirely when all suggestions were empty.
+
+**Description:** `Resolve cross-reference suggestions for <TICKET>`
+
+**Prompt:**
+
+> One or more documentation modules for ticket `<TICKET>` reported cross-reference
+> suggestions that could not be resolved from the module map during writing.
+>
+> Module map (all written modules, with their files and anchors):
+>
+> ```json
+> <MODULE_MAP_JSON>
+> ```
+>
+> Collected suggestions (each names the source file and an unresolved target):
+>
+> ```json
+> <COLLECTED_SUGGESTIONS_JSON>
+> ```
+>
+> For each suggestion, add the link **only** where it is clearly warranted and the
+> target genuinely exists (in the map above or as a real external resource). Edit
+> the relevant files in place using the format's link syntax. Do **not** rewrite
+> content, restructure modules, or add links that were not suggested. Skip any
+> suggestion you cannot resolve with confidence.
+>
+> End your final message with a one-line summary of which files you edited.

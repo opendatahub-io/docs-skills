@@ -394,9 +394,9 @@ Use the AsciiDoc `include` directive with `leveloffset` attribute:
 ```asciidoc
 :context: my-assembly-name
 
-include::modules/con-my-concept.adoc[leveloffset=+1]
-include::modules/proc-my-procedure.adoc[leveloffset=+1]
-include::modules/ref-my-reference.adoc[leveloffset=+1]
+include::modules/my-concept.adoc[leveloffset=+1]
+include::modules/my-procedure.adoc[leveloffset=+1]
+include::modules/my-reference.adoc[leveloffset=+1]
 ```
 
 ### Next steps and Additional resources
@@ -428,7 +428,7 @@ A text snippet is a section of text stored in an AsciiDoc file that is reused in
 
 - A text snippet is NOT a module
 - Cannot include structural elements (anchor ID, H1 heading)
-- Prefix file name with `snip-` or `snip_`, OR add `:_mod-docs-content-type: SNIPPET`
+- Declare the type with `:_mod-docs-content-type: SNIPPET` at the top of the file (shown in the template above); do not prefix the file name
 
 ### Examples of snippets
 
@@ -440,7 +440,7 @@ A text snippet is a section of text stored in an AsciiDoc file that is reused in
 ### Usage
 
 ```asciidoc
-include::snippets/snip-beta-note.adoc[]
+include::snippets/beta-note.adoc[]
 ```
 
 ---
