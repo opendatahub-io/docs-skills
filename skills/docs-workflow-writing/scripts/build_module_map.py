@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
 """Build the per-module writing decision and module map for docs-workflow-writing.
 
-Parses the planning ``plan.md`` to enumerate discrete documentation modules,
+Parses the plan.md to enumerate discrete documentation modules,
 derives a compact module map (deterministic anchors + output paths), and decides
 whether the writing step should use the per-module subagent strategy or the
 default single-writer strategy.
-
-v1 derives the map by parsing ``plan.md`` rather than consuming planning-emitted
-ids; see the "module-map source" resolution in the design spec for the rationale
-and the future upgrade path.
-
-Stdlib only — invoke with ``python3``, never ``uv run``.
 """
 
 from __future__ import annotations
