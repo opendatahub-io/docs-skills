@@ -124,14 +124,36 @@ def verify_quote(quote, doc_content):
 
 
 def read_ac_items(base_path):
-    """Read discovery.json and flatten acceptance_criteria into a list."""
-    discovery = Path(base_path) / "requirements" / "discovery.json"
+    """Read per-requirement analysis files and flatten acceptance_criteria."""
+    req_dir = Path(base_path) / "requirements"
+    items = []
+
+    req_files = sorted(req_dir.glob("req-*.json"))
+    if req_files:
+        for req_file in req_files:
+            try:
+                data = json.loads(req_file.read_text())
+            except (json.JSONDecodeError, OSError):
+                continue
+            req_id = data.get("id", "")
+            for i, ac_text in enumerate(data.get("acceptance_criteria", [])):
+                items.append(
+                    {
+                        "req_id": req_id,
+                        "ac_index": i,
+                        "ac_text": ac_text,
+                    }
+                )
+        if items:
+            return items
+
+    discovery = req_dir / "discovery.json"
     if not discovery.exists():
         print(f"ERROR: {discovery} not found", file=sys.stderr)
         sys.exit(1)
 
     data = json.loads(discovery.read_text())
-    items = []
+    req_count = len(data.get("requirements", []))
     for req in data.get("requirements", []):
         req_id = req.get("id", "")
         for i, ac_text in enumerate(req.get("acceptance_criteria", [])):
@@ -142,6 +164,12 @@ def read_ac_items(base_path):
                     "ac_text": ac_text,
                 }
             )
+    if not items and req_count > 0:
+        print(
+            f"WARNING: 0 AC items found but {req_count} requirements exist. "
+            f"Check whether per-requirement files contain acceptance_criteria.",
+            file=sys.stderr,
+        )
     return items
 
 
@@ -154,11 +182,22 @@ def read_doc_content(base_path):
 
     data = json.loads(sidecar.read_text())
     files = data.get("files", [])
+    mode = data.get("mode", "draft")
     if not files:
         print("ERROR: No files listed in writing/step-result.json", file=sys.stderr)
         sys.exit(1)
 
-    root = Path(base_path).resolve()
+    if mode == "update-in-place":
+        import subprocess
+
+        root = Path(
+            subprocess.check_output(
+                ["git", "rev-parse", "--show-toplevel"], text=True
+            ).strip()
+        ).resolve()
+    else:
+        root = Path(base_path).resolve()
+
     parts = []
     for fpath in files:
         p = Path(fpath).resolve()

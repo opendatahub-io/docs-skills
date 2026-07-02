@@ -971,8 +971,8 @@ class JiraReader:
 
         Returns metadata dict (no full comment text) for stdout output.
         """
-        if not output_path.endswith(".json"):
-            output_path = output_path + ".json"
+        if os.path.isdir(output_path) or not output_path.endswith(".json"):
+            output_path = os.path.join(output_path, "comments.json")
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
         comments = self.jira.comments(jira_id)

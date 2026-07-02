@@ -163,6 +163,23 @@ Skill: <step.skill>, args: "<constructed args>"
 5. Run [step-specific post-processing](#step-specific-post-processing)
 6. Re-read the progress file from disk before the next step (post-step context refresh)
 
+**Never produce stub results.** If you cannot invoke a step's skill (e.g., due to context compaction removing the skill instructions), you MUST either (a) dispatch the step via an Agent subagent in a fresh context or (b) mark the step as `failed` with an error explaining why. Do NOT write a placeholder `step-result.json` or mark the step `completed` with a generic note like "no issues found" — this masks real failures from pipeline diagnostics and the user
+
+### Logging workarounds
+
+When the orchestrator works around a broken or mismatched part of the automation to make a step succeed, append an entry to the progress file's `workarounds` array **before proceeding with the step**. Not limited to build-script failures — log a workaround for any manual substitute for automation that should have worked: bypassing a non-zero-exit script, computing args by hand after a helper failed, or routing around a tool contract mismatch (e.g., a tool result that can't be mapped back to its input, forcing repeated extraction attempts). If you did something the scripted path was supposed to do for you, it is a workaround.
+
+```json
+{
+  "step": "<step-name>",
+  "issue": "<what failed — e.g., build_writing_args.sh exit 1 due to set -e bug in find_code_analysis_dir>",
+  "action": "<what the orchestrator did instead — e.g., computed JSON args manually and dispatched agent directly>",
+  "timestamp": "<ISO 8601>"
+}
+```
+
+This makes workarounds visible to pipeline-diagnostics, which surfaces them in the diagnostic report. Without this, script failures that the orchestrator silently works around appear as clean runs — masking bugs in the automation layer.
+
 ### Step-specific post-processing
 
 After each step completes, apply the per-step rules from [step post-processing](references/step-post-processing.md). When rules reference sidecar fields, read from `steps.<step-name>.result` in the progress file. Key triggers: requirements triggers post-requirements source resolution if `options.source` is null; planning stops on 0 modules; writing skips create-merge-request if no files; quality-gate enters the iteration loop if `passed` is false.
@@ -179,12 +196,16 @@ Triggers only when requirements completes AND `options.source` is still null. Ru
 
 ## Technical review iteration
 
-Loop up to 3 iterations until confidence is acceptable:
+Loop up to 2 iterations until confidence is acceptable (one review, one fix-and-confirm):
 
 1. Invoke `docs-workflow-tech-review`. Read confidence from the sidecar (`step-result.json`), falling back to grep on `review.md` for `Overall technical confidence:`. Update `steps.technical-review.result`
 2. `HIGH` → done. `MEDIUM` with `critical=0` AND `significant=0` → acceptable (log, proceed). Otherwise continue
-3. If `MEDIUM` (with fixable issues) or `LOW` → fix via `docs-workflow-writing --fix-from <base_path>/technical-review/review.md` (pass all `--repo` flags), then re-run reviewer
-4. After 3 iterations: `MEDIUM` → proceed with warning. `LOW` → ask user
+3. If `MEDIUM` (with fixable issues) or `LOW`:
+   a. Fix via `docs-workflow-writing --fix-from <base_path>/technical-review/review.md` (pass all `--repo` flags)
+   b. **Verify fixes landed.** After the fix agent returns, use **absolute paths** from `steps.writing.result.files` to verify modifications. Run `git diff --name-only` from the **docs repo root** (`git rev-parse --show-toplevel` of the docs repository, NOT of any cloned source repo). If no files changed, log a workaround entry and investigate — the fix agent may have written to the wrong directory
+   c. **Delete the prior review report** before re-running the reviewer: `rm -f <base_path>/technical-review/review.md`. This prevents the iteration 2 reviewer from reading stale findings
+   d. Re-run the reviewer. The re-run revalidates only the claims the fix changed (see the tech-review step's incremental claim validation), so the reviewer gets fresh evidence cheaply
+4. After 2 iterations: `MEDIUM` → proceed with warning (if `critical > 0` or `significant > 0`, the warning **must name the counts and list the unresolved findings** — see [technical-review post-processing](references/step-post-processing.md#technical-review)). `LOW` → ask user. A fix that has not reached acceptable confidence after one attempt is escalated here rather than retried again — a second failed automated fix is a signal for SME/human review, not another rewrite
 
 ## Quality gate iteration
 
@@ -205,7 +226,7 @@ Before `create-merge-request`, ask user to confirm. Show: branch name (from tick
 
 ## Completion
 
-Set progress `status → "completed"`, delete `.agent_workspace/.active-workflow`. Display summary: output folder paths, warnings, MR/PR URL, JIRA URL, module/file counts from step results.
+Set progress `status → "completed"` and set `updated_at` to a **real wall-clock timestamp** from `date -u +%Y-%m-%dT%H:%M:%SZ` (same rule as every step — do not estimate or round, even on this final write). Delete `.agent_workspace/.active-workflow`. Display summary: output folder paths, warnings, MR/PR URL, JIRA URL, module/file counts from step results.
 
 For SME review comments on an existing MR/PR, use the standalone `action-comments` skill after the workflow completes. It can also be added to a custom workflow YAML as a step.
 
@@ -213,7 +234,9 @@ For SME review comments on an existing MR/PR, use the standalone `action-comment
 
 On resume (same or new session), read the progress file and skip completed steps. Resume from the first `pending` or `failed` step. Before running it, validate input dependencies — every upstream step must have `status: "completed"` and its output folder on disk. For each upstream dependency, verify the output folder still exists on disk. If an output folder was deleted, mark that step as `pending` and re-run it. Additional flags provided on resume (e.g., `--create-jira`) update the progress file options.
 
+**Re-write the active workflow marker on every resume.** The marker may be absent after a session restart or context compaction — stop hooks and session teardown can delete it. Always re-write it after reading the progress file, before running any steps.
+
 ### Context management
 
-The progress file is the authoritative state. After automatic compaction compresses earlier turns, re-read the progress file from disk (post-step context refresh). No workflow state is held only in conversation memory.
+The progress file is the authoritative state. After automatic compaction compresses earlier turns, re-read the progress file from disk (post-step context refresh). No workflow state is held only in conversation memory. Re-write the active workflow marker after re-reading the progress file — compaction may have triggered a session boundary that cleaned up the marker.
 

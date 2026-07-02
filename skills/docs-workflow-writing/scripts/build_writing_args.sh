@@ -153,7 +153,7 @@ primary_repo_name=""
 if [[ -n "$SOURCE_REPO" ]]; then
   primary_repo_name="$(basename "$SOURCE_REPO")"
 fi
-found_dir="$(find_code_analysis_dir "$BASE_PATH" "$primary_repo_name" "true" 2>/dev/null)"
+found_dir="$(find_code_analysis_dir "$BASE_PATH" "$primary_repo_name" "true" 2>/dev/null)" || true
 if [[ -n "$found_dir" ]]; then
   HAS_CODE_ANALYSIS=true
   CODE_ANALYSIS_DIR="$found_dir"
@@ -166,7 +166,7 @@ fi
 ADDITIONAL_CODE_ANALYSIS_DIRS=()
 for repo in "${ADDITIONAL_REPOS[@]}"; do
   repo_name="$(basename "$repo")"
-  add_dir="$(find_code_analysis_dir "$BASE_PATH" "$repo_name" "false" 2>/dev/null)"
+  add_dir="$(find_code_analysis_dir "$BASE_PATH" "$repo_name" "false" 2>/dev/null)" || true
   if [[ -n "$add_dir" ]]; then
     ADDITIONAL_CODE_ANALYSIS_DIRS+=("$add_dir")
   fi

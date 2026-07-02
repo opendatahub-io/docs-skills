@@ -63,7 +63,9 @@ If the manifest `items` array is empty (no AC items found), skip steps 3b and 3c
 
 #### 3b. Dispatch coverage check agents
 
-Read the manifest JSON output from 3a. For each item in the `items` array, dispatch one agent. Launch **all agents in a single message** (parallel execution).
+Read the manifest from the file at `${BASE_PATH}/quality-gate/coverage-prompts/manifest.json` using the Read tool (do NOT parse from stdout — stdout may truncate or serialize incorrectly). Extract the `items` array. For each item, dispatch one agent. Launch **all agents in a single message** (parallel execution).
+
+**Use the Agent tool — not the Workflow tool.** Each coverage result must map back to a specific manifest item so its output can be written to that item's `result_file` (step 3b, below). The Agent tool preserves that one-dispatch-to-one-result association directly. The Workflow tool's journal keys entries by hash rather than by item label, so mapping journal entries back to manifest items is unreliable and has caused repeated extraction failures — do not use it here. Dispatch one Agent per item, all in a single message.
 
 Each agent:
 
@@ -81,7 +83,21 @@ Each agent:
   }
   ```
 
-Write each agent's JSON output to the item's `result_file` path from the manifest.
+After **all** agents return, write each agent's structured JSON output to the corresponding `result_file` path from the manifest. Schema-validated agents return their JSON inline (not to disk), so the orchestrator must write the results:
+
+```bash
+mkdir -p "${BASE_PATH}/quality-gate/coverage-results"
+```
+
+For each item, write a JSON file containing the agent's `{"covered": ..., "quote": ...}` output to the item's `result_file`. Use a single bash command with heredocs to write all files at once, keeping context lean.
+
+Verify the expected number of files were written:
+
+```bash
+ls "${BASE_PATH}/quality-gate/coverage-results/" | wc -l
+```
+
+If the count does not match the manifest item count, log a warning listing which items are missing.
 
 #### 3c. Classify coverage results
 

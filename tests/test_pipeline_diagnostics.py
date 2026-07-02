@@ -13,12 +13,14 @@ from datetime import datetime, timezone
 from pipeline_diagnostics import (
     analyze,
     build_recommendations,
+    build_sidecar,
     derive_base_path,
     detect_bottlenecks,
     detect_failures,
     detect_loop_groups,
     estimate_context_pressure,
     find_progress_files,
+    orchestrator_health,
     parse_iso,
     resolve_output_path,
     scan_dir,
@@ -887,9 +889,11 @@ class TestAnalyze:
             "summary",
             "timeline",
             "loop_groups",
+            "workarounds",
             "failures",
             "bottlenecks",
             "context_pressure",
+            "orchestrator_health",
             "recommendations",
         }
         assert set(result.keys()) == expected_keys
@@ -906,3 +910,193 @@ class TestAnalyze:
             "base_path",
         }
         assert set(result["summary"].keys()) == summary_keys
+
+
+# ── orchestrator_health ──────────────────────────────────────────────────────
+
+
+class TestOrchestratorHealth:
+    def _run(self, tmp_path, steps, status="completed", workflow="docs-workflow"):
+        progress_path, base = _make_progress(
+            tmp_path, steps=steps, status=status, workflow=workflow
+        )
+        with open(progress_path) as f:
+            progress = json.load(f)
+        step_order = list(steps.keys())
+        health = orchestrator_health(progress, step_order, steps, base, [], [])
+        return {h["check"] for h in health}, health
+
+    def test_clean_run_when_sidecars_present(self, tmp_path):
+        _, base = _make_progress(tmp_path, steps={})
+        steps = {"requirements": _completed_step(result={"requirement_count": 3})}
+        _make_step_dir(base, "requirements", sidecar={"step": "requirements"})
+        progress = {
+            "ticket": "T",
+            "status": "in_progress",
+            "workflow": "docs-workflow",
+            "step_order": ["requirements"],
+            "steps": steps,
+        }
+        health = orchestrator_health(progress, ["requirements"], steps, base, [], [])
+        assert health == []
+
+    def test_missing_sidecar(self, tmp_path):
+        steps = {"writing": _completed_step(result={"files": []})}
+        checks, _ = self._run(tmp_path, steps)
+        assert "missing_sidecar" in checks
+
+    def test_null_result(self, tmp_path):
+        _, base = _make_progress(tmp_path, steps={})
+        steps = {"technical-review": {"status": "completed", "result": None}}
+        _make_step_dir(base, "technical-review", sidecar={"step": "technical-review"})
+        progress = {
+            "ticket": "T",
+            "status": "completed",
+            "workflow": "docs-workflow",
+            "step_order": ["technical-review"],
+            "steps": steps,
+        }
+        checks = {
+            h["check"]
+            for h in orchestrator_health(progress, ["technical-review"], steps, base, [], [])
+        }
+        assert "null_result" in checks
+        assert "missing_sidecar" not in checks
+
+    def test_stuck_in_progress(self, tmp_path):
+        steps = {"writing": {"status": "in_progress"}}
+        checks, health = self._run(tmp_path, steps)
+        assert "stuck_in_progress" in checks
+        assert any(h["severity"] == "high" for h in health if h["check"] == "stuck_in_progress")
+
+    def test_deferred_unresolved(self, tmp_path):
+        steps = {"quality-gate": {"status": "deferred"}}
+        checks, _ = self._run(tmp_path, steps)
+        assert "deferred_unresolved" in checks
+
+    def test_workarounds_applied(self, tmp_path):
+        _, base = _make_progress(tmp_path, steps={})
+        progress = {
+            "ticket": "T",
+            "status": "completed",
+            "workflow": "docs-workflow",
+            "step_order": [],
+            "steps": {},
+        }
+        workarounds = [{"step": "writing", "issue": "x", "action": "y"}]
+        checks = {h["check"] for h in orchestrator_health(progress, [], {}, base, [], workarounds)}
+        assert "workarounds_applied" in checks
+
+    def test_active_marker_left(self, tmp_path):
+        _, base = _make_progress(tmp_path, steps={})
+        # marker lives one level up from base_path (the workspace root)
+        marker = os.path.join(os.path.dirname(base), ".active-workflow")
+        with open(marker, "w") as f:
+            f.write("")
+        progress = {
+            "ticket": "T",
+            "status": "completed",
+            "workflow": "docs-workflow",
+            "step_order": [],
+            "steps": {},
+        }
+        checks = {h["check"] for h in orchestrator_health(progress, [], {}, base, [], [])}
+        assert "active_marker_left" in checks
+
+    def test_active_marker_not_flagged_when_in_progress(self, tmp_path):
+        _, base = _make_progress(tmp_path, steps={})
+        marker = os.path.join(os.path.dirname(base), ".active-workflow")
+        with open(marker, "w") as f:
+            f.write("")
+        progress = {
+            "ticket": "T",
+            "status": "in_progress",
+            "workflow": "docs-workflow",
+            "step_order": [],
+            "steps": {},
+        }
+        checks = {h["check"] for h in orchestrator_health(progress, [], {}, base, [], [])}
+        assert "active_marker_left" not in checks
+
+    def test_schema_drift_null_required_field(self, tmp_path):
+        _, base = _make_progress(tmp_path, steps={})
+        progress = {
+            "ticket": None,
+            "status": "completed",
+            "workflow": "docs-workflow",
+            "step_order": [],
+            "steps": {},
+        }
+        checks = {h["check"] for h in orchestrator_health(progress, [], {}, base, [], [])}
+        assert "schema_drift" in checks
+
+    def test_timestamp_gap(self, tmp_path):
+        _, base = _make_progress(tmp_path, steps={})
+        progress = {
+            "ticket": "T",
+            "status": "completed",
+            "workflow": "docs-workflow",
+            "step_order": ["writing"],
+            "steps": {"writing": {"status": "completed"}},
+        }
+        timeline = [{"step": "writing", "status": "completed", "duration_s": 900}]
+        checks = {
+            h["check"]
+            for h in orchestrator_health(
+                progress, ["writing"], progress["steps"], base, timeline, []
+            )
+        }
+        assert "timestamp_gap" in checks
+
+
+# ── build_sidecar / --emit-sidecar ───────────────────────────────────────────
+
+
+class TestBuildSidecar:
+    def test_sidecar_is_schema_conformant(self, tmp_path):
+        steps = {
+            "requirements": _completed_step(result={"requirement_count": 8}),
+            "quality-gate": {"status": "deferred"},
+        }
+        progress_path, base = _make_progress(
+            tmp_path, steps=steps, step_order=["requirements", "quality-gate"]
+        )
+        _make_step_dir(base, "requirements", sidecar={"step": "requirements"})
+        analysis = analyze(progress_path)
+        sidecar = build_sidecar(analysis)
+        expected = {
+            "schema_version",
+            "step",
+            "ticket",
+            "completed_at",
+            "pipeline_status",
+            "context_pressure_level",
+            "context_pressure_score",
+            "failure_count",
+            "high_severity_failure_count",
+            "bottleneck_count",
+            "orchestrator_issue_count",
+            "workaround_count",
+            "recommendation_count",
+            "total_duration_min",
+        }
+        assert set(sidecar.keys()) == expected
+        assert sidecar["schema_version"] == 1
+        assert sidecar["step"] == "pipeline-diagnostics"
+        assert sidecar["pipeline_status"] == "completed"
+        # completed_at is a real wall-clock timestamp, not the synthetic progress value
+        assert sidecar["completed_at"] != "2026-06-01T12:00:00Z"
+        assert isinstance(sidecar["orchestrator_issue_count"], int)
+
+    def test_counts_reflect_analysis(self, tmp_path):
+        progress_path, base = _make_progress(
+            tmp_path,
+            steps={"writing": _completed_step(result={"files": []})},
+            step_order=["writing"],
+        )
+        # writing completed with 0 files -> a failure; no sidecar -> orchestrator issue
+        analysis = analyze(progress_path)
+        sidecar = build_sidecar(analysis)
+        assert sidecar["failure_count"] == len(analysis["failures"])
+        assert sidecar["orchestrator_issue_count"] == len(analysis["orchestrator_health"])
+        assert sidecar["workaround_count"] == 0

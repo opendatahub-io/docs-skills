@@ -38,6 +38,11 @@ After each step completes, apply the rules below. When rules reference sidecar f
 ## technical-review
 
 - After the [Technical review iteration](../SKILL.md#technical-review-iteration) loop completes, re-evaluate `when: has_many_requirements` Phase 2 for the quality-gate step (see [`when: has_many_requirements` condition](../SKILL.md#when-has_many_requirements-condition))
+- If the loop ended at `MEDIUM` with `severity_counts.critical > 0` or `severity_counts.significant > 0`, do not let the persisting issues pass silently. Emit an explicit warning that names the counts and lists each unresolved finding:
+
+  > Technical review proceeding at MEDIUM confidence with `<critical>` critical + `<significant>` significant issue(s) unresolved after 2 iterations. These were not fixed and need SME/human review:
+
+  Follow it with the title of each unresolved critical/significant finding from `technical-review/review.md`, and carry the same counts into the Completion summary warnings
 
 ## create-merge-request
 
@@ -53,6 +58,21 @@ After each step completes, apply the rules below. When rules reference sidecar f
 - If `passed` is false → enter [Quality gate iteration](../SKILL.md#quality-gate-iteration) loop
 
 ## pipeline-diagnostics
+
+**Dispatch via Agent subagent.** Pipeline-diagnostics runs last in the workflow after 10+ skill invocations and iteration loops. Context compaction by this point may have removed the skill instructions. To prevent a no-op stub, the orchestrator MUST dispatch this step via the Agent tool in a fresh context, not via inline `Skill:` invocation:
+
+```
+Agent:
+  description: "Run pipeline diagnostics for <TICKET>"
+  prompt: |
+    Run the pipeline diagnostics step skill for ticket <TICKET>.
+
+    Skill: docs-workflow-pipeline-diagnostics, args: "<TICKET> --base-path <BASE_PATH>"
+
+    After the skill completes, print the step-result.json content.
+```
+
+The pipeline-diagnostics skill writes its sidecar via `pipeline_diagnostics.py --emit-sidecar`, so the sidecar is machine-derived and schema-conformant — the agent never hand-authors it. If the Agent returns without producing `<base_path>/pipeline-diagnostics/step-result.json`, the diagnostics script did not run to completion: log a workaround entry recording the degraded run. Do not hand-author a substitute sidecar; a missing sidecar is itself the signal that diagnostics were degraded.
 
 - Log: `"Pipeline diagnostics: context_pressure=<level> (score <N>), failures=<N>, bottlenecks=<N>"`
 - If `high_severity_failure_count > 0`, **warn**: `"Pipeline had <N> high-severity failure(s). Review the diagnostic report at <base-path>/pipeline-diagnostics/report.md"`

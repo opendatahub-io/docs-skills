@@ -669,25 +669,28 @@ class TestRun:
         output = json.loads(capsys.readouterr().out)
         assert output["summary"]["total_findings"] == 0
 
-    def test_exit_code_1_warnings(self, tmp_path, capsys):
+    def test_exit_code_0_warnings_only(self, tmp_path, capsys):
+        # Contract: warnings-only (no critical findings) exits 0, not 1.
         f = tmp_path / "warn.adoc"
         f.write_text("Connect to 8.8.8.8\n")
         args = self._make_args(paths=[str(f)])
         code = run(args)
-        assert code == 1
+        assert code == 0
 
-    def test_exit_code_2_critical(self, tmp_path, capsys):
+    def test_exit_code_1_critical(self, tmp_path, capsys):
+        # Contract: critical findings (credentials) exit 1.
         f = tmp_path / "crit.adoc"
         f.write_text("password=SuperS3cret!2024\n")
         args = self._make_args(paths=[str(f)])
         code = run(args)
-        assert code == 2
+        assert code == 1
 
     def test_invalid_path_exits(self, tmp_path):
+        # Contract: script error (bad path) exits 2.
         args = self._make_args(paths=[str(tmp_path / "nope.adoc")])
         with pytest.raises(SystemExit) as exc_info:
             run(args)
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 2
 
     def test_docs_dir_mode(self, tmp_path, capsys):
         modules = tmp_path / "modules"
@@ -699,13 +702,15 @@ class TestRun:
             file_types=".adoc",
         )
         code = run(args)
-        assert code == 1
+        # IP address is a warning, not critical → exit 0.
+        assert code == 0
 
     def test_docs_dir_not_a_directory(self, tmp_path):
+        # Contract: script error (not a directory) exits 2.
         args = self._make_args(docs_dir=str(tmp_path / "nope"))
         with pytest.raises(SystemExit) as exc_info:
             run(args)
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 2
 
     def test_json_output_format(self, tmp_path, capsys):
         f = tmp_path / "test.adoc"

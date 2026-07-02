@@ -228,6 +228,11 @@ def _traverse_linked_tickets(graph_data, jira_reader_path):
     extra_tickets = {}
     for key in linked_keys:
         try:
+            # No "--" separator before the script flags: with the runtime's uv
+            # (0.6.x) "uv run --script <path> -- --graph" passes the literal "--"
+            # into the script's argv, and jira_reader's flag-first argparse rejects
+            # it ("unrecognized arguments: --"). Subcommand-style scripts tolerate
+            # the separator; flag-first ones like jira_reader must omit it.
             result = subprocess.run(  # noqa: S603
                 [  # noqa: S607
                     "uv",

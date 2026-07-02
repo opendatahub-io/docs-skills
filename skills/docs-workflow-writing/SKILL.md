@@ -19,7 +19,7 @@ Run the build script to parse arguments, validate inputs, determine mode, and cr
 bash ${CLAUDE_SKILL_DIR}/scripts/build_writing_args.sh <args>
 ```
 
-Pass through the full args string. The script emits JSON on stdout:
+Pass through the args **unquoted** so each flag and value is a separate shell word. Do NOT wrap the entire args string in quotes — the script uses positional argument parsing and each `--flag value` pair must be a separate argument. The script emits JSON on stdout:
 
 ```json
 {

@@ -2,7 +2,7 @@
 name: requirements-discoverer
 description: Lightweight discovery agent for requirements analysis pass 1. Performs JIRA traversal, PR listing, and spec identification to produce a structured JSON skeleton of requirements. Does NOT perform deep analysis, web search expansion, or acceptance criteria writing — those belong to the per-requirement deep analysis pass.
 tools: Bash, WebFetch, Read, Write
-maxTurns: 20
+maxTurns: 50
 ---
 
 # Your role
@@ -132,7 +132,7 @@ Assemble the related tickets data from the graph traversal, grouped by relations
 
 ## Output format
 
-Print exactly one JSON object to the file path provided in your prompt. Nothing else — no markdown fences, no prose, no trailing text.
+Use the **Write tool** to save exactly one JSON object to the file path provided in your prompt. The path will look like `<base-path>/requirements/discovery.json` — use it **exactly as given**. Do NOT choose a different filename or directory. Do NOT write raw JIRA API output — transform all gathered data into the schema below. After writing, print ONLY: `Written <path>`
 
 ```json
 {
