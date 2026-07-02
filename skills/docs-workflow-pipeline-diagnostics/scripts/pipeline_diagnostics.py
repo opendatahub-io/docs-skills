@@ -886,12 +886,10 @@ def build_recommendations(
         )
 
     if workarounds:
-        step_names = ", ".join(
-            sorted({w.get("step", "unknown") for w in workarounds})
-        )
+        step_names = ", ".join(sorted({w.get("step", "unknown") for w in workarounds}))
         recs.append(
             f"{len(workarounds)} script workaround(s) applied during steps: {step_names}. "
-            "The underlying scripts should be fixed so the orchestrator does not need to bypass them"
+            "The underlying scripts should be fixed so the orchestrator need not bypass them"
         )
 
     if not recs:

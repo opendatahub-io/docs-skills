@@ -39,7 +39,8 @@ def run_script(name, script_args):
     """Run a sibling script and return (returncode, stdout, stderr)."""
     result = subprocess.run(
         [sys.executable, os.path.join(SCRIPTS_DIR, name), *script_args],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     return result.returncode, result.stdout, result.stderr
 
@@ -49,7 +50,8 @@ def main() -> int:
     parser.add_argument("--claims-list", required=True, help="Freshly extracted claims-list.json")
     parser.add_argument("--output-dir", required=True, help="Directory for batch files")
     parser.add_argument(
-        "--prior-validation", default="",
+        "--prior-validation",
+        default="",
         help="Prior claim-validation.json (triggers incremental path)",
     )
     args = parser.parse_args()
@@ -66,11 +68,17 @@ def main() -> int:
                 os.remove(f)
 
         # Run incremental diff: writes batch-verdict-carryover.json + claims-to-validate.json
-        rc, stdout, stderr = run_script("incremental_claims.py", [
-            "--claims-list", args.claims_list,
-            "--prior-validation", prior,
-            "--output-dir", output_dir,
-        ])
+        rc, stdout, stderr = run_script(
+            "incremental_claims.py",
+            [
+                "--claims-list",
+                args.claims_list,
+                "--prior-validation",
+                prior,
+                "--output-dir",
+                output_dir,
+            ],
+        )
         if rc != 0:
             print(stderr, file=sys.stderr, end="")
             print(f"ERROR: incremental_claims failed (exit {rc})", file=sys.stderr)
@@ -90,10 +98,15 @@ def main() -> int:
             return 0
 
     # Run split_claims (iteration 1: all claims; iteration 2+: changed claims only)
-    rc, stdout, stderr = run_script("split_claims.py", [
-        "--claims-list", claims_to_split,
-        "--output-dir", output_dir,
-    ])
+    rc, stdout, stderr = run_script(
+        "split_claims.py",
+        [
+            "--claims-list",
+            claims_to_split,
+            "--output-dir",
+            output_dir,
+        ],
+    )
     if stderr:
         print(stderr, file=sys.stderr, end="")
     if rc != 0:

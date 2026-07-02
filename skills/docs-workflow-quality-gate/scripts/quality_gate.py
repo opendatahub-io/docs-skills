@@ -241,9 +241,7 @@ def read_doc_content(base_path):
         import subprocess
 
         root = Path(
-            subprocess.check_output(
-                ["git", "rev-parse", "--show-toplevel"], text=True
-            ).strip()
+            subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
         ).resolve()
     else:
         root = Path(base_path).resolve()
@@ -515,48 +513,106 @@ def load_judge_result(path, label, require_missed):
     return data
 
 
-def build_feedback_brief(output_dir, ticket, iteration, dq_result, ia_result, gaps):
-    """Write feedback-brief-<iteration>.md for the writer's fix pass.
+ACTION_INSTRUCTIONS = {
+    "document_as_unsupported": (
+        "Add a note stating that this capability is not supported in this release. "
+        "Place it in the most relevant existing module — do not create a new module."
+    ),
+    "expand_with_evidence": (
+        "Expand the existing content with available code evidence. Check the source repo "
+        "for relevant API fields, flags, or config options."
+    ),
+    "add_missing_section": (
+        "This content was in the plan but was not included in the writing output. "
+        "Add the missing section based on the requirements and plan."
+    ),
+    "investigate": (
+        "This gap could not be classified. Review the requirements and determine whether "
+        "to document it or note it as out of scope."
+    ),
+}
 
-    Deterministic template assembly — the full judge rationales and classified
-    gaps are written to disk, never returned into the orchestrator's context.
+UNVERIFIED_NOTE = (
+    "Quote could not be verified in the document. Review whether this criterion is "
+    "actually addressed."
+)
+
+
+def _action_instruction(classification, action):
+    """Map a coverage classification/action to a fix instruction."""
+    if classification == "unverified":
+        return UNVERIFIED_NOTE
+    return ACTION_INSTRUCTIONS.get(action, ACTION_INSTRUCTIONS["investigate"])
+
+
+def render_brief(ticket, iteration, sidecar, coverage_check):
+    """Render the feedback-brief markdown from the quality-gate sidecar + coverage check.
+
+    Replaces the hand-rendered template in docs-workflow-quality-gate/SKILL.md step 7.
     """
+    rationales = sidecar.get("rationales", {})
+    gaps = sidecar.get("gaps", [])
     lines = [
         f"# Feedback Brief for {ticket} (iteration {iteration})",
         "",
         "## Intent Alignment Judge Assessment",
         "",
-        ia_result.get("rationale") or "(none)",
+        rationales.get("intent_alignment", "(none)"),
         "",
         "## Doc Quality Judge Assessment",
         "",
-        dq_result.get("rationale") or "(none)",
-        "",
-        "## Classified Gaps with Recommended Actions",
+        rationales.get("doc_quality", "(none)"),
         "",
     ]
 
+    if coverage_check is not None:
+        covered = coverage_check.get("covered", 0)
+        total = coverage_check.get("total", 0)
+        lines += [
+            "## Coverage Check Results",
+            "",
+            f"AC coverage: {covered}/{total} acceptance criteria addressed with verified quotes.",
+            "",
+            "### Uncovered AC Items",
+            "",
+        ]
+        uncovered = [
+            it for it in coverage_check.get("items", []) if it.get("classification") != "covered"
+        ]
+        if uncovered:
+            for it in uncovered:
+                note = _action_instruction(it.get("classification"), it.get("action"))
+                lines += [
+                    f"- **{it.get('ac_text', '')}** (from {it.get('req_id', '?')})",
+                    f"  - Classification: {it.get('classification', 'unknown')}",
+                    f"  - Evidence status: {it.get('evidence_status', 'unknown')}",
+                    f"  - Action: {note}",
+                ]
+        else:
+            lines.append("All acceptance criteria are covered with verified quotes.")
+        lines.append("")
+
+    lines += ["## Classified Gaps with Recommended Actions", ""]
     if gaps:
         for g in gaps:
-            action = g.get("action", "")
             lines += [
                 f"### Gap: {g.get('ac_item', '')}",
                 f"- **File**: {g.get('file', '(unspecified)')}",
                 f"- **Section**: {g.get('section', '(unspecified)')}",
                 f"- **Evidence status**: {g.get('evidence_status', 'unknown')}",
-                f"- **Action**: {ACTION_INSTRUCTIONS.get(action, action)}",
+                f"- **Action**: {_action_instruction(g.get('classification'), g.get('action'))}",
                 "",
             ]
     else:
-        lines += ["None.", ""]
+        lines += ["No classified gaps.", ""]
 
     if iteration > 1:
         lines += [
             "## Prior attempts",
             "",
-            f"This is iteration {iteration}. A previous fix pass was attempted but did "
-            "not resolve these gaps.",
-            "The writer must try a DIFFERENT approach — do not repeat the same fix. Consider:",
+            f"This is iteration {iteration}. A previous fix pass was attempted but did not "
+            "resolve these gaps. The writer must try a DIFFERENT approach — do not repeat the "
+            "same fix. Consider:",
             "- Adding more concrete detail (specific API fields, config values, command examples)",
             "- Restructuring the section rather than appending",
             "- Checking source code for evidence that was missed in the first attempt",
@@ -567,15 +623,33 @@ def build_feedback_brief(output_dir, ticket, iteration, dq_result, ia_result, ga
         "## Priority",
         "",
         "Address gaps in this order:",
-        '1. Items the judge flagged as "missing" or "barely covered" — these are the '
-        "largest scoring deductions",
+        '1. Items flagged as "missing" or "barely covered" — the largest scoring deductions',
         '2. Items flagged as "weakly covered" or "partially covered" — expand existing content',
-        "3. Scope rebalancing — if the judge flagged over-indexing on one area, tighten "
-        "that section rather than expanding others",
+        "3. Scope rebalancing — if the judge flagged over-indexing on one area, tighten it",
         "",
     ]
 
-    (output_dir / f"feedback-brief-{iteration}.md").write_text("\n".join(lines))
+    return "\n".join(lines)
+
+
+def cmd_brief(args):
+    """Render feedback-brief-<iteration>.md from the quality-gate sidecar + coverage check."""
+    output_dir = Path(args.base_path) / "quality-gate"
+    sidecar_path = output_dir / "step-result.json"
+    if not sidecar_path.exists():
+        print(f"ERROR: {sidecar_path} not found", file=sys.stderr)
+        sys.exit(1)
+    sidecar = json.loads(sidecar_path.read_text())
+
+    coverage_check = None
+    coverage_path = output_dir / "coverage-check.json"
+    if coverage_path.exists():
+        coverage_check = json.loads(coverage_path.read_text())
+
+    brief = render_brief(args.ticket, args.iteration, sidecar, coverage_check)
+    brief_path = output_dir / f"feedback-brief-{args.iteration}.md"
+    brief_path.write_text(brief)
+    print(f"Written {brief_path}")
 
 
 def cmd_prepare(args):
@@ -767,7 +841,8 @@ def cmd_classify(args):
     # When the gate fails, write the writer-facing feedback brief here (not
     # inline in the orchestrator) so the full rationales stay out of context.
     if not sidecar["passed"]:
-        build_feedback_brief(output_dir, args.ticket, iteration, dq_result, ia_result, gaps)
+        brief = render_brief(args.ticket, iteration, sidecar, coverage_check)
+        (output_dir / f"feedback-brief-{iteration}.md").write_text(brief)
 
     json.dump(sidecar, sys.stdout, indent=2)
     print()
@@ -822,6 +897,11 @@ def main():
         help="Validate quotes, classify coverage",
     )
 
+    brief = subparsers.add_parser("brief", help="Render feedback-brief-<iteration>.md")
+    brief.add_argument("--ticket", required=True)
+    brief.add_argument("--base-path", required=True)
+    brief.add_argument("--iteration", type=int, default=1)
+
     args = parser.parse_args()
     if args.command == "prepare":
         cmd_prepare(args)
@@ -829,6 +909,8 @@ def main():
         cmd_classify(args)
     elif args.command == "verify":
         cmd_verify(args)
+    elif args.command == "brief":
+        cmd_brief(args)
 
 
 if __name__ == "__main__":

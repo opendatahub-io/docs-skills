@@ -12,7 +12,9 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SCRIPT_DIRS = [
     _REPO_ROOT / "skills" / "docs-review-security" / "scripts",
+    _REPO_ROOT / "skills" / "docs-orchestrator" / "scripts",
     _REPO_ROOT / "skills" / "docs-workflow-pipeline-diagnostics" / "scripts",
+    _REPO_ROOT / "skills" / "docs-workflow-quality-gate" / "scripts",
     _REPO_ROOT / "skills" / "docs-workflow-requirements" / "scripts",
     _REPO_ROOT / "skills" / "docs-workflow-scope-req-audit" / "scripts",
     _REPO_ROOT / "skills" / "git-pr-reader" / "scripts",
