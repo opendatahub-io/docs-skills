@@ -95,6 +95,12 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/merge_verdicts.py \
 
 Use the Agent tool with `subagent_type: docs-skills:technical-reviewer`.
 
+**Before dispatching:** If a prior `review.md` exists at `<output_file>`, **delete it**. This prevents the reviewer from reading stale findings from a prior iteration:
+
+```bash
+rm -f <output_file>
+```
+
 **Prompt:**
 
 > Perform a technical review of the documentation drafts for ticket `<ticket>`.
@@ -109,6 +115,10 @@ Use the Agent tool with `subagent_type: docs-skills:technical-reviewer`.
 > Written <output_file>
 > Overall technical confidence: HIGH|MEDIUM|LOW
 > Severity counts: critical=N significant=N minor=N sme=N
+
+**[if `has_prior_validation` is true — iteration 2+]** Prepend this paragraph to the prompt, before "Perform a technical review":
+
+> **This is a re-review (iteration 2+).** A prior review found issues and fixes have been applied to the source files. Review the documentation **fresh** — read the current file content, not any prior review output. If the output file already exists at the path below, do NOT read it. Evaluate the documentation as it currently stands and produce an independent assessment.
 
 **[if `has_repo`]** Append: `Source code repository is available at <repo_path>.`
 
