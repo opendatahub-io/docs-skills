@@ -929,6 +929,11 @@ def analyze(progress_path: str) -> dict:
     with open(progress_path) as f:
         progress = json.load(f)
 
+    if not isinstance(progress, dict):
+        raise ValueError(
+            f"not a progress file (top-level JSON is {type(progress).__name__}, not object)"
+        )
+
     ticket = progress.get("ticket", "unknown")
     base_path = derive_base_path(progress_path, progress)
     step_order = progress.get("step_order", [])
@@ -983,6 +988,12 @@ def analyze(progress_path: str) -> dict:
     }
 
 
+# Non-progress JSON files that live in the workflow dir alongside the progress
+# file. load_workflow.py writes steps.json (top-level "steps" is a list) and
+# options.json; parsing either as a progress file crashes analyze().
+_NON_PROGRESS_FILES = {"steps.json", "options.json"}
+
+
 def find_progress_files(ticket: str | None, workspace: str = ".agent_workspace") -> list[str]:
     """Find progress files, optionally filtering by ticket."""
     results = []
@@ -998,8 +1009,9 @@ def find_progress_files(ticket: str | None, workspace: str = ".agent_workspace")
         if ticket and entry != ticket.lower():
             continue
         for f in os.listdir(workflow_dir):
-            if f.endswith(".json") and not f.endswith(".stop_count"):
-                results.append(os.path.join(workflow_dir, f))
+            if not f.endswith(".json") or f in _NON_PROGRESS_FILES:
+                continue
+            results.append(os.path.join(workflow_dir, f))
 
     return sorted(results)
 
@@ -1054,7 +1066,14 @@ def main():
     for p in paths:
         try:
             results.append(analyze(p))
-        except (json.JSONDecodeError, KeyError, OSError) as e:
+        except (
+            json.JSONDecodeError,
+            KeyError,
+            OSError,
+            ValueError,
+            TypeError,
+            AttributeError,
+        ) as e:
             results.append({"error": str(e), "progress_file": p})
 
     output = results[0] if len(results) == 1 else {"runs": results}

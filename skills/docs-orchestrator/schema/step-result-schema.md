@@ -382,6 +382,7 @@ When an existing linked ticket is found:
 | `gaps[].action` | string | Recommended action: `"document_as_unsupported"`, `"expand_with_evidence"`, `"add_missing_section"`, or `"investigate"` | Quality gate iteration |
 | `gaps[].file` | string\|null | AsciiDoc filename where the fix should be applied | Quality gate iteration — targeted file edits |
 | `gaps[].section` | string\|null | Section heading or insertion point within the file | Quality gate iteration — targeted section edits |
+| `gaps[].classification` | string | Present only on gaps sourced from the coverage check (`gaps[].judge == "coverage_check"`): `"covered"`, `"real_defect"`, `"correctly_absent"`, `"unverified"`, or `"investigate"` | Feedback brief — selects the fix instruction |
 | `rationales` | object | Full judge rationale texts for the feedback brief | Quality gate iteration |
 | `rationales.doc_quality` | string | Complete doc_quality judge rationale | Quality gate iteration — included verbatim in feedback brief |
 | `rationales.intent_alignment` | string | Complete intent_alignment judge rationale with per-acceptance-criteria coverage assessments, missing artifacts, scope analysis | Quality gate iteration — included verbatim in feedback brief |

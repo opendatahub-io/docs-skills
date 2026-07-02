@@ -163,18 +163,19 @@ Skill: <step.skill>, args: "<constructed args>"
 
 ### Logging workarounds
 
-When the orchestrator works around a broken or mismatched part of the automation to make a step succeed, append an entry to the progress file's `workarounds` array **before proceeding with the step**. Not limited to build-script failures — log a workaround for any manual substitute for automation that should have worked: bypassing a non-zero-exit script, computing args by hand after a helper failed, or routing around a tool contract mismatch (e.g., a tool result that can't be mapped back to its input, forcing repeated extraction attempts). If you did something the scripted path was supposed to do for you, it is a workaround.
+When the orchestrator works around a broken or mismatched part of the automation to make a step succeed, log it **before proceeding with the step** by running the script — never hand-edit the `workarounds` array in the progress JSON:
 
-```json
-{
-  "step": "<step-name>",
-  "issue": "<what failed — e.g., build_writing_args.sh exit 1 due to set -e bug in find_code_analysis_dir>",
-  "action": "<what the orchestrator did instead — e.g., computed JSON args manually and dispatched agent directly>",
-  "timestamp": "<ISO 8601>"
-}
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/progress.py log-workaround \
+  --progress-file <progress_file> \
+  --step "<step-name>" \
+  --issue "<what failed — e.g., build_writing_args.sh exit 1 due to set -e bug in find_code_analysis_dir>" \
+  --action "<what you did instead — e.g., computed JSON args manually and dispatched the agent directly>"
 ```
 
-This makes workarounds visible to pipeline-diagnostics, which surfaces them in the diagnostic report. Without this, script failures that the orchestrator silently works around appear as clean runs — masking bugs in the automation layer.
+The script appends the entry (with an ISO 8601 timestamp), refreshes `updated_at`, and creates the `workarounds` array if absent; re-read the progress file afterward.
+
+Not limited to build-script failures — log any manual substitute for automation that should have worked: bypassing a non-zero-exit script, computing args by hand after a helper failed, routing around a tool contract mismatch, or **quietly doing less than a skill prescribes** (e.g., batching where it says one-per-item). If you did something the scripted path was supposed to do for you, it is a workaround. This keeps workarounds visible to pipeline-diagnostics; without it, silently-worked-around failures look like clean runs and mask automation bugs.
 
 ### Step-specific post-processing
 

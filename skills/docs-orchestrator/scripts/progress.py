@@ -4,14 +4,18 @@
 Owns the stateful progress-file transitions that were previously executed by
 hand in docs-orchestrator/SKILL.md:
 
-  init   — build the progress skeleton from a validated step list.
-  rewind — reset a completed step whose output folder vanished, and every step
-           ordered after it, back to pending (clearing stale results).
+  init          — build the progress skeleton from a validated step list.
+  rewind        — reset a completed step whose output folder vanished, and every
+                  step ordered after it, back to pending (clearing stale results).
+  log-workaround — append an entry to the progress file's ``workarounds`` array so
+                  pipeline-diagnostics can surface it (never hand-edit the JSON).
 
 Usage:
   progress.py init --base-path P --ticket T --workflow W --steps <steps.json> \
       [--options <options.json>] [--force]
   progress.py rewind --progress-file <progress.json>
+  progress.py log-workaround --progress-file <progress.json> --step S \
+      --issue "..." --action "..."
 """
 
 import argparse
@@ -143,6 +147,28 @@ def _cmd_rewind(args) -> int:
     return 0
 
 
+def _cmd_log_workaround(args) -> int:
+    try:
+        with open(args.progress_file) as f:
+            progress = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"ERROR: cannot read progress file {args.progress_file}: {e}", file=sys.stderr)
+        return 1
+
+    entry = {
+        "step": args.step,
+        "issue": args.issue,
+        "action": args.action,
+        "timestamp": _now(),
+    }
+    progress.setdefault("workarounds", []).append(entry)
+    progress["updated_at"] = _now()
+    with open(args.progress_file, "w") as f:
+        json.dump(progress, f, indent=2)
+    print(json.dumps(entry, indent=2))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -158,9 +184,17 @@ def main() -> int:
     rewind = sub.add_parser("rewind")
     rewind.add_argument("--progress-file", required=True)
 
+    workaround = sub.add_parser("log-workaround")
+    workaround.add_argument("--progress-file", required=True)
+    workaround.add_argument("--step", required=True, help="Step being worked around")
+    workaround.add_argument("--issue", required=True, help="What failed or was mismatched")
+    workaround.add_argument("--action", required=True, help="What the orchestrator did instead")
+
     args = parser.parse_args()
     if args.command == "init":
         return _cmd_init(args)
+    if args.command == "log-workaround":
+        return _cmd_log_workaround(args)
     return _cmd_rewind(args)
 
 

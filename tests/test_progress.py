@@ -172,3 +172,48 @@ class TestCli:
         assert summary["rewound_from"] == "code-analysis"
         # file was mutated on disk
         assert json.loads(pf.read_text())["steps"]["writing"]["status"] == "pending"
+
+    def test_log_workaround_appends_entry(self, tmp_path):
+        pf = tmp_path / "wf.json"
+        pf.write_text(json.dumps(build_progress("PROJ-1", "docs-workflow", str(tmp_path), [], {})))
+        result = _run(
+            [
+                "log-workaround",
+                "--progress-file",
+                str(pf),
+                "--step",
+                "quality-gate",
+                "--issue",
+                "batched coverage agents",
+                "--action",
+                "single combined prompt",
+            ]
+        )
+        assert result.returncode == 0, result.stderr
+        data = json.loads(pf.read_text())
+        assert len(data["workarounds"]) == 1
+        entry = data["workarounds"][0]
+        assert entry["step"] == "quality-gate"
+        assert entry["issue"] == "batched coverage agents"
+        assert entry["action"] == "single combined prompt"
+        assert entry["timestamp"]
+
+    def test_log_workaround_appends_when_key_missing(self, tmp_path):
+        # older progress files may predate the workarounds array
+        pf = tmp_path / "wf.json"
+        pf.write_text(json.dumps({"ticket": "PROJ-1", "steps": {}}))
+        result = _run(
+            [
+                "log-workaround",
+                "--progress-file",
+                str(pf),
+                "--step",
+                "writing",
+                "--issue",
+                "x",
+                "--action",
+                "y",
+            ]
+        )
+        assert result.returncode == 0, result.stderr
+        assert len(json.loads(pf.read_text())["workarounds"]) == 1

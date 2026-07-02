@@ -688,6 +688,33 @@ class TestFindProgressFiles:
         assert len(files) == 1
         assert files[0].endswith("wf.json")
 
+    def test_skips_non_progress_files(self, tmp_path):
+        # load_workflow.py writes steps.json/options.json alongside the progress
+        # file; steps.json has a list-valued "steps" and must not be parsed as one.
+        d = tmp_path / "test-1" / "workflow"
+        d.mkdir(parents=True)
+        (d / "docs-workflow_test-1.json").write_text("{}")
+        (d / "steps.json").write_text('{"steps": []}')
+        (d / "options.json").write_text("{}")
+        files = find_progress_files(None, str(tmp_path))
+        assert len(files) == 1
+        assert files[0].endswith("docs-workflow_test-1.json")
+
+    def test_malformed_progress_file_does_not_crash(self, tmp_path):
+        # A stray file that slips through (top-level list) degrades to an error
+        # entry rather than crashing the whole run.
+        assert analyze  # imported below in TestAnalyze; ensure name is available
+        d = tmp_path / "test-1" / "workflow"
+        d.mkdir(parents=True)
+        bad = d / "docs-workflow_test-1.json"
+        bad.write_text("[1, 2, 3]")
+        try:
+            analyze(str(bad))
+            raised = False
+        except ValueError:
+            raised = True
+        assert raised
+
     def test_missing_workspace(self, tmp_path):
         files = find_progress_files(None, str(tmp_path / "nope"))
         assert files == []
