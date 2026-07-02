@@ -52,7 +52,8 @@ mkdir -p "$OUTPUT_DIR"
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/pipeline_diagnostics.py <TICKET> \
   --workspace "$(dirname "${BASE_PATH}")" \
-  --format json > "$DIAGNOSTICS_FILE"
+  --format json \
+  --emit-sidecar "${OUTPUT_DIR}/step-result.json" > "$DIAGNOSTICS_FILE"
 ```
 
 If a direct progress file path is known, use `--progress-file` instead:
@@ -60,8 +61,13 @@ If a direct progress file path is known, use `--progress-file` instead:
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/pipeline_diagnostics.py \
   --progress-file <path-to-progress-json> \
-  --format json > "$DIAGNOSTICS_FILE"
+  --format json \
+  --emit-sidecar "${OUTPUT_DIR}/step-result.json" > "$DIAGNOSTICS_FILE"
 ```
+
+`--emit-sidecar` writes the schema-conformant `step-result.json` directly from the computed
+analysis — every field is derived, and `completed_at` is a real wall-clock timestamp. This is the
+authoritative sidecar; do **not** hand-author it later (see step 8).
 
 Check the exit code. If the script failed, write an error to the report and exit.
 
@@ -73,7 +79,8 @@ Read `$DIAGNOSTICS_FILE`. The script produces structured JSON with these section
 2. **context_pressure** — risk level, score, contributing factors
 3. **failures** — failed steps, missing outputs, missing sidecars, quality issues
 4. **bottlenecks** — steps that took disproportionately long
-5. **recommendations** — actionable next steps
+5. **orchestrator_health** — self-introspection issues (computed by the script; see step 6)
+6. **recommendations** — actionable next steps
 
 ### 4. Drill into failures
 
@@ -104,22 +111,32 @@ Check for: error patterns, session aborts, context compaction markers, stop hook
 
 ### 6. Orchestrator self-introspection
 
-Analyze the workflow run for orchestrator-level problems — not content quality, but the docs-orchestrator machinery itself. Read the progress file and each step's sidecar, then check for the issues below.
+Self-introspection covers orchestrator-level problems — not content quality, but the
+docs-orchestrator machinery itself. **The script already computes the deterministic checks** and
+returns them in the `orchestrator_health` array of `$DIAGNOSTICS_FILE`. Read that array; do NOT
+re-derive these checks by hand:
+
+| Check (`check` field) | Severity |
+|---|---|
+| `schema_drift` — required progress fields missing/null, or no resolvable `workflow` type | high / medium |
+| `missing_sidecar` — step is `completed` but wrote no `step-result.json` | high |
+| `null_result` — step is `completed` but `.steps[name].result` is `null` | medium |
+| `stuck_in_progress` — step never left `in_progress` | high |
+| `deferred_unresolved` — a `deferred` step remained deferred at workflow end | medium |
+| `workarounds_applied` — the progress file's `workarounds` array is non-empty | medium |
+| `active_marker_left` — `.agent_workspace/.active-workflow` still exists after `status=completed` | low |
+| `timestamp_gap` — > 10 min elapsed before a step completed | low |
+
+**Two checks the script cannot compute — add them yourself** only when the inputs are available,
+appending to the health list you carry into the report:
 
 | Check | How to detect | Severity |
 |---|---|---|
-| **Progress file schema drift** | Fields the orchestrator wrote that hooks/scripts don't expect (e.g., `workflow` vs `workflow_type`), or required fields that are `null` | high |
-| **Missing step-result sidecar** | Step status is `completed` but `<base-path>/<step>/step-result.json` does not exist | high |
-| **Null result in progress** | Step is `completed` but `.steps[name].result` is `null` — downstream steps lose structured context | medium |
-| **Step stuck in `in_progress`** | A step never transitioned to `completed`/`failed` — suggests agent crash or context compaction mid-step | high |
-| **Step order vs YAML mismatch** | Compare `step_order` array against the workflow YAML's step list. Missing or extra entries indicate manual edits or schema rot | medium |
-| **Deferred step never resolved** | A `deferred` step remained deferred at workflow end — its `when` condition was never evaluated | medium |
+| **Step order vs YAML mismatch** | Compare the progress `step_order` against the workflow YAML's step list. Missing or extra entries indicate manual edits or schema rot | medium |
 | **Hook errors during run** | If `--ci-log` was provided, grep for `Stop hook error:` or `hook.*error` lines | high |
-| **Script workarounds applied** | The progress file's `workarounds` array is non-empty — the orchestrator bypassed one or more failed scripts. The steps completed, but the automation was broken | medium |
-| **Active-workflow marker left behind** | `.agent_workspace/.active-workflow` still exists after workflow completed — will block future sessions | low |
-| **Timestamp gaps** | File mtime gap > 10 min between consecutive steps suggests context compaction or manual intervention | low |
 
-Tabulate every problem found. For each, record: step name (if applicable), check name, severity, and a one-line description.
+The combined list (script `orchestrator_health` + any of the two checks above) is what you tabulate
+in the report. The sidecar's `orchestrator_issue_count` reflects only the script-computed subset.
 
 ### 7. Write the diagnostic report
 
@@ -158,9 +175,11 @@ No script workarounds were applied.
 
 ## Orchestrator health
 
+<!-- One row per entry in the combined health list (script orchestrator_health + step-6 additions) -->
+
 | Step | Check | Severity | Detail |
 |---|---|---|---|
-| — | example: active-workflow marker left behind | low | `.active-workflow` still present after status=completed |
+| — | active_marker_left | low | `.active-workflow` still present after status=completed |
 
 <!-- If no problems found: -->
 No orchestrator issues detected.
@@ -170,30 +189,34 @@ No orchestrator issues detected.
 2. ...
 ```
 
-### 8. Write step-result.json
+### 8. Verify the step-result.json sidecar
 
-Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
+The `--emit-sidecar` flag in step 2 **already wrote** `${OUTPUT_DIR}/step-result.json` from the
+computed analysis, with every field derived and a real wall-clock `completed_at`. Do **not**
+hand-author or overwrite it — a hand-written sidecar drifts from the schema.
 
-```json
-{
-  "schema_version": 1,
-  "step": "pipeline-diagnostics",
-  "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>",
-  "pipeline_status": "completed | failed | in_progress",
-  "context_pressure_level": "low | moderate | high | critical",
-  "context_pressure_score": 0,
-  "failure_count": 0,
-  "high_severity_failure_count": 0,
-  "bottleneck_count": 0,
-  "orchestrator_issue_count": 0,
-  "workaround_count": 0,
-  "recommendation_count": 0,
-  "total_duration_min": 0
-}
+Verify the file exists and contains the required fields:
+
+```bash
+jq -e '.schema_version and .pipeline_status and (.orchestrator_issue_count != null)' \
+  "${OUTPUT_DIR}/step-result.json" >/dev/null || echo "ERROR: sidecar missing or malformed"
 ```
 
-Replace placeholders with actual values from the diagnostics output.
+If the file is missing or malformed, the script did not emit it — re-run step 2 with
+`--emit-sidecar`. Do not substitute a stub.
+
+The sidecar fields, all populated by the script:
+
+| Field | Source |
+|---|---|
+| `pipeline_status` | `summary.status` |
+| `context_pressure_level` / `context_pressure_score` | `context_pressure` |
+| `failure_count` / `high_severity_failure_count` | `failures` |
+| `bottleneck_count` | `bottlenecks` |
+| `orchestrator_issue_count` | `orchestrator_health` (script-computed subset) |
+| `workaround_count` | `workarounds` |
+| `recommendation_count` | `recommendations` |
+| `total_duration_min` | `summary.total_duration_min` |
 
 ## Context pressure reference
 

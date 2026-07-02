@@ -167,7 +167,7 @@ Skill: <step.skill>, args: "<constructed args>"
 
 ### Logging workarounds
 
-When a step's build script fails but the orchestrator can work around the failure (e.g., by computing arguments manually, bypassing a broken script, or applying a manual fix), append an entry to the progress file's `workarounds` array **before proceeding with the step**:
+When the orchestrator works around a broken or mismatched part of the automation to make a step succeed, append an entry to the progress file's `workarounds` array **before proceeding with the step**. Not limited to build-script failures — log a workaround for any manual substitute for automation that should have worked: bypassing a non-zero-exit script, computing args by hand after a helper failed, or routing around a tool contract mismatch (e.g., a tool result that can't be mapped back to its input, forcing repeated extraction attempts). If you did something the scripted path was supposed to do for you, it is a workaround.
 
 ```json
 {
@@ -205,7 +205,7 @@ Loop up to 2 iterations until confidence is acceptable (one review, one fix-and-
    b. **Verify fixes landed.** After the fix agent returns, use **absolute paths** from `steps.writing.result.files` to verify modifications. Run `git diff --name-only` from the **docs repo root** (`git rev-parse --show-toplevel` of the docs repository, NOT of any cloned source repo). If no files changed, log a workaround entry and investigate — the fix agent may have written to the wrong directory
    c. **Delete the prior review report** before re-running the reviewer: `rm -f <base_path>/technical-review/review.md`. This prevents the iteration 2 reviewer from reading stale findings
    d. Re-run the reviewer. The re-run revalidates only the claims the fix changed (see the tech-review step's incremental claim validation), so the reviewer gets fresh evidence cheaply
-4. After 2 iterations: `MEDIUM` → proceed with warning. `LOW` → ask user. A fix that has not reached acceptable confidence after one attempt is escalated here rather than retried again — a second failed automated fix is a signal for SME/human review, not another rewrite
+4. After 2 iterations: `MEDIUM` → proceed with warning (if `critical > 0` or `significant > 0`, the warning **must name the counts and list the unresolved findings** — see [technical-review post-processing](references/step-post-processing.md#technical-review)). `LOW` → ask user. A fix that has not reached acceptable confidence after one attempt is escalated here rather than retried again — a second failed automated fix is a signal for SME/human review, not another rewrite
 
 ## Quality gate iteration
 
@@ -226,7 +226,7 @@ Before `create-merge-request`, ask user to confirm. Show: branch name (from tick
 
 ## Completion
 
-Set progress `status → "completed"`, delete `.agent_workspace/.active-workflow`. Display summary: output folder paths, warnings, MR/PR URL, JIRA URL, module/file counts from step results.
+Set progress `status → "completed"` and set `updated_at` to a **real wall-clock timestamp** from `date -u +%Y-%m-%dT%H:%M:%SZ` (same rule as every step — do not estimate or round, even on this final write). Delete `.agent_workspace/.active-workflow`. Display summary: output folder paths, warnings, MR/PR URL, JIRA URL, module/file counts from step results.
 
 For SME review comments on an existing MR/PR, use the standalone `action-comments` skill after the workflow completes. It can also be added to a custom workflow YAML as a step.
 
