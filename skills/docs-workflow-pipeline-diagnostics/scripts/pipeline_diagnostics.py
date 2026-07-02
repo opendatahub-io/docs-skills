@@ -654,6 +654,176 @@ def extract_workarounds(progress: dict) -> list[dict]:
     return progress.get("workarounds", [])
 
 
+def orchestrator_health(
+    progress: dict,
+    step_order: list[str],
+    steps: dict,
+    base_path: str,
+    timeline: list[dict],
+    workarounds: list[dict],
+) -> list[dict]:
+    """Self-introspection of the docs-orchestrator machinery (not content quality).
+
+    Computes the deterministic subset of the orchestrator health checks. Checks
+    that require external inputs the script does not have — step-order-vs-YAML
+    comparison and CI-log hook-error scanning — are left to the agent, which
+    layers them on top when a workflow YAML or ``--ci-log`` is available.
+    """
+    issues = []
+
+    # Progress file schema drift: required top-level fields missing or null.
+    for field in ("ticket", "status", "step_order"):
+        if not progress.get(field):
+            issues.append(
+                {
+                    "step": None,
+                    "check": "schema_drift",
+                    "severity": "high",
+                    "detail": f"Progress file is missing or has null required field '{field}'",
+                }
+            )
+    if progress.get("workflow", "unknown") in (None, "", "unknown"):
+        issues.append(
+            {
+                "step": None,
+                "check": "schema_drift",
+                "severity": "medium",
+                "detail": "Progress file has no resolvable 'workflow' type field",
+            }
+        )
+
+    for name in step_order:
+        info = steps.get(name, {})
+        status = info.get("status", "unknown")
+
+        if status == "completed":
+            sidecar = os.path.join(base_path, name, "step-result.json")
+            if not os.path.isfile(sidecar):
+                issues.append(
+                    {
+                        "step": name,
+                        "check": "missing_sidecar",
+                        "severity": "high",
+                        "detail": (
+                            f"Step '{name}' is completed but wrote no step-result.json — "
+                            "downstream steps lose structured context"
+                        ),
+                    }
+                )
+            if info.get("result", "missing") is None:
+                issues.append(
+                    {
+                        "step": name,
+                        "check": "null_result",
+                        "severity": "medium",
+                        "detail": f"Step '{name}' is completed but its progress result is null",
+                    }
+                )
+
+        if status == "in_progress":
+            issues.append(
+                {
+                    "step": name,
+                    "check": "stuck_in_progress",
+                    "severity": "high",
+                    "detail": (
+                        f"Step '{name}' never left 'in_progress' — suggests an agent crash or "
+                        "context compaction mid-step"
+                    ),
+                }
+            )
+
+        if status == "deferred":
+            issues.append(
+                {
+                    "step": name,
+                    "check": "deferred_unresolved",
+                    "severity": "medium",
+                    "detail": (
+                        f"Step '{name}' is still deferred at workflow end — its 'when' condition "
+                        "was never evaluated"
+                    ),
+                }
+            )
+
+    if workarounds:
+        names = ", ".join(sorted({w.get("step", "unknown") for w in workarounds}))
+        issues.append(
+            {
+                "step": None,
+                "check": "workarounds_applied",
+                "severity": "medium",
+                "detail": (
+                    f"{len(workarounds)} script workaround(s) applied during: {names}. "
+                    "The steps completed but the automation was broken"
+                ),
+            }
+        )
+
+    # Active-workflow marker left behind blocks future sessions.
+    if progress.get("status") == "completed":
+        marker = os.path.join(os.path.dirname(base_path), ".active-workflow")
+        if os.path.isfile(marker):
+            issues.append(
+                {
+                    "step": None,
+                    "check": "active_marker_left",
+                    "severity": "low",
+                    "detail": (
+                        f"{marker} still exists after status=completed — will block future "
+                        "workflow sessions"
+                    ),
+                }
+            )
+
+    # Timestamp gaps > 10 min between consecutive steps suggest compaction or
+    # manual intervention.
+    for entry in timeline:
+        gap = entry.get("duration_s")
+        if entry.get("status") == "completed" and isinstance(gap, int) and gap > 600:
+            issues.append(
+                {
+                    "step": entry["step"],
+                    "check": "timestamp_gap",
+                    "severity": "low",
+                    "detail": (
+                        f"{round(gap / 60)} min elapsed before '{entry['step']}' completed — "
+                        "may indicate context compaction or manual intervention"
+                    ),
+                }
+            )
+
+    return issues
+
+
+def build_sidecar(analysis: dict) -> dict:
+    """Derive the schema-conformant pipeline-diagnostics step-result sidecar from a run.
+
+    Stamps a real wall-clock ``completed_at`` and populates every extension field
+    from the computed analysis, so the sidecar can never drift from the schema the
+    way a hand-authored one does.
+    """
+    summary = analysis["summary"]
+    failures = analysis["failures"]
+    cp = analysis["context_pressure"]
+    return {
+        "schema_version": 1,
+        "step": "pipeline-diagnostics",
+        "ticket": summary["ticket"],
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "pipeline_status": summary["status"],
+        "context_pressure_level": cp["level"],
+        "context_pressure_score": cp["risk_score"],
+        "failure_count": len(failures),
+        "high_severity_failure_count": len([f for f in failures if f["severity"] == "high"]),
+        "bottleneck_count": len(analysis["bottlenecks"]),
+        "orchestrator_issue_count": len(analysis["orchestrator_health"]),
+        "workaround_count": len(analysis["workarounds"]),
+        "recommendation_count": len(analysis["recommendations"]),
+        "total_duration_min": summary["total_duration_min"],
+    }
+
+
 def build_recommendations(
     failures: list[dict],
     bottlenecks: list[dict],
@@ -776,6 +946,7 @@ def analyze(progress_path: str) -> dict:
     bottlenecks = detect_bottlenecks(timeline)
     context_pressure = estimate_context_pressure(step_order, steps, base_path, dir_cache)
     workarounds = extract_workarounds(progress)
+    health = orchestrator_health(progress, step_order, steps, base_path, timeline, workarounds)
     recommendations = build_recommendations(failures, bottlenecks, context_pressure, workarounds)
 
     # Compute total duration from file mtimes (first and last step)
@@ -809,6 +980,7 @@ def analyze(progress_path: str) -> dict:
         "failures": failures,
         "bottlenecks": bottlenecks,
         "context_pressure": context_pressure,
+        "orchestrator_health": health,
         "recommendations": recommendations,
     }
 
@@ -858,6 +1030,14 @@ def main():
         default="json",
         help="Output format: 'json' (full structured output) or 'summary' (human-readable)",
     )
+    parser.add_argument(
+        "--emit-sidecar",
+        metavar="PATH",
+        help=(
+            "Also write the schema-conformant pipeline-diagnostics step-result.json to PATH. "
+            "Only valid for a single progress file (a specific ticket or --progress-file)"
+        ),
+    )
     args = parser.parse_args()
 
     if args.progress_file:
@@ -880,6 +1060,21 @@ def main():
             results.append({"error": str(e), "progress_file": p})
 
     output = results[0] if len(results) == 1 else {"runs": results}
+
+    if args.emit_sidecar:
+        if len(results) != 1 or "error" in results[0]:
+            print(
+                "ERROR: --emit-sidecar requires exactly one analyzable progress file "
+                "(pass a specific ticket or --progress-file)",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        sidecar = build_sidecar(results[0])
+        sidecar_path = args.emit_sidecar
+        os.makedirs(os.path.dirname(os.path.abspath(sidecar_path)), exist_ok=True)
+        with open(sidecar_path, "w") as f:
+            json.dump(sidecar, f, indent=2)
+        print(f"Written {sidecar_path}", file=sys.stderr)
 
     if args.format == "summary":
         print_summary(output)
@@ -923,6 +1118,13 @@ def print_summary(data: dict):
             print("Bottlenecks:")
             for b in run["bottlenecks"]:
                 print(f"  {b['step']}: {b['duration_min']} min ({b['ratio_to_avg']}x avg)")
+            print()
+
+        if run.get("orchestrator_health"):
+            print("Orchestrator health:")
+            for h in run["orchestrator_health"]:
+                where = h["step"] or "—"
+                print(f"  [{h['severity'].upper()}] {where} / {h['check']}: {h['detail']}")
             print()
 
         print("Timeline:")

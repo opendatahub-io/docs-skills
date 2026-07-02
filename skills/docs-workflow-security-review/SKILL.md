@@ -136,31 +136,21 @@ After the agent completes, verify the review report exists at `<OUTPUT_FILE>`.
 
 ### 7. Write step-result.json
 
-Parse the scanner results from `$SCANNER_FILE` to extract counts.
+Do **not** hand-author the sidecar — a hand-written sidecar drifts from the schema. Run the script,
+which derives every scanner field from `$SCANNER_FILE` and sums `context_size_bytes` from the output
+folder. Pass `--agent-findings` from the `Agent findings: N` line the security-reviewer agent
+printed (do not read the full report back to recount):
 
-Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
-
-```json
-{
-  "schema_version": 1,
-  "step": "security-review",
-  "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>",
-  "scanner_findings": 0,
-  "critical_findings": 0,
-  "agent_findings": 0,
-  "categories": {
-    "ip": 0,
-    "email": 0,
-    "credential": 0,
-    "url": 0,
-    "mac": 0,
-    "internal_hostname": 0
-  },
-  "context_size_bytes": 0
-}
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+  --ticket "<TICKET>" \
+  --scanner-results "$SCANNER_FILE" \
+  --agent-findings <N> \
+  --output-dir "$OUTPUT_DIR" \
+  --sidecar "${OUTPUT_DIR}/step-result.json"
 ```
 
-Replace the `0` placeholders with actual counts: scanner counts come from `$SCANNER_FILE`, and `agent_findings` comes from the `Agent findings: N` line the security-reviewer agent printed (do not read the full report back to recount). All numeric fields must be integers, not strings.
-
-After writing the sidecar, sum the byte sizes of all output files in the step's output folder and add `context_size_bytes` to the sidecar.
+The script writes the conformant `step-result.json` with `scanner_findings`, `critical_findings`,
+`agent_findings`, per-category counts, `context_size_bytes`, and a real wall-clock `completed_at`.
+If the script exits non-zero, the sidecar was not written — fix the scanner-results path and re-run;
+do not substitute a stub.

@@ -192,11 +192,20 @@ All sidecars share these fields:
   "schema_version": 1,
   "step": "style-review",
   "ticket": "PROJ-123",
-  "completed_at": "2026-04-23T15:45:00Z"
+  "completed_at": "2026-04-23T15:45:00Z",
+  "fixes_applied": 6,
+  "warnings": 5,
+  "suggestions": 16
 }
 ```
 
-No extra fields. Common schema only.
+| Field | Type | Description | Consumed by |
+|---|---|---|---|
+| `fixes_applied` | integer | Number of in-place edits the docs-reviewer agent applied | Informational (pipeline diagnostics, completion summary, audit trail) |
+| `warnings` | integer | Number of style warnings the agent reported | Informational |
+| `suggestions` | integer | Number of style suggestions the agent reported | Informational |
+
+The counts come from the `Fixes applied: N`, `Warnings: N`, `Suggestions: N` lines the docs-reviewer agent prints — the orchestrator does not re-read the full report to recount.
 
 ### security-review
 
@@ -420,10 +429,13 @@ Used by the standalone `action-comments` skill.
   "high_severity_failure_count": 0,
   "bottleneck_count": 1,
   "orchestrator_issue_count": 2,
+  "workaround_count": 0,
   "recommendation_count": 3,
   "total_duration_min": 25.3
 }
 ```
+
+Written directly by `pipeline_diagnostics.py --emit-sidecar` — every field is derived from the computed analysis, never hand-authored.
 
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
@@ -433,9 +445,10 @@ Used by the standalone `action-comments` skill.
 | `failure_count` | integer | Total failures detected across all steps | Orchestrator (final summary) |
 | `high_severity_failure_count` | integer | High-severity failures only | Orchestrator (final summary) |
 | `bottleneck_count` | integer | Number of steps flagged as bottlenecks | Informational |
-| `orchestrator_issue_count` | integer | Number of orchestrator-level problems found by self-introspection | Informational |
+| `orchestrator_issue_count` | integer | Number of orchestrator-level problems found by the script's self-introspection subset | Informational |
+| `workaround_count` | integer | Number of script workarounds recorded in the progress file | Informational |
 | `recommendation_count` | integer | Number of actionable recommendations generated | Informational |
-| `total_duration_min` | number | Total pipeline duration in minutes (from file mtimes) | Informational |
+| `total_duration_min` | number\|null | Total pipeline duration in minutes (from file mtimes), or null if not computable | Informational |
 
 ## Backward compatibility
 

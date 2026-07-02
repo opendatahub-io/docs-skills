@@ -38,6 +38,11 @@ After each step completes, apply the rules below. When rules reference sidecar f
 ## technical-review
 
 - After the [Technical review iteration](../SKILL.md#technical-review-iteration) loop completes, re-evaluate `when: has_many_requirements` Phase 2 for the quality-gate step (see [`when: has_many_requirements` condition](../SKILL.md#when-has_many_requirements-condition))
+- If the loop ended at `MEDIUM` with `severity_counts.critical > 0` or `severity_counts.significant > 0`, do not let the persisting issues pass silently. Emit an explicit warning that names the counts and lists each unresolved finding:
+
+  > Technical review proceeding at MEDIUM confidence with `<critical>` critical + `<significant>` significant issue(s) unresolved after 2 iterations. These were not fixed and need SME/human review:
+
+  Follow it with the title of each unresolved critical/significant finding from `technical-review/review.md`, and carry the same counts into the Completion summary warnings
 
 ## create-merge-request
 
@@ -67,7 +72,7 @@ Agent:
     After the skill completes, print the step-result.json content.
 ```
 
-If the Agent returns without producing `<base_path>/pipeline-diagnostics/step-result.json`, log a workaround entry and create a minimal sidecar with `orchestrator_issue_count: 1` and a note that the step was degraded.
+The pipeline-diagnostics skill writes its sidecar via `pipeline_diagnostics.py --emit-sidecar`, so the sidecar is machine-derived and schema-conformant — the agent never hand-authors it. If the Agent returns without producing `<base_path>/pipeline-diagnostics/step-result.json`, the diagnostics script did not run to completion: log a workaround entry recording the degraded run. Do not hand-author a substitute sidecar; a missing sidecar is itself the signal that diagnostics were degraded.
 
 - Log: `"Pipeline diagnostics: context_pressure=<level> (score <N>), failures=<N>, bottlenecks=<N>"`
 - If `high_severity_failure_count > 0`, **warn**: `"Pipeline had <N> high-severity failure(s). Review the diagnostic report at <base-path>/pipeline-diagnostics/report.md"`
