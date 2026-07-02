@@ -228,7 +228,9 @@ For SME review comments on an existing MR/PR, use the standalone `action-comment
 
 On resume (same or new session), read the progress file and skip completed steps. Resume from the first `pending` or `failed` step. Before running it, validate input dependencies — every upstream step must have `status: "completed"` and its output folder on disk. For each upstream dependency, verify the output folder still exists on disk. If an output folder was deleted, mark that step as `pending` and re-run it. Additional flags provided on resume (e.g., `--create-jira`) update the progress file options.
 
+**Re-write the active workflow marker on every resume.** The marker may be absent after a session restart or context compaction — stop hooks and session teardown can delete it. Always re-write it after reading the progress file, before running any steps.
+
 ### Context management
 
-The progress file is the authoritative state. After automatic compaction compresses earlier turns, re-read the progress file from disk (post-step context refresh). No workflow state is held only in conversation memory.
+The progress file is the authoritative state. After automatic compaction compresses earlier turns, re-read the progress file from disk (post-step context refresh). No workflow state is held only in conversation memory. Re-write the active workflow marker after re-reading the progress file — compaction may have triggered a session boundary that cleaned up the marker.
 

@@ -81,7 +81,21 @@ Each agent:
   }
   ```
 
-Write each agent's JSON output to the item's `result_file` path from the manifest.
+After **all** agents return, write each agent's structured JSON output to the corresponding `result_file` path from the manifest. Schema-validated agents return their JSON inline (not to disk), so the orchestrator must write the results:
+
+```bash
+mkdir -p "${BASE_PATH}/quality-gate/coverage-results"
+```
+
+For each item, write a JSON file containing the agent's `{"covered": ..., "quote": ...}` output to the item's `result_file`. Use a single bash command with heredocs to write all files at once, keeping context lean.
+
+Verify the expected number of files were written:
+
+```bash
+ls "${BASE_PATH}/quality-gate/coverage-results/" | wc -l
+```
+
+If the count does not match the manifest item count, log a warning listing which items are missing.
 
 #### 3c. Classify coverage results
 

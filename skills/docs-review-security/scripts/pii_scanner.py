@@ -7,6 +7,11 @@ vale-at-red-hat#851 and case_search.py.
 
 Zero external dependencies — Python 3.9+ standard library only.
 
+Exit codes:
+  0 — clean scan or warnings only (no action required)
+  1 — critical findings (credentials, private keys)
+  2 — script error (bad paths, unreadable files, invalid args)
+
 Usage:
   pii_scanner.py scan <path> [<path>...]
   pii_scanner.py scan --docs-dir <dir> [--scan-dirs modules,topics] [--file-types .adoc,.md]
@@ -574,13 +579,13 @@ def run(args):
                 json.dumps({"error": f"Paths not found or not files: {invalid}"}),
                 file=sys.stderr,
             )
-            sys.exit(1)
+            sys.exit(2)
         files = [Path(p) for p in args.paths]
     elif args.docs_dir:
         docs_dir = args.docs_dir
         if not Path(docs_dir).is_dir():
             print(json.dumps({"error": f"Not a directory: {docs_dir}"}), file=sys.stderr)
-            sys.exit(1)
+            sys.exit(2)
         raw_dirs = args.scan_dirs
         scan_dirs = raw_dirs if isinstance(raw_dirs, list) else raw_dirs.split(",")
         raw_types = args.file_types
@@ -592,10 +597,8 @@ def run(args):
     result = cmd_scan(files)
     print(json.dumps(result, indent=2))
 
-    # Exit codes: 0 = clean, 1 = warnings, 2 = critical
+    # Exit codes: 0 = clean or warnings only, 1 = critical findings, 2 = script error
     if result["summary"]["by_severity"].get("critical", 0) > 0:
-        return 2
-    if result["summary"]["total_findings"] > 0:
         return 1
     return 0
 
@@ -625,7 +628,7 @@ def main():
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
-        sys.exit(1)
+        sys.exit(2)
 
     sys.exit(run(args))
 

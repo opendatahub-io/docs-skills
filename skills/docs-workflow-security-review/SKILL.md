@@ -59,16 +59,22 @@ Set `DRAFTS_DIR="${BASE_PATH}/writing"` and glob for `.adoc`, `.md`, `.dita`, an
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-review-security/scripts/pii_scanner.py scan <file1> <file2> ... > "$SCANNER_FILE"
+SCANNER_EXIT=$?
 ```
 
-Check the exit code. If the scanner failed (non-zero exit), write an error to the report and exit with a non-zero status:
+Check the exit code. The scanner uses these exit codes:
+- **0** — clean scan or warnings only (proceed normally)
+- **1** — critical findings (credentials, private keys — proceed but flag in report)
+- **2** — script error (bad paths, invalid args — stop)
 
 ```bash
-if [ $? -ne 0 ]; then
-  echo "ERROR: PII scanner failed. See output above." >&2
+if [ $SCANNER_EXIT -eq 2 ]; then
+  echo "ERROR: PII scanner failed (exit 2). See output above." >&2
   exit 1
 fi
 ```
+
+Do NOT treat exit code 0 or 1 as failures — both produce valid JSON output. Exit 1 means critical findings were detected, which the report will surface.
 
 Validate the JSON output is well-formed before parsing:
 
