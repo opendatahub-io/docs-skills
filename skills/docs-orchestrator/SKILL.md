@@ -163,6 +163,8 @@ Skill: <step.skill>, args: "<constructed args>"
 5. Run [step-specific post-processing](#step-specific-post-processing)
 6. Re-read the progress file from disk before the next step (post-step context refresh)
 
+**Never produce stub results.** If you cannot invoke a step's skill (e.g., due to context compaction removing the skill instructions), you MUST either (a) dispatch the step via an Agent subagent in a fresh context or (b) mark the step as `failed` with an error explaining why. Do NOT write a placeholder `step-result.json` or mark the step `completed` with a generic note like "no issues found" — this masks real failures from pipeline diagnostics and the user
+
 ### Logging workarounds
 
 When a step's build script fails but the orchestrator can work around the failure (e.g., by computing arguments manually, bypassing a broken script, or applying a manual fix), append an entry to the progress file's `workarounds` array **before proceeding with the step**:
@@ -198,7 +200,11 @@ Loop up to 2 iterations until confidence is acceptable (one review, one fix-and-
 
 1. Invoke `docs-workflow-tech-review`. Read confidence from the sidecar (`step-result.json`), falling back to grep on `review.md` for `Overall technical confidence:`. Update `steps.technical-review.result`
 2. `HIGH` → done. `MEDIUM` with `critical=0` AND `significant=0` → acceptable (log, proceed). Otherwise continue
-3. If `MEDIUM` (with fixable issues) or `LOW` → fix via `docs-workflow-writing --fix-from <base_path>/technical-review/review.md` (pass all `--repo` flags), then re-run reviewer. The re-run revalidates only the claims the fix changed (see the tech-review step's incremental claim validation), so the reviewer gets fresh evidence cheaply
+3. If `MEDIUM` (with fixable issues) or `LOW`:
+   a. Fix via `docs-workflow-writing --fix-from <base_path>/technical-review/review.md` (pass all `--repo` flags)
+   b. **Verify fixes landed.** After the fix agent returns, use **absolute paths** from `steps.writing.result.files` to verify modifications. Run `git diff --name-only` from the **docs repo root** (`git rev-parse --show-toplevel` of the docs repository, NOT of any cloned source repo). If no files changed, log a workaround entry and investigate — the fix agent may have written to the wrong directory
+   c. **Delete the prior review report** before re-running the reviewer: `rm -f <base_path>/technical-review/review.md`. This prevents the iteration 2 reviewer from reading stale findings
+   d. Re-run the reviewer. The re-run revalidates only the claims the fix changed (see the tech-review step's incremental claim validation), so the reviewer gets fresh evidence cheaply
 4. After 2 iterations: `MEDIUM` → proceed with warning. `LOW` → ask user. A fix that has not reached acceptable confidence after one attempt is escalated here rather than retried again — a second failed automated fix is a signal for SME/human review, not another rewrite
 
 ## Quality gate iteration

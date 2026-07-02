@@ -54,6 +54,21 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 ## pipeline-diagnostics
 
+**Dispatch via Agent subagent.** Pipeline-diagnostics runs last in the workflow after 10+ skill invocations and iteration loops. Context compaction by this point may have removed the skill instructions. To prevent a no-op stub, the orchestrator MUST dispatch this step via the Agent tool in a fresh context, not via inline `Skill:` invocation:
+
+```
+Agent:
+  description: "Run pipeline diagnostics for <TICKET>"
+  prompt: |
+    Run the pipeline diagnostics step skill for ticket <TICKET>.
+
+    Skill: docs-workflow-pipeline-diagnostics, args: "<TICKET> --base-path <BASE_PATH>"
+
+    After the skill completes, print the step-result.json content.
+```
+
+If the Agent returns without producing `<base_path>/pipeline-diagnostics/step-result.json`, log a workaround entry and create a minimal sidecar with `orchestrator_issue_count: 1` and a note that the step was degraded.
+
 - Log: `"Pipeline diagnostics: context_pressure=<level> (score <N>), failures=<N>, bottlenecks=<N>"`
 - If `high_severity_failure_count > 0`, **warn**: `"Pipeline had <N> high-severity failure(s). Review the diagnostic report at <base-path>/pipeline-diagnostics/report.md"`
 - If `context_pressure_level` is `"high"` or `"critical"`, **warn**: `"Context pressure is <level>. Consider workflow splitting for future runs."`

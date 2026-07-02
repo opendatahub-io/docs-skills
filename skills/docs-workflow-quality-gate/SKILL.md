@@ -63,7 +63,9 @@ If the manifest `items` array is empty (no AC items found), skip steps 3b and 3c
 
 #### 3b. Dispatch coverage check agents
 
-Read the manifest JSON output from 3a. For each item in the `items` array, dispatch one agent. Launch **all agents in a single message** (parallel execution).
+Read the manifest from the file at `${BASE_PATH}/quality-gate/coverage-prompts/manifest.json` using the Read tool (do NOT parse from stdout — stdout may truncate or serialize incorrectly). Extract the `items` array. For each item, dispatch one agent. Launch **all agents in a single message** (parallel execution).
+
+**Important:** If using the Workflow tool to parallelize, pass the `items` array as a proper JSON array in the `args` field, not as a serialized string. If Workflow args serialization fails, fall back to dispatching agents individually via the Agent tool.
 
 Each agent:
 
