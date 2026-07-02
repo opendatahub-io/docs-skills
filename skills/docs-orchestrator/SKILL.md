@@ -74,40 +74,21 @@ Writers can pre-configure the source repo and scope in `<base-path>/source.yaml`
 
 ## Load the step list
 
-### 1. Determine the YAML file
+Run `load_workflow.py` — it resolves the workflow YAML (project override → plugin default), evaluates the deterministic `when` conditions against the run options, and validates the step list. Do NOT read the YAML or evaluate conditions by hand.
 
-- If `--workflow <name>` was specified → `.agent_workspace/docs-<name>.yaml`
-- If that project-level file doesn't exist → fall back to `skills/docs-orchestrator/defaults/docs-<name>.yaml`
-- Otherwise → `.agent_workspace/docs-workflow.yaml`
-- If that project-level file doesn't exist → fall back to `skills/docs-orchestrator/defaults/docs-workflow.yaml`
+First write the run options gathered from the CLI flags to a JSON file (reused by `progress.py init`), then run the loader:
 
-### 2. Read the YAML
+```bash
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/load_workflow.py \
+  --workflow <name> \
+  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
+  --options <base_path>/workflow/options.json \
+  --base-path <base_path> > <base_path>/workflow/steps.json
+```
 
-Read the YAML file and extract the ordered step list. Each step has: `name`, `skill`, `description`, optional `when`, and optional `inputs`.
+`--workflow` defaults to `workflow` (the bundled `docs-workflow.yaml`). The script **STOPs with a non-zero exit and a stderr error** if a skill reference is unknown, a step name is duplicated, or an `input` names a missing step — surface that error to the user and do not proceed with an invalid step list.
 
-### 3. Evaluate `when` conditions
-
-| Condition | Behavior |
-|---|---|
-| `create_merge_request` | Run only if `--create-merge-request` was passed |
-| `has_pr` | Run only if a PR/MR URL is available (from `--pr`, JIRA discovery, or `options.pr_urls`) |
-| `has_source_repo` | If `--no-source-repo` → `skipped`. If source resolved pre-flight → `pending`. Otherwise → `deferred` until post-requirements resolution |
-| `has_many_requirements` | Deferred until requirements step completes. See [`when: has_many_requirements` condition](#when-has_many_requirements-condition) |
-| _(none)_ | Always runs |
-
-Steps that don't meet their condition and can't be deferred are marked `skipped`.
-
-### 4. Validate the step list
-
-All of the following must be true. If any check fails, **STOP** with a clear error:
-
-- All step names are unique
-- All `skill` references resolve to a known skill (bare names like `docs-workflow-writing` are preferred; fully qualified `plugin:skill` format is also accepted)
-- Input dependencies are satisfied — for each step with `inputs`, every referenced step name must be present in the step list (unless it has a `when` condition that would skip it)
-
-### Input dependencies
-
-Steps declare `inputs` as a list of upstream step names. Validate at load time that all referenced names exist. If an upstream step was `skipped` (via `when`), the dependency is satisfied — the downstream step checks for optional input data itself. Only `failed` upstream steps block execution. Missing references fail at load time.
+The emitted JSON has `workflow`, `yaml_path`, and an ordered `steps` array; each step carries `name`, `skill`, `description`, `when`, `inputs`, and an initial `status` of `pending` (will run), `skipped` (permanent), or `deferred` (`has_source_repo` unresolved or [`has_many_requirements`](#when-has_many_requirements-condition); re-evaluated after requirements). At run time a `skipped` upstream still satisfies a dependency; only a `failed` upstream blocks execution.
 
 ## Output conventions
 
@@ -117,9 +98,18 @@ See [output and state reference](references/output-and-state.md#output-conventio
 
 ## Progress file
 
-Claude writes the progress file directly using the Write tool. Create it after parsing arguments, before step 1. Update it after each step.
+The progress file is the authoritative run state. Create it with `progress.py init` from the validated step list — do NOT hand-author the JSON:
 
-**Location**: `.agent_workspace/<ticket>/workflow/<workflow-type>_<ticket>.json`
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/progress.py init \
+  --base-path <base_path> \
+  --ticket <TICKET> \
+  --workflow <name> \
+  --steps <base_path>/workflow/steps.json \
+  --options <base_path>/workflow/options.json
+```
+
+This writes `<base_path>/workflow/<workflow>_<ticket-lower>.json` with each step's initial status from the step list, `status: "in_progress"`, and real wall-clock timestamps. It refuses to overwrite an existing progress file unless `--force`. Update the file after each step using the Write tool (see [After the step](#after-the-step)).
 
 See [output and state reference](references/output-and-state.md#progress-file) for the full JSON schema, status values (`pending`, `in_progress`, `completed`, `failed`, `skipped`, `deferred`), `step_order` array, and the [active workflow marker](references/output-and-state.md#active-workflow-marker) schema and lifecycle (when to write, delete, and overwrite).
 
@@ -127,9 +117,15 @@ See [output and state reference](references/output-and-state.md#progress-file) f
 
 Check for a progress file at `.agent_workspace/<ticket>/workflow/<workflow-type>_<ticket>.json`.
 
-**If found**: Read it. Verify each `completed` step's output folder exists on disk — if missing, reset it and all downstream steps to `pending` and clear `steps.<step>.result` for the rewound step and all its downstream dependents (prevents stale sidecar data from being reused). If `options.source` is null, rehydrate via `resolve_source.py --base-path <base_path> --progress-file <progress_file>` (add `--scan-requirements --skip-deferred-on-no-source` if requirements already completed). Resume from the first `pending` or `failed` step after validating input dependencies.
+**If found**: Read it, then run `progress.py rewind` to reconcile it with disk — it resets any `completed` step whose output folder is missing (plus every step ordered after it) back to `pending`, clearing stale results. Do NOT do this reset by hand.
 
-**If not found**: Create a new progress file and start from step 1.
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/progress.py rewind --progress-file <progress_file>
+```
+
+The script prints `{"rewound_from": ..., "reset_steps": [...]}` and rewrites the file. If `options.source` is null, rehydrate via `resolve_source.py --base-path <base_path> --progress-file <progress_file>` (add `--scan-requirements --skip-deferred-on-no-source` if requirements already completed). Resume from the first `pending` or `failed` step after validating input dependencies.
+
+**If not found**: Create a new progress file with `progress.py init` (see [Progress file](#progress-file)) and start from step 1.
 
 In both cases, write the active workflow marker.
 
@@ -196,25 +192,38 @@ Triggers only when requirements completes AND `options.source` is still null. Ru
 
 ## Technical review iteration
 
-Loop up to 2 iterations until confidence is acceptable (one review, one fix-and-confirm):
+Loop up to 2 iterations (one review, one fix-and-confirm). The loop decision — the confidence/severity/iteration rules — is owned by `iteration_decision.py`; do NOT evaluate it by hand.
 
-1. Invoke `docs-workflow-tech-review`. Read confidence from the sidecar (`step-result.json`), falling back to grep on `review.md` for `Overall technical confidence:`. Update `steps.technical-review.result`
-2. `HIGH` → done. `MEDIUM` with `critical=0` AND `significant=0` → acceptable (log, proceed). Otherwise continue
-3. If `MEDIUM` (with fixable issues) or `LOW`:
+1. Invoke `docs-workflow-tech-review`. It writes `technical-review/step-result.json` (confidence, severity counts, auto-incremented iteration). Update `steps.technical-review.result` from the sidecar
+2. Get the decision, then act on it:
+   ```bash
+   python3 ${CLAUDE_SKILL_DIR}/scripts/iteration_decision.py tech-review \
+     --sidecar <base_path>/technical-review/step-result.json
+   ```
+   - `done` → proceed to the next step
+   - `fix` → run the fix-and-confirm pass (step 3), then return to step 2
+   - `proceed_with_warning` → emit the returned `warning`; since `list_findings` is true, append the title of each unresolved critical/significant finding from `technical-review/review.md`, and carry the counts into the Completion summary. Then proceed
+   - `ask_user` → ask the user whether to proceed or stop for SME/human review
+3. Fix-and-confirm pass (only when `decision == fix`):
    a. Fix via `docs-workflow-writing --fix-from <base_path>/technical-review/review.md` (pass all `--repo` flags)
    b. **Verify fixes landed.** After the fix agent returns, use **absolute paths** from `steps.writing.result.files` to verify modifications. Run `git diff --name-only` from the **docs repo root** (`git rev-parse --show-toplevel` of the docs repository, NOT of any cloned source repo). If no files changed, log a workaround entry and investigate — the fix agent may have written to the wrong directory
    c. **Delete the prior review report** before re-running the reviewer: `rm -f <base_path>/technical-review/review.md`. This prevents the iteration 2 reviewer from reading stale findings
    d. Re-run the reviewer. The re-run revalidates only the claims the fix changed (see the tech-review step's incremental claim validation), so the reviewer gets fresh evidence cheaply
-4. After 2 iterations: `MEDIUM` → proceed with warning (if `critical > 0` or `significant > 0`, the warning **must name the counts and list the unresolved findings** — see [technical-review post-processing](references/step-post-processing.md#technical-review)). `LOW` → ask user. A fix that has not reached acceptable confidence after one attempt is escalated here rather than retried again — a second failed automated fix is a signal for SME/human review, not another rewrite
 
 ## Quality gate iteration
 
-Loop up to 2 iterations until `intent_alignment >= 4`:
+Loop up to 2 iterations. The loop decision — the `intent_alignment` thresholds — is owned by `iteration_decision.py`; do NOT evaluate it by hand.
 
-1. Invoke `docs-workflow-quality-gate`. Read `quality-gate/step-result.json` — stop if missing or incomplete (needs `doc_quality`, `intent_alignment`, `passed`)
-2. `intent_alignment >= 4` → done (warn if `doc_quality < 4`). Otherwise continue
-3. Fix via `docs-workflow-writing --fix-from <BASE_PATH>/quality-gate/feedback-brief-<iteration>.md` (verify file exists first; pass all `--repo` flags), then re-run quality gate
-4. After 2 iterations: `intent_alignment >= 3` → accept with warning. `< 3` → ask user
+1. Invoke `docs-workflow-quality-gate`. It writes `quality-gate/step-result.json` (`doc_quality`, `intent_alignment`, `passed`, `iteration`) and, when not passing, `feedback-brief-<iteration>.md` — stop if the sidecar is missing or incomplete
+2. Get the decision, then act on it:
+   ```bash
+   python3 ${CLAUDE_SKILL_DIR}/scripts/iteration_decision.py quality-gate \
+     --sidecar <base_path>/quality-gate/step-result.json
+   ```
+   - `done` → proceed (if `secondary_warning` is set, emit it — `doc_quality < 4`, manual review recommended)
+   - `fix` → fix via `docs-workflow-writing --fix-from <base_path>/quality-gate/feedback-brief-<iteration>.md` (verify the file exists first; pass all `--repo` flags), then re-run the quality gate (return to step 1)
+   - `accept_with_warning` → emit a warning that `intent_alignment` is below target after max iterations, then proceed
+   - `ask_user` → ask the user whether to proceed or stop
 
 ### `when: has_many_requirements` condition
 
@@ -232,7 +241,7 @@ For SME review comments on an existing MR/PR, use the standalone `action-comment
 
 ## Resume behavior
 
-On resume (same or new session), read the progress file and skip completed steps. Resume from the first `pending` or `failed` step. Before running it, validate input dependencies — every upstream step must have `status: "completed"` and its output folder on disk. For each upstream dependency, verify the output folder still exists on disk. If an output folder was deleted, mark that step as `pending` and re-run it. Additional flags provided on resume (e.g., `--create-jira`) update the progress file options.
+On resume (same or new session), read the progress file and run `progress.py rewind` (see [Check for existing work](#check-for-existing-work)) to reset any completed step whose output folder was deleted, plus every step after it. Then resume from the first `pending` or `failed` step, validating input dependencies — every upstream step must be `completed` with its output folder on disk. Additional flags provided on resume (e.g., `--create-jira`) update the progress file options.
 
 **Re-write the active workflow marker on every resume.** The marker may be absent after a session restart or context compaction — stop hooks and session teardown can delete it. Always re-write it after reading the progress file, before running any steps.
 

@@ -166,9 +166,18 @@ The iteration number is determined automatically from the briefs already on disk
 
 ### 7. Feedback brief (when `passed = false`)
 
-When `passed` is false, the `classify` script (step 6) writes `${BASE_PATH}/quality-gate/feedback-brief-<iteration>.md` so the orchestrator can dispatch the writer in fix mode. The brief is assembled deterministically by the script — it embeds the **full judge rationale text** (per-acceptance-criteria severity assessments, named missing artifacts, scope imbalance, audience gaps), the classified gaps with action-code instructions, a "Prior attempts" section when iteration > 1, and a priority ordering. None of that text enters the orchestrator's context.
+When `passed` is false, render the feedback brief with the script — do NOT hand-render the template. It reads `step-result.json` (rationales and classified gaps) and `coverage-check.json` (if present) and writes `feedback-brief-<iteration>.md`:
 
-Verify the brief exists when `passed` is false; do not read it back into context. The orchestrator passes it to the writer via `docs-workflow-writing --fix-from`.
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py brief \
+  --ticket "${TICKET}" \
+  --base-path "${BASE_PATH}" \
+  --iteration <N>
+```
+
+Use the `iteration` value from the step-result.json written in step 6. Skip this step when `passed` is true.
+
+The rendered brief includes the **full judge rationales verbatim** (per-AC severity assessments, missing artifacts, scope and audience analysis — nuanced fix instructions, not flat action codes), the coverage block with per-item fix instructions (only when `coverage-check.json` exists), each classified gap with its action instruction, a "Prior attempts" section for iteration > 1 that tells the writer to try a different approach, and the priority ordering.
 
 ### 8. Verify output (always runs)
 
