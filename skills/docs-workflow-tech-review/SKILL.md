@@ -105,7 +105,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/merge_verdicts.py \
 
 ### 3. Dispatch reviewer
 
-Use the Agent tool with `subagent_type: docs-skills:technical-reviewer`.
+Use the Agent tool with `subagent_type: docs-skills:technical-reviewer` and **`run_in_background: false`** (the orchestrator must wait for the reviewer to finish before verifying output).
 
 **Before dispatching:** If a prior `review.md` exists at `<output_file>`, **delete it**. This prevents the reviewer from reading stale findings from a prior iteration:
 

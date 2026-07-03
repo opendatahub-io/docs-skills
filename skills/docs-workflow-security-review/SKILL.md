@@ -113,6 +113,7 @@ Start the review report with the scanner results:
 **Agent tool parameters:**
 - `subagent_type`: `docs-skills:security-reviewer`
 - `description`: `Security Layer 2 review for <TICKET>`
+- `run_in_background`: `false` (the orchestrator must wait for the reviewer to finish before verifying output)
 
 **Prompt** (substitute `<SOURCE_FILES>` with the file list from step 2 and `<OUTPUT_FILE>` with the report path):
 

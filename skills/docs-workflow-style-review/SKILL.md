@@ -76,6 +76,7 @@ Select the prompt below based on the `--format` flag. Substitute `<SOURCE_FILES_
 **Agent tool parameters:**
 - `subagent_type`: `docs-skills:docs-reviewer`
 - `description`: `Review documentation for <TICKET>`
+- `run_in_background`: `false` (the orchestrator must wait for the reviewer to finish before verifying output)
 
 **Prompt for AsciiDoc** (`--format adoc`):
 
