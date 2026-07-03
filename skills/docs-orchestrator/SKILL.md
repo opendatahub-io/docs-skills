@@ -193,6 +193,18 @@ Triggers only when requirements completes AND `options.source` is still null. Ru
 | 1 (`error`) | Log warning. Leave progress unchanged. User can retry with `--source-code-repo` |
 | 2 (`no_source`) | Script already set deferred steps to `skipped`. Log and continue without code-analysis |
 
+### Pre-resolved sources
+
+To skip the source resolution round-trip (saves context and one script invocation), provide the source repo path upfront via either method:
+
+- **CLI flag:** `--source-code-repo /path/to/cloned/repo`
+- **source.yaml:** Create `<base-path>/../source.yaml` with:
+  ```yaml
+  repo_path: /path/to/cloned/repo
+  ```
+
+Both methods bypass `resolve_source.py` entirely. Use for repos you've already cloned or when the source is known in advance.
+
 ## Technical review iteration
 
 Loop up to 2 iterations (one review, one fix-and-confirm). The loop decision — the confidence/severity/iteration rules — is owned by `iteration_decision.py`; do NOT evaluate it by hand.

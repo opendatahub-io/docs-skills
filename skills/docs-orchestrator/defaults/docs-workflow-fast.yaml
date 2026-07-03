@@ -1,0 +1,49 @@
+workflow:
+  name: docs-workflow-fast
+  description: >-
+    Lightweight workflow for straightforward documentation updates.
+    Drops advisory and audit steps to reduce context pressure by ~40%.
+    Use when: few requirements, no security-sensitive content, known source repo.
+
+  steps:
+    - name: requirements
+      skill: docs-workflow-requirements
+      description: Analyze documentation requirements
+
+    - name: code-analysis
+      skill: docs-workflow-code-analysis
+      description: Analyze source repository
+      when: has_source_repo
+      inputs: [requirements]
+
+    - name: pr-analysis
+      skill: docs-workflow-pr-analysis
+      description: Analyze PR/MR changes for documentation context
+      when: has_pr
+      inputs: [code-analysis]
+
+    - name: planning
+      skill: docs-workflow-planning
+      description: Create documentation plan
+      inputs: [requirements, code-analysis, pr-analysis]
+
+    - name: writing
+      skill: docs-workflow-writing
+      description: Write documentation
+      inputs: [planning, code-analysis]
+
+    - name: technical-review
+      skill: docs-workflow-tech-review
+      description: Technical accuracy review
+      inputs: [writing, code-analysis]
+
+    - name: style-review
+      skill: docs-workflow-style-review
+      description: Style guide compliance review
+      inputs: [writing, technical-review]
+
+    - name: create-merge-request
+      skill: docs-workflow-create-merge-request
+      description: Commit, push, and create merge request or pull request
+      when: create_merge_request
+      inputs: [writing, style-review, technical-review]
