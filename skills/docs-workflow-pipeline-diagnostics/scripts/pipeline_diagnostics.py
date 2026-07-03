@@ -81,6 +81,29 @@ def scan_dir(path: str, cache: dict[str, DirStats] | None = None) -> DirStats:
     return stats
 
 
+def derive_pipeline_status(steps: dict, step_order: list[str], raw_status: str) -> str:
+    """Infer pipeline status from step states when the progress file is stale.
+
+    The orchestrator sets the progress file to 'completed' as its last action.
+    When diagnostics runs before that update, the file still says 'in_progress'
+    even though all steps are done. This function derives the effective status
+    from step states so the sidecar reflects reality.
+    """
+    if raw_status not in ("in_progress", "unknown"):
+        return raw_status
+
+    statuses = [steps.get(s, {}).get("status", "pending") for s in step_order]
+    if not statuses:
+        return raw_status
+
+    terminal = {"completed", "skipped"}
+    if all(s in terminal for s in statuses):
+        return "completed"
+    if any(s == "failed" for s in statuses):
+        return "failed"
+    return raw_status
+
+
 CONTEXT_HEAVY_STEPS = {
     "requirements": 1.0,
     "code-analysis": 1.5,
@@ -938,7 +961,8 @@ def analyze(progress_path: str) -> dict:
     base_path = derive_base_path(progress_path, progress)
     step_order = progress.get("step_order", [])
     steps = progress.get("steps", {})
-    status = progress.get("status", "unknown")
+    raw_status = progress.get("status", "unknown")
+    status = derive_pipeline_status(steps, step_order, raw_status)
     workflow_type = progress.get("workflow", "unknown")
     created_at = parse_iso(progress.get("created_at"))
     updated_at = parse_iso(progress.get("updated_at"))  # noqa: F841

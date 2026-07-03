@@ -186,6 +186,7 @@ All sidecars share these fields:
 | `severity_counts.sme` | integer | Issues requiring SME verification | Orchestrator |
 | `iteration` | integer | Which iteration of review this represents (1-based) | Orchestrator |
 | `code_grounded` | boolean | Whether code-learner analysis was available for claim validation (code-analysis step completed) | Informational |
+| `missing_batches` | string[]\|undefined | Verdict files expected by `merge_verdicts.py` but not found on disk (agent failures). Absent when all expected batches were present. Claims from missing batches get `no_evidence_found` fallback verdicts | Pipeline diagnostics |
 
 ### style-review
 

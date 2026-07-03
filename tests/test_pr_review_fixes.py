@@ -100,6 +100,47 @@ class TestMergeVerdictsStaleFiles:
         validation = json.loads(claims_out.read_text())
         assert validation["claims"][0]["verdict"] == "supported"
 
+    def test_missing_batch_reported(self, tmp_path):
+        claims = [
+            {"id": "c1", "text": "claim one", "file": "doc.adoc", "line": 1},
+            {"id": "c2", "text": "claim two", "file": "other.adoc", "line": 5},
+        ]
+        (tmp_path / "claims-list.json").write_text(json.dumps(claims))
+
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        # batch-claims for two docs, but only one verdict written
+        (output_dir / "batch-claims-doc.json").write_text(json.dumps([claims[0]]))
+        (output_dir / "batch-claims-other.json").write_text(json.dumps([claims[1]]))
+        (output_dir / "batch-verdict-doc.json").write_text(
+            json.dumps([{"claim_id": "c1", "verdict": "supported", "evidence": "ok"}])
+        )
+        # batch-verdict-other.json intentionally NOT created (agent failure)
+
+        claims_out = tmp_path / "claim-validation.json"
+        summary_out = tmp_path / "validation-summary.md"
+
+        result = subprocess.run(
+            [
+                sys.executable, str(MERGE),
+                "--claims-list", str(tmp_path / "claims-list.json"),
+                "--output-dir", str(output_dir),
+                "--claims-file", str(claims_out),
+                "--summary-file", str(summary_out),
+            ],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "Missing verdict files" in result.stderr
+        assert "batch-verdict-other.json" in result.stderr
+
+        validation = json.loads(claims_out.read_text())
+        assert "missing_batches" in validation
+        assert "batch-verdict-other.json" in validation["missing_batches"]
+        c2 = next(c for c in validation["claims"] if c["id"] == "c2")
+        assert c2["verdict"] == "no_evidence_found"
+
 
 # ---------------------------------------------------------------------------
 # 2. incremental_claims: non-dict claim tolerance
@@ -249,14 +290,17 @@ class TestRegexAnchoring:
     def test_does_not_match_inline_example(self):
         conf_re, _ = self._load_regexes()
         text = "Example: Overall technical confidence: HIGH is the best rating"
-        assert conf_re.search(text) is None, "Should not match when extra text follows on the line"
+        assert conf_re.search(text) is None, "Should not match mid-line (no ^ anchor)"
 
-    def test_does_not_match_code_block_line(self):
+    def test_matches_trailing_explanation(self):
         conf_re, _ = self._load_regexes()
-        text = "    Overall technical confidence: HIGH  # in a code block"
-        m = conf_re.search(text)
-        # Leading whitespace is allowed (indented lines), but trailing text should not match
-        assert m is None, "Should not match code-comment lines"
+        text = "Overall technical confidence: MEDIUM -- Core claims about..."
+        assert conf_re.search(text).group(1) == "MEDIUM"
+
+    def test_matches_indented_with_comment(self):
+        conf_re, _ = self._load_regexes()
+        text = "  Overall technical confidence: HIGH  # rationale"
+        assert conf_re.search(text).group(1) == "HIGH"
 
     def test_matches_with_leading_whitespace(self):
         conf_re, _ = self._load_regexes()

@@ -79,7 +79,11 @@ def main() -> int:
             if claim_id:
                 verdict_map[claim_id] = entry
 
-    print(f"Batch verdicts found: {loaded_count}/{len(batch_files)}")
+    found_names = {bf.name for bf in batch_files}
+    missing_batches = sorted(n for n in expected_names if n not in found_names)
+    if missing_batches:
+        print(f"Missing verdict files: {', '.join(missing_batches)}", file=sys.stderr)
+    print(f"Batch verdicts loaded: {loaded_count}/{len(expected_names)} expected")
 
     # Cross-reference against the full claims list; fall back where missing.
     merged = []
@@ -107,7 +111,10 @@ def main() -> int:
             }
         )
 
-    Path(args.claims_file).write_text(json.dumps({"claims": merged, "summary": counts}, indent=2))
+    output = {"claims": merged, "summary": counts}
+    if missing_batches:
+        output["missing_batches"] = missing_batches
+    Path(args.claims_file).write_text(json.dumps(output, indent=2))
 
     # Module coverage context from registry.json, if available.
     coverage_line = ""

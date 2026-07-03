@@ -15,6 +15,7 @@ from pipeline_diagnostics import (
     build_recommendations,
     build_sidecar,
     derive_base_path,
+    derive_pipeline_status,
     detect_bottlenecks,
     detect_failures,
     detect_loop_groups,
@@ -1127,3 +1128,70 @@ class TestBuildSidecar:
         assert sidecar["failure_count"] == len(analysis["failures"])
         assert sidecar["orchestrator_issue_count"] == len(analysis["orchestrator_health"])
         assert sidecar["workaround_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# derive_pipeline_status
+# ---------------------------------------------------------------------------
+class TestDerivePipelineStatus:
+    ORDER = ["writing", "technical-review"]
+
+    def test_all_completed_overrides_in_progress(self):
+        steps = {
+            "writing": {"status": "completed"},
+            "technical-review": {"status": "completed"},
+        }
+        result = derive_pipeline_status(steps, self.ORDER, "in_progress")
+        assert result == "completed"
+
+    def test_mixed_completed_and_skipped(self):
+        steps = {
+            "writing": {"status": "completed"},
+            "technical-review": {"status": "skipped"},
+        }
+        result = derive_pipeline_status(steps, self.ORDER, "in_progress")
+        assert result == "completed"
+
+    def test_any_failed_returns_failed(self):
+        steps = {
+            "writing": {"status": "completed"},
+            "technical-review": {"status": "failed"},
+        }
+        result = derive_pipeline_status(steps, self.ORDER, "in_progress")
+        assert result == "failed"
+
+    def test_pending_step_preserves_raw_status(self):
+        steps = {
+            "writing": {"status": "completed"},
+            "technical-review": {"status": "pending"},
+        }
+        result = derive_pipeline_status(steps, self.ORDER, "in_progress")
+        assert result == "in_progress"
+
+    def test_already_completed_passes_through(self):
+        steps = {"writing": {"status": "completed"}}
+        result = derive_pipeline_status(steps, ["writing"], "completed")
+        assert result == "completed"
+
+    def test_already_failed_passes_through(self):
+        steps = {"writing": {"status": "completed"}}
+        result = derive_pipeline_status(steps, ["writing"], "failed")
+        assert result == "failed"
+
+    def test_unknown_raw_status_derives(self):
+        steps = {
+            "writing": {"status": "completed"},
+            "technical-review": {"status": "completed"},
+        }
+        result = derive_pipeline_status(steps, self.ORDER, "unknown")
+        assert result == "completed"
+
+    def test_empty_step_order_returns_raw(self):
+        result = derive_pipeline_status({}, [], "in_progress")
+        assert result == "in_progress"
+
+    def test_missing_step_treated_as_pending(self):
+        steps = {"writing": {"status": "completed"}}
+        order = ["writing", "missing-step"]
+        result = derive_pipeline_status(steps, order, "in_progress")
+        assert result == "in_progress"

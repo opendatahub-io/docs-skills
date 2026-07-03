@@ -150,6 +150,8 @@ See [step post-processing](references/step-post-processing.md#construct-argument
 Skill: <step.skill>, args: "<constructed args>"
 ```
 
+When a step skill instructs you to dispatch an Agent, pass **`run_in_background: false`** for the step's primary agent (the one whose output file must exist before post-step verification). This runs the agent synchronously — the tool result contains the agent's final text, and the output file is guaranteed to exist when control returns. Without this, the agent runs in the background and the orchestrator may check for the output file before the agent finishes writing it, causing false "file not written" failures and unnecessary re-dispatches. Fan-out agents within a step (e.g., parallel claim validators, parallel requirement classifiers) should remain background — only the single primary agent that the step's "Verify output" gate checks needs `run_in_background: false`.
+
 ### After the step
 
 1. Verify output folder exists — if missing, mark `failed` and **STOP**
