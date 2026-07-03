@@ -229,3 +229,124 @@ class TestBuildInlineEvidence:
         }))
         result = build_inline_evidence(tmp_path, None)
         assert result["requirements"][0]["status"] == "unknown"
+
+
+import subprocess
+import sys
+
+SCRIPT = (
+    Path(__file__).resolve().parent.parent
+    / "skills"
+    / "docs-workflow-quality-gate"
+    / "scripts"
+    / "quality_gate.py"
+)
+
+
+def _build_pipeline_fixture(tmp_path):
+    """Create a complete pipeline fixture for verify --classify with inline evidence."""
+    # requirements/discovery.json with AC items
+    req = tmp_path / "requirements"
+    req.mkdir()
+    (req / "discovery.json").write_text(json.dumps({
+        "ticket_summary": "Test ticket",
+        "requirements": [
+            {
+                "id": "REQ-001",
+                "title": "GPU memory allocation",
+                "one_line_summary": "Configure GPU memory limits",
+                "acceptance_criteria": [
+                    "Users can configure GPU memory limits",
+                    "Documentation includes GPU allocation procedure",
+                ],
+            },
+            {
+                "id": "REQ-002",
+                "title": "Quantum entanglement",
+                "one_line_summary": "Enable quantum processing",
+                "acceptance_criteria": [
+                    "Quantum processing is documented",
+                ],
+            },
+        ],
+    }))
+
+    # writing/step-result.json pointing to a doc file
+    writing = tmp_path / "writing"
+    writing.mkdir()
+    doc = writing / "proc-gpu.adoc"
+    doc.write_text(
+        "= GPU Memory Configuration\n\n"
+        "To configure GPU memory limits, set the memory_limit parameter.\n"
+    )
+    (writing / "step-result.json").write_text(json.dumps({
+        "files": [str(doc)], "mode": "draft"
+    }))
+
+    # code-analysis sidecar with analysis path
+    ca = tmp_path / "code-analysis"
+    ca.mkdir()
+    analysis = tmp_path / "analysis"
+    analysis.mkdir()
+    (ca / "step-result.json").write_text(json.dumps({
+        "repo_analysis_path": str(analysis)
+    }))
+
+    # module registry
+    reg = analysis / "module-registry"
+    reg.mkdir(parents=True)
+    (reg / "registry.json").write_text(json.dumps([
+        {"module": "gpu-allocator", "purpose": "GPU memory allocation and resource limits"},
+    ]))
+
+    # mock source repo
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "gpu.py").write_text("class GpuAllocator: pass\n")
+
+    return repo
+
+
+class TestVerifyClassifyWithInlineEvidence:
+    def test_inline_evidence_used_when_no_scope_req_audit(self, tmp_path):
+        """When no evidence-status.json exists and --repo is passed,
+        inline evidence check should produce grounded/absent classifications."""
+        repo = _build_pipeline_fixture(tmp_path)
+
+        # Step 1: prepare the coverage prompt + manifest
+        r1 = subprocess.run(
+            [sys.executable, str(SCRIPT), "verify",
+             "--ticket", "TEST-1", "--base-path", str(tmp_path),
+             "--prepare"],
+            capture_output=True, text=True,
+        )
+        assert r1.returncode == 0, r1.stderr
+
+        # Write mock coverage results (agent output)
+        qg = tmp_path / "quality-gate"
+        (qg / "coverage-results.json").write_text(json.dumps([
+            {"id": "REQ-001_AC00", "covered": True,
+             "quote": "To configure GPU memory limits, set the memory_limit parameter."},
+            {"id": "REQ-001_AC01", "covered": False, "quote": None},
+            {"id": "REQ-002_AC00", "covered": False, "quote": None},
+        ]))
+
+        # Step 2: classify with --repo (triggers inline evidence)
+        r2 = subprocess.run(
+            [sys.executable, str(SCRIPT), "verify",
+             "--ticket", "TEST-1", "--base-path", str(tmp_path),
+             "--classify", "--repo", str(repo)],
+            capture_output=True, text=True,
+        )
+        assert r2.returncode == 0, r2.stderr
+
+        coverage = json.loads((qg / "coverage-check.json").read_text())
+        items = {it["id"]: it for it in coverage["items"]}
+        # REQ-001_AC00 should be covered
+        assert items["REQ-001_AC00"]["classification"] == "covered"
+        # REQ-001_AC01 uncovered, but REQ-001 is grounded -> real_defect
+        assert items["REQ-001_AC01"]["evidence_status"] == "grounded"
+        assert items["REQ-001_AC01"]["classification"] == "real_defect"
+        # REQ-002_AC00 uncovered, REQ-002 has no code evidence -> absent
+        assert items["REQ-002_AC00"]["evidence_status"] == "absent"
+        assert items["REQ-002_AC00"]["classification"] == "correctly_absent"

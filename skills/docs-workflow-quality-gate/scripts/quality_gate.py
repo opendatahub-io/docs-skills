@@ -824,6 +824,14 @@ def cmd_verify(args):
 
         doc_content = read_doc_content(base_path)
         evidence_status = read_evidence_status(base_path)
+        if evidence_status is None and getattr(args, "repo", None):
+            evidence_status = build_inline_evidence(base_path, args.repo)
+            if evidence_status is not None:
+                print(
+                    f"Using inline evidence check ({len(evidence_status.get('requirements', []))} "
+                    f"requirements classified from module registry + grep)",
+                    file=sys.stderr,
+                )
 
         if getattr(args, "evidence_expected", False) and evidence_status is None:
             print(
@@ -848,6 +856,14 @@ def cmd_classify(args):
 
     judge_results = json.loads(Path(args.judge_results).read_text())
     evidence_status = read_evidence_status(base_path)
+    if evidence_status is None and getattr(args, "repo", None):
+        evidence_status = build_inline_evidence(base_path, args.repo)
+        if evidence_status is not None:
+            print(
+                f"Using inline evidence check ({len(evidence_status.get('requirements', []))} "
+                f"requirements classified from module registry + grep)",
+                file=sys.stderr,
+            )
 
     dq_result = judge_results["doc_quality"]
     ia_result = judge_results["intent_alignment"]
@@ -930,6 +946,10 @@ def main():
     )
     classify.add_argument("--iteration", type=int, default=1)
     classify.add_argument("--evidence-expected", action="store_true", default=False)
+    classify.add_argument(
+        "--repo",
+        help="Source repo path for inline evidence check when evidence-status.json is absent",
+    )
 
     verify_parser = subparsers.add_parser("verify", help="Per-AC coverage verification")
     verify_parser.add_argument("--ticket", required=True)
@@ -945,6 +965,10 @@ def main():
         "--evidence-expected",
         action="store_true",
         help="Warn if evidence-status.json is missing (scope-req-audit ran)",
+    )
+    verify_parser.add_argument(
+        "--repo",
+        help="Source repo path for inline evidence check when evidence-status.json is absent",
     )
 
     brief = subparsers.add_parser("brief", help="Render feedback-brief-<iteration>.md")
