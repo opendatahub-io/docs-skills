@@ -30,6 +30,15 @@ docs-skills lives in a public repo but is an upstream Red Hat resource with no e
 - Re-implementing anything the harness already provides (execution, collection, scoring, MLflow, reporting).
 - Modifying the `docs-orchestrator` skill itself. This is measurement, not pipeline change.
 
+## Compatibility with current `main`
+
+This spec was validated against `main` after the RHAISTRAT-1280 orchestrator refactor and quality-gate redesign. The plan's structural assumptions are confirmed intact:
+
+- `step-result.json` still carries `schema_version` / `step` / `ticket` / `completed_at`, and the `requirements` / `planning` / `writing` step names are unchanged — the inline `check` judges hold.
+- The orchestrator argument-hint still exposes `--source-code-repo` and `--docs-repo-path` — the `execution.arguments` template holds.
+- `pipeline_diagnostics.py` on current `main` still lacks the token-estimation fields `diagnostics_judge.py` needs, so the Phase-2 two-way merge is still required. Its baseline is the *current* script, which recently gained a diagnostics-crash fix and a `find_progress_files` change — the merge must preserve those while adding the CCS token estimation.
+- Per the strengthened CLAUDE.md rule (*all JSON I/O through scripts*), every judge that reads a sidecar or progress file does so in a Python judge module — no hand-parsing in prose.
+
 ## Architecture
 
 The harness runs each case as one `docs-orchestrator` invocation, collects its output, and scores it with a set of judges. This repo defines four things:
@@ -95,7 +104,8 @@ Each case's `input.yaml` carries: `ticket`, `source_repo` (url + sha), `docs_rep
 | `execution.timeout` | `5400` | 1h30m; complex tickets with review cycles run long |
 | `execution.max_budget_usd` | `50` | Per case |
 | `execution.parallelism` | `3` | Concurrent cases |
-| `models.skill` / `models.judge` | `claude-opus-4-8` | Current models (CCS used opus-4-6) |
+| `models.skill` | `claude-opus-4-8` | Pipeline under test — current model |
+| `models.judge` | `claude-opus-4-6` | Stable model for consistent scoring across runs |
 | `models.hook` | `claude-haiku-4-5` | Answers AskUserQuestion prompts cheaply |
 | `permissions.allow` | `Read, Write, Edit, Bash, Glob, Grep, Skill, Agent, AskUserQuestion` | `Skill`/`Agent` required for the nested pipeline |
 | `permissions.deny` | `mcp__*` | No MCP in headless runs |
