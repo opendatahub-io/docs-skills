@@ -44,11 +44,11 @@ This reads the writing output and ticket context, then writes two prompt files:
 - `${BASE_PATH}/quality-gate/dq-prompt.md` — doc_quality judge prompt with doc content interpolated
 - `${BASE_PATH}/quality-gate/ia-prompt.md` — intent_alignment judge prompt with doc content and ticket context interpolated
 
-### 3. Per-AC coverage verification
+### 3. AC coverage verification
 
-Per-AC coverage check before the judge agents. Each AC item gets its own subagent with only that one AC item and the full documentation — no other ACs, no judge context.
+A quote-based coverage check before the judge agents. **One agent** reads the documentation once and answers a coverage question for every AC item — do not dispatch one agent per AC item. Embedding the full documentation in 39 separate per-AC prompts was the dominant context and artifact-bloat problem; a single combined prompt reads the docs once.
 
-#### 3a. Prepare coverage check prompts
+#### 3a. Prepare the combined coverage prompt
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py verify \
@@ -57,31 +57,31 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py verify \
   --prepare
 ```
 
-This reads `discovery.json` and the documentation content, then writes one prompt file per AC item to `${BASE_PATH}/quality-gate/coverage-prompts/` and a manifest to `${BASE_PATH}/quality-gate/coverage-prompts/manifest.json`.
+This reads `discovery.json` and the documentation content, then writes a **single combined prompt** — the documentation embedded once, every AC item listed with its id — to `${BASE_PATH}/quality-gate/coverage-prompt.md`, plus a manifest to `${BASE_PATH}/quality-gate/coverage-manifest.json`. It prints a one-line summary.
 
-If the manifest `items` array is empty (no AC items found), skip steps 3b and 3c.
+If the summary reports `0 AC items`, skip steps 3b and 3c.
 
-#### 3b. Dispatch coverage check agents
+#### 3b. Dispatch a single coverage agent
 
-Read the manifest JSON output from 3a. For each item in the `items` array, dispatch one agent. Launch **all agents in a single message** (parallel execution).
+Dispatch **one** agent (a single Agent-tool call). Because there is one prompt and one result, there is no per-item mapping problem and nothing to fan out — the script maps results back to AC items by id.
 
-Each agent:
-
-- **Model**: (default — not Opus; these are simple yes/no+quote tasks)
-- **Prompt**: Read the contents of the item's `prompt_file` and follow the instructions
-- **Schema**:
+- **Model**: opus — match the judges. The cheap model produced literal-minded false negatives (e.g. reading "subsection" or "automatically detect" too narrowly), and with a single combined prompt the docs are read once, so the cost argument for a cheaper model no longer applies
+- **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/coverage-prompt.md` and follow the instructions
+- **Returns**: a JSON **array**, one object per AC item, each shaped:
   ```json
-  {
-    "type": "object",
-    "properties": {
-      "covered": {"type": "boolean", "description": "Whether the documentation addresses this acceptance criterion"},
-      "quote": {"type": ["string", "null"], "description": "Verbatim supporting sentence from the documentation, or null if not covered"}
-    },
-    "required": ["covered", "quote"]
-  }
+  {"id": "REQ-001_AC00", "covered": true, "quote": "verbatim sentence"}
   ```
+  with `covered` false and `quote` null when the item is not addressed.
 
-Write each agent's JSON output to the item's `result_file` path from the manifest.
+Write the agent's array output verbatim to `${BASE_PATH}/quality-gate/coverage-results.json`:
+
+```bash
+cat > "${BASE_PATH}/quality-gate/coverage-results.json" <<'EOF'
+<the agent's JSON array>
+EOF
+```
+
+The classify step (3c) reports any AC ids missing from the array; you do not need to count files by hand.
 
 #### 3c. Classify coverage results
 
@@ -95,7 +95,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py verify \
   [--evidence-expected]
 ```
 
-Validates quotes against the documentation (whitespace-normalized substring match), joins to scope-req-audit evidence status, and writes `${BASE_PATH}/quality-gate/coverage-check.json`.
+Reads `coverage-results.json`, validates quotes against the documentation (whitespace-normalized substring match), joins to scope-req-audit evidence status, and writes `${BASE_PATH}/quality-gate/coverage-check.json`. It prints only a `total=… covered=… uncovered=…` summary and warns (on stderr) if any AC item had no agent result.
 
 Classifications:
 - `covered` — AC is addressed with a verified quote. No action needed.
@@ -106,13 +106,15 @@ Classifications:
 
 ### 4. Dispatch judge agents
 
-Dispatch **two agents in parallel** (both are independent reads of the same docs):
+Dispatch **both agents in a single message** so they run in parallel. These are independent reads of the same docs — there is no dependency between them. **Do NOT dispatch them in separate messages** — sequential dispatch adds unnecessary latency and has caused ~65s delays in observed runs.
+
+For each agent, pass the `schema` JSON object as the Agent tool's `schema` parameter. This forces the agent to return structured output via the StructuredOutput tool with automatic retry on schema mismatch. **Do NOT omit the schema parameter** — without it, agents return free-text that requires manual parsing and loses the retry-on-mismatch safety net.
 
 #### doc_quality agent
 
 - **Model**: opus
-- **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/dq-prompt.md` and use it as the agent prompt
-- **Schema**:
+- **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/dq-prompt.md` and follow the instructions exactly.
+- **Schema** (pass as the `schema` parameter to the Agent tool):
   ```json
   {
     "type": "object",
@@ -127,8 +129,8 @@ Dispatch **two agents in parallel** (both are independent reads of the same docs
 #### intent_alignment agent
 
 - **Model**: opus
-- **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/ia-prompt.md` and use it as the agent prompt
-- **Schema**:
+- **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/ia-prompt.md` and follow the instructions exactly.
+- **Schema** (pass as the `schema` parameter to the Agent tool):
   ```json
   {
     "type": "object",
@@ -156,7 +158,7 @@ Dispatch **two agents in parallel** (both are independent reads of the same docs
 
 ### 5. Write judge results
 
-After both agents return, write their structured outputs to `${BASE_PATH}/quality-gate/judge-results.json`:
+After both agents return, each agent's result is a structured JSON object (enforced by the `schema` parameter). Write the objects directly to `${BASE_PATH}/quality-gate/judge-results.json` — no manual parsing or score extraction needed:
 
 ```json
 {
@@ -165,7 +167,11 @@ After both agents return, write their structured outputs to `${BASE_PATH}/qualit
 }
 ```
 
+If an agent returns `null` (skipped or died), mark the quality gate as `failed` — do not substitute default scores.
+
 ### 6. Classify gaps and write step-result.json
+
+Determine the iteration number: count existing `feedback-brief-*.md` files in `${BASE_PATH}/quality-gate/`. If none exist, this is iteration 1. Otherwise, iteration = count + 1.
 
 Determine whether code evidence was expected: check if `${BASE_PATH}/scope-req-audit/` or `${BASE_PATH}/validate/` exists as a directory. If either exists, add `--evidence-expected` to the command.
 
@@ -174,6 +180,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py classify \
   --ticket "${TICKET}" \
   --base-path "${BASE_PATH}" \
   --judge-results "${BASE_PATH}/quality-gate/judge-results.json" \
+  --iteration <N> \
   [--evidence-expected]
 ```
 
@@ -186,81 +193,22 @@ The script:
    - `grounded` → `add_missing_section` (writing step missed it — re-include from plan)
    - `unknown` → `investigate` (evidence status unavailable)
 3. Writes `quality-gate/step-result.json` and `quality-gate/judge-results.md`
-4. Outputs the step-result JSON to stdout
+4. Prints a one-line summary (`doc_quality=… intent_alignment=… passed=… gaps=…`); the full sidecar is on disk
 
 ### 7. Build feedback brief (when `passed = false`)
 
-If `passed` is false, build `${BASE_PATH}/quality-gate/feedback-brief-<iteration>.md` (e.g., `feedback-brief-1.md`) so the orchestrator can dispatch the writer in fix mode. Read the `iteration` value from the step-result.json written in step 6. Skip this step if `passed` is true.
+When `passed` is false, render the feedback brief with the script — do NOT hand-render the template. It reads `step-result.json` (rationales and classified gaps) and `coverage-check.json` (if present) and writes `feedback-brief-<iteration>.md`:
 
-```markdown
-# Feedback Brief for <TICKET> (iteration <N>)
-
-## Intent Alignment Judge Assessment
-
-[Insert rationales.intent_alignment from step-result.json verbatim.
-This contains per-AC-item coverage assessments with severity levels, specific missing
-artifacts, scope balance analysis, and audience alignment — all directly actionable.]
-
-## Doc Quality Judge Assessment
-
-[Insert rationales.doc_quality from step-result.json verbatim.]
-
-## Coverage Check Results
-
-[If coverage-check.json exists, read it from ${BASE_PATH}/quality-gate/coverage-check.json:]
-
-AC coverage: <covered>/<total> acceptance criteria addressed with verified quotes.
-
-### Uncovered AC Items
-
-[For each item in coverage_check.items where classification != "covered":]
-
-- **<ac_text>** (from <req_id>)
-  - Classification: <classification>
-  - Evidence status: <evidence_status>
-  - Action: <action description>
-
-[Map classification to fix instructions — same mappings as step 3c plus:]
-- `unverified` → "Quote could not be verified in the document. Review whether this criterion is actually addressed."
-
-[If coverage-check.json does not exist, omit this section.]
-
-## Classified Gaps with Recommended Actions
-
-[For each gap in the gaps array:]
-
-### Gap: <ac_item>
-- **File**: <file>
-- **Section**: <section>
-- **Evidence status**: <evidence_status>
-- **Action**: <action description>
-
-[Map action codes to instructions:]
-- `document_as_unsupported` → "Add a note stating that this capability is not supported in this release. Place it in the most relevant existing module — do not create a new module."
-- `expand_with_evidence` → "Expand the existing content with available code evidence. Check the source repo for relevant API fields, flags, or config options."
-- `add_missing_section` → "This content was in the plan but was not included in the writing output. Add the missing section based on the requirements and plan."
-- `investigate` → "This gap could not be classified. Review the requirements and determine whether to document it or note it as out of scope."
-
-## Prior attempts
-
-[If iteration > 1:]
-This is iteration <N>. A previous fix pass was attempted but did not resolve these gaps.
-The writer must try a DIFFERENT approach — do not repeat the same fix. Consider:
-- Adding more concrete detail (specific API fields, config values, command examples)
-- Restructuring the section rather than appending
-- Checking source code for evidence that was missed in the first attempt
-
-[If iteration == 1, omit this section.]
-
-## Priority
-
-Address gaps in this order:
-1. Items the judge flagged as "missing" or "barely covered" — these are the largest scoring deductions
-2. Items flagged as "weakly covered" or "partially covered" — expand existing content
-3. Scope rebalancing — if the judge flagged over-indexing on one area, tighten that section rather than expanding others
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py brief \
+  --ticket "${TICKET}" \
+  --base-path "${BASE_PATH}" \
+  --iteration <N>
 ```
 
-Include the **full judge rationale text**, not just the classified gap list. The rationale contains per-AC-item severity assessments ("partially covered", "weakly covered", "barely covered", "mostly missing"), names specific missing artifacts, identifies scope imbalance, and diagnoses audience gaps. This gives the fix agent precise, nuanced instructions instead of flat action codes.
+Use the `iteration` value from the step-result.json written in step 6. Skip this step when `passed` is true.
+
+The rendered brief includes the **full judge rationales verbatim** (per-AC severity assessments, missing artifacts, scope and audience analysis — nuanced fix instructions, not flat action codes), the coverage block with per-item fix instructions (only when `coverage-check.json` exists), each classified gap with its action instruction, a "Prior attempts" section for iteration > 1 that tells the writer to try a different approach, and the priority ordering.
 
 ### 8. Verify output (always runs)
 
@@ -346,9 +294,9 @@ Report the scores and pass/fail status:
 
 Human-readable summary with rationales from both judges and the gap list.
 
-### coverage-prompts/ and coverage-results/
+### coverage-prompt.md, coverage-manifest.json, coverage-results.json
 
-Per-AC prompt files (`coverage-prompts/<id>.md`), manifest (`coverage-prompts/manifest.json`), and agent results (`coverage-results/<id>.json`). Written by the coverage verification step (step 3).
+The single combined coverage prompt (docs embedded once + all AC items), the manifest mapping AC ids to their text, and the coverage agent's JSON array output. Written by the coverage verification step (step 3).
 
 ### `feedback-brief-<iteration>.md` (when `passed = false`)
 
@@ -362,4 +310,4 @@ Structured feedback document containing full judge rationales and classified gap
 
 ## Model
 
-Judge agents use Opus to match the eval harness judge configuration. The model is specified via the Agent tool's `model` parameter — no separate API key or credentials required.
+Judge agents use Opus to match the eval harness judge configuration. The coverage agent (step 3b) also uses Opus — running coverage on a cheaper model than the judges produced false negatives when the two disagreed. The model is specified via the Agent tool's `model` parameter — no separate API key or credentials required.

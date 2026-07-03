@@ -48,6 +48,7 @@ mkdir -p "$OUTPUT_DIR"
 **Agent tool parameters:**
 - `subagent_type`: `docs-skills:docs-planner`
 - `description`: `Create documentation plan for <TICKET>`
+- `run_in_background`: `false` (the orchestrator must wait for the planner to finish before verifying output)
 
 **Prompt** (pass this as the `prompt` parameter to the Agent tool):
 

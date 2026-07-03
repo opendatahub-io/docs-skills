@@ -97,7 +97,8 @@ All sidecars share these fields:
   "module_count": 12,
   "relationship_count": 8,
   "languages_detected": ["go", "python"],
-  "repo_path": "/home/user/docs-repo/.agent_workspace/proj-123/code-repo/my-project"
+  "repo_path": "/home/user/docs-repo/.agent_workspace/proj-123/code-repo/my-project",
+  "repo_analysis_path": "/home/user/docs-repo/.agent_workspace/my-project"
 }
 ```
 
@@ -107,6 +108,7 @@ All sidecars share these fields:
 | `relationship_count` | integer | Number of cross-module relationships discovered | Informational (orchestrator summary) |
 | `languages_detected` | string[] | Programming languages found in the repo | Informational |
 | `repo_path` | string | Absolute path to the analyzed source repository | Informational |
+| `repo_analysis_path` | string | Absolute path to the learn-code analysis directory (contains detection/, module-registry/, module-analysis/, relationships/, synthesis/) | Orchestrator — recorded in progress file for downstream steps |
 
 ### pr-analysis
 
@@ -184,6 +186,7 @@ All sidecars share these fields:
 | `severity_counts.sme` | integer | Issues requiring SME verification | Orchestrator |
 | `iteration` | integer | Which iteration of review this represents (1-based) | Orchestrator |
 | `code_grounded` | boolean | Whether code-learner analysis was available for claim validation (code-analysis step completed) | Informational |
+| `missing_batches` | string[]\|undefined | Verdict files expected by `merge_verdicts.py` but not found on disk (agent failures). Absent when all expected batches were present. Claims from missing batches get `no_evidence_found` fallback verdicts | Pipeline diagnostics |
 
 ### style-review
 
@@ -192,11 +195,20 @@ All sidecars share these fields:
   "schema_version": 1,
   "step": "style-review",
   "ticket": "PROJ-123",
-  "completed_at": "2026-04-23T15:45:00Z"
+  "completed_at": "2026-04-23T15:45:00Z",
+  "fixes_applied": 6,
+  "warnings": 5,
+  "suggestions": 16
 }
 ```
 
-No extra fields. Common schema only.
+| Field | Type | Description | Consumed by |
+|---|---|---|---|
+| `fixes_applied` | integer | Number of in-place edits the docs-reviewer agent applied | Informational (pipeline diagnostics, completion summary, audit trail) |
+| `warnings` | integer | Number of style warnings the agent reported | Informational |
+| `suggestions` | integer | Number of style suggestions the agent reported | Informational |
+
+The counts come from the `Fixes applied: N`, `Warnings: N`, `Suggestions: N` lines the docs-reviewer agent prints — the orchestrator does not re-read the full report to recount.
 
 ### security-review
 
@@ -349,7 +361,7 @@ When an existing linked ticket is found:
   ],
   "rationales": {
     "doc_quality": "Full judge rationale text...",
-    "intent_alignment": "Full judge rationale text with per-AC coverage assessments..."
+    "intent_alignment": "Full judge rationale text with per-acceptance-criteria coverage assessments..."
   }
 }
 ```
@@ -364,8 +376,8 @@ When an existing linked ticket is found:
 | `evidence_warning` | string\|null | Warning message when evidence was expected but not found; null otherwise | Pipeline diagnostics, orchestrator logging |
 | `coverage_check` | object\|null | Per-AC quote-based coverage verification summary (null if no AC items found) | Quality gate iteration |
 | `coverage_check.total` | integer | Total acceptance criteria checked | Informational |
-| `coverage_check.covered` | integer | AC items with verified quotes in the documentation | Quality gate iteration |
-| `coverage_check.uncovered` | integer | AC items not covered or with unverified quotes | Quality gate iteration |
+| `coverage_check.covered` | integer | acceptance criteria items with verified quotes in the documentation | Quality gate iteration |
+| `coverage_check.uncovered` | integer | acceptance criteria items not covered or with unverified quotes | Quality gate iteration |
 | `gaps` | array | Identified gaps with evidence status and recommended action | Quality gate iteration — inline fix dispatch |
 | `gaps[].ac_item` | string | The acceptance criteria item that was missed | Quality gate iteration |
 | `gaps[].judge` | string | Which judge flagged the gap: `"intent_alignment"` or `"coverage_check"` | Informational |
@@ -373,9 +385,10 @@ When an existing linked ticket is found:
 | `gaps[].action` | string | Recommended action: `"document_as_unsupported"`, `"expand_with_evidence"`, `"add_missing_section"`, or `"investigate"` | Quality gate iteration |
 | `gaps[].file` | string\|null | AsciiDoc filename where the fix should be applied | Quality gate iteration — targeted file edits |
 | `gaps[].section` | string\|null | Section heading or insertion point within the file | Quality gate iteration — targeted section edits |
+| `gaps[].classification` | string | Present only on gaps sourced from the coverage check (`gaps[].judge == "coverage_check"`): `"covered"`, `"real_defect"`, `"correctly_absent"`, `"unverified"`, or `"investigate"` | Feedback brief — selects the fix instruction |
 | `rationales` | object | Full judge rationale texts for the feedback brief | Quality gate iteration |
 | `rationales.doc_quality` | string | Complete doc_quality judge rationale | Quality gate iteration — included verbatim in feedback brief |
-| `rationales.intent_alignment` | string | Complete intent_alignment judge rationale with per-AC coverage assessments, missing artifacts, scope analysis | Quality gate iteration — included verbatim in feedback brief |
+| `rationales.intent_alignment` | string | Complete intent_alignment judge rationale with per-acceptance-criteria coverage assessments, missing artifacts, scope analysis | Quality gate iteration — included verbatim in feedback brief |
 
 ### action-comments
 
@@ -420,10 +433,13 @@ Used by the standalone `action-comments` skill.
   "high_severity_failure_count": 0,
   "bottleneck_count": 1,
   "orchestrator_issue_count": 2,
+  "workaround_count": 0,
   "recommendation_count": 3,
   "total_duration_min": 25.3
 }
 ```
+
+Written directly by `pipeline_diagnostics.py --emit-sidecar` — every field is derived from the computed analysis, never hand-authored.
 
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
@@ -433,9 +449,10 @@ Used by the standalone `action-comments` skill.
 | `failure_count` | integer | Total failures detected across all steps | Orchestrator (final summary) |
 | `high_severity_failure_count` | integer | High-severity failures only | Orchestrator (final summary) |
 | `bottleneck_count` | integer | Number of steps flagged as bottlenecks | Informational |
-| `orchestrator_issue_count` | integer | Number of orchestrator-level problems found by self-introspection | Informational |
+| `orchestrator_issue_count` | integer | Number of orchestrator-level problems found by the script's self-introspection subset | Informational |
+| `workaround_count` | integer | Number of script workarounds recorded in the progress file | Informational |
 | `recommendation_count` | integer | Number of actionable recommendations generated | Informational |
-| `total_duration_min` | number | Total pipeline duration in minutes (from file mtimes) | Informational |
+| `total_duration_min` | number\|null | Total pipeline duration in minutes (from file mtimes), or null if not computable | Informational |
 
 ## Backward compatibility
 

@@ -105,15 +105,18 @@ If either file cannot be read, STOP and report the error.
 
 ## Skill logic must live in scripts
 
-Skills that contain procedural logic — argument parsing, mode determination, input validation, path computation, directory creation — **must defer that logic to a script** under `skills/<skill-name>/scripts/`. The SKILL.md itself should only contain:
+**If a step can be scripted, it MUST be a script — not prose for Claude to execute by hand.** Any procedural logic — argument parsing, mode determination, input validation, path computation, directory creation, conditionals, state transitions, decision rules, template rendering — belongs in a script under `skills/<skill-name>/scripts/`, never as step-by-step instructions in SKILL.md. Text that walks Claude through a deterministic procedure is a bug: it drifts under context compaction, cannot be tested, and produces inconsistent results. The test: *if you could write a function that does it, write the function.*
+
+**All JSON reading and writing MUST go through a script.** Never hand-author a JSON file (sidecars, progress files, config, manifests) from a template in SKILL.md, and never hand-parse JSON in prose. Hand-authored JSON silently drifts from its schema (see the pipeline-diagnostics and security-review sidecar drift that motivated this rule); a script derives every field deterministically and can be unit-tested. SKILL.md may show a JSON *example* for documentation, but the actual read/write is always a script call.
+
+The SKILL.md itself should only contain:
 
 - Frontmatter and description
-- Instructions to run the script and capture its output
-- Domain knowledge (prompt templates, checklists, review criteria)
-- Agent dispatch instructions referencing the script's output
-- Output verification
+- Instructions to run the script and act on its output
+- Domain knowledge that is genuinely Claude's judgment — prompt templates, checklists, review criteria, agent dispatch instructions, when to STOP and ask the user
+- Output verification (that the script produced what was expected)
 
-Do NOT embed procedural logic (conditionals, path construction, validation) inline in SKILL.md.
+Do NOT embed procedural logic (conditionals, path construction, validation, JSON assembly, decision tables) inline in SKILL.md. If you find yourself writing "if X then set Y" or a JSON block with placeholders to fill in, stop and move it to a script.
 
 ## Workflow step skills must write step-result.json
 

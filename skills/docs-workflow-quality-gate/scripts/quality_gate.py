@@ -2,7 +2,8 @@
 
 Subcommands:
     prepare  — Read pipeline outputs, write judge prompt files
-    verify   — Per-AC coverage check (--prepare writes prompts, --classify validates quotes)
+    verify   — AC coverage check (--prepare writes one combined prompt,
+               --classify validates quotes from the single results file)
     classify — Read agent judge results, classify gaps, write step-result.json
 """
 
@@ -21,23 +22,14 @@ def _safe_artifact_id(value):
     return _SAFE_ID_RE.sub("_", value).strip("._") or "item"
 
 
-def _resolve_under(path, root):
-    """Resolve path and verify it stays inside root."""
-    resolved = Path(path).resolve()
-    root = Path(root).resolve()
-    if not resolved.is_relative_to(root):
-        raise ValueError(f"path outside workspace: {resolved}")
-    return resolved
-
-
 PASS_THRESHOLD_INTENT = 4
 
 COVERAGE_CHECK_PROMPT = """\
-Does this documentation address the following acceptance criterion?
+Determine whether this documentation addresses each of the following acceptance criteria.
 
-## Acceptance criterion
+## Acceptance criteria
 
-{ac_text}
+{ac_list}
 
 ## Documentation
 
@@ -45,13 +37,15 @@ Does this documentation address the following acceptance criterion?
 
 ## Instructions
 
-1. Read the documentation carefully.
-2. Determine whether the acceptance criterion is addressed.
-3. If yes, quote the single most relevant supporting sentence from the \
+1. Read the documentation carefully — you read it once and answer for every criterion below.
+2. For EACH acceptance criterion, decide whether the documentation addresses it.
+3. If it is addressed, quote the single most relevant supporting sentence from the \
 documentation VERBATIM — copy it exactly as written, including punctuation.
-4. If no, set covered to false and quote to null.
-5. Return JSON only, with this exact shape:
-   {{"covered": true, "quote": "verbatim sentence"}} or {{"covered": false, "quote": null}}
+4. If it is not addressed, set covered to false and quote to null.
+5. Return a JSON array with one object per criterion, in the same order, each shaped exactly:
+   {{"id": "<the ID shown in brackets>", "covered": true, "quote": "verbatim sentence"}}
+   or {{"id": "<the ID shown in brackets>", "covered": false, "quote": null}}
+6. Return JSON only — no prose before or after the array.
 """
 
 DOC_QUALITY_PROMPT = """\
@@ -124,14 +118,36 @@ def verify_quote(quote, doc_content):
 
 
 def read_ac_items(base_path):
-    """Read discovery.json and flatten acceptance_criteria into a list."""
-    discovery = Path(base_path) / "requirements" / "discovery.json"
+    """Read per-requirement analysis files and flatten acceptance_criteria."""
+    req_dir = Path(base_path) / "requirements"
+    items = []
+
+    req_files = sorted(req_dir.glob("req-*.json"))
+    if req_files:
+        for req_file in req_files:
+            try:
+                data = json.loads(req_file.read_text())
+            except (json.JSONDecodeError, OSError):
+                continue
+            req_id = data.get("id", "")
+            for i, ac_text in enumerate(data.get("acceptance_criteria", [])):
+                items.append(
+                    {
+                        "req_id": req_id,
+                        "ac_index": i,
+                        "ac_text": ac_text,
+                    }
+                )
+        if items:
+            return items
+
+    discovery = req_dir / "discovery.json"
     if not discovery.exists():
         print(f"ERROR: {discovery} not found", file=sys.stderr)
         sys.exit(1)
 
     data = json.loads(discovery.read_text())
-    items = []
+    req_count = len(data.get("requirements", []))
     for req in data.get("requirements", []):
         req_id = req.get("id", "")
         for i, ac_text in enumerate(req.get("acceptance_criteria", [])):
@@ -142,6 +158,12 @@ def read_ac_items(base_path):
                     "ac_text": ac_text,
                 }
             )
+    if not items and req_count > 0:
+        print(
+            f"WARNING: 0 AC items found but {req_count} requirements exist. "
+            f"Check whether per-requirement files contain acceptance_criteria.",
+            file=sys.stderr,
+        )
     return items
 
 
@@ -154,11 +176,20 @@ def read_doc_content(base_path):
 
     data = json.loads(sidecar.read_text())
     files = data.get("files", [])
+    mode = data.get("mode", "draft")
     if not files:
         print("ERROR: No files listed in writing/step-result.json", file=sys.stderr)
         sys.exit(1)
 
-    root = Path(base_path).resolve()
+    if mode == "update-in-place":
+        import subprocess
+
+        root = Path(
+            subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
+        ).resolve()
+    else:
+        root = Path(base_path).resolve()
+
     parts = []
     for fpath in files:
         p = Path(fpath).resolve()
@@ -223,6 +254,8 @@ def classify_gaps(missed_items, evidence_status):
                 reqs_by_title[title_lower] = req
 
     for item in missed_items:
+        if not isinstance(item, dict):
+            continue
         ac_text = item.get("ac_item", "")
         ac_lower = ac_text.lower()
         req_id = item.get("id", "")
@@ -247,18 +280,21 @@ def classify_gaps(missed_items, evidence_status):
             "judge": "intent_alignment",
             "evidence_status": ev_status,
             "action": action,
+            "file": item.get("file") or None,
+            "section": item.get("section") or None,
         }
-        if item.get("file"):
-            gap["file"] = item["file"]
-        if item.get("section"):
-            gap["section"] = item["section"]
         gaps.append(gap)
 
     return gaps
 
 
-def classify_coverage(manifest, doc_content, evidence_status, output_dir):
-    """Validate quotes and join to evidence status for each AC item."""
+def classify_coverage(manifest, results_by_id, doc_content, evidence_status):
+    """Validate quotes and join to evidence status for each AC item.
+
+    ``results_by_id`` maps an AC item id to the coverage agent's result object
+    (``{"covered": bool, "quote": str|None}``). Items with no agent result
+    default to uncovered.
+    """
     reqs_by_id = {}
     if evidence_status:
         for req in evidence_status.get("requirements", []):
@@ -268,13 +304,7 @@ def classify_coverage(manifest, doc_content, evidence_status, output_dir):
 
     results = []
     for entry in manifest.get("items", []):
-        result_file = _resolve_under(entry["result_file"], output_dir)
-        agent_result = {"covered": False, "quote": None}
-        if result_file.exists():
-            try:
-                agent_result = json.loads(result_file.read_text())
-            except (json.JSONDecodeError, KeyError):
-                pass
+        agent_result = results_by_id.get(entry["id"]) or {"covered": False, "quote": None}
 
         agent_covered = agent_result.get("covered", False) is True
         quote = agent_result.get("quote")
@@ -329,15 +359,8 @@ def classify_coverage(manifest, doc_content, evidence_status, output_dir):
 
 
 def write_results(
-    output_dir,
-    ticket,
-    doc_quality_result,
-    intent_result,
-    gaps,
-    iteration,
-    coverage_check=None,
-    evidence_expected=False,
-    evidence_warning=None,
+    output_dir, ticket, doc_quality_result, intent_result, gaps, iteration,
+    coverage_check=None, evidence_expected=False, evidence_warning=None,
 ):
     """Write step-result.json and judge-results.md."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -363,12 +386,15 @@ def write_results(
             "intent_alignment": intent_result.get("rationale", ""),
         },
     }
-    if coverage_check is not None:
-        sidecar["coverage_check"] = {
+    sidecar["coverage_check"] = (
+        {
             "total": coverage_check["total"],
             "covered": coverage_check["covered"],
             "uncovered": coverage_check["uncovered"],
         }
+        if coverage_check is not None
+        else None
+    )
     (output_dir / "step-result.json").write_text(json.dumps(sidecar, indent=2))
 
     md_lines = [
@@ -393,6 +419,145 @@ def write_results(
     (output_dir / "judge-results.md").write_text("\n".join(md_lines))
 
     return sidecar
+
+
+ACTION_INSTRUCTIONS = {
+    "document_as_unsupported": (
+        "Add a note stating that this capability is not supported in this release. "
+        "Place it in the most relevant existing module — do not create a new module."
+    ),
+    "expand_with_evidence": (
+        "Expand the existing content with available code evidence. Check the source repo "
+        "for relevant API fields, flags, or config options."
+    ),
+    "add_missing_section": (
+        "This content was in the plan but was not included in the writing output. "
+        "Add the missing section based on the requirements and plan."
+    ),
+    "investigate": (
+        "This gap could not be classified. Review the requirements and determine whether "
+        "to document it or note it as out of scope."
+    ),
+}
+
+UNVERIFIED_NOTE = (
+    "Quote could not be verified in the document. Review whether this criterion is "
+    "actually addressed."
+)
+
+
+def _action_instruction(classification, action):
+    """Map a coverage classification/action to a fix instruction."""
+    if classification == "unverified":
+        return UNVERIFIED_NOTE
+    return ACTION_INSTRUCTIONS.get(action, ACTION_INSTRUCTIONS["investigate"])
+
+
+def render_brief(ticket, iteration, sidecar, coverage_check):
+    """Render the feedback-brief markdown from the quality-gate sidecar + coverage check.
+
+    Replaces the hand-rendered template in docs-workflow-quality-gate/SKILL.md step 7.
+    """
+    rationales = sidecar.get("rationales", {})
+    gaps = sidecar.get("gaps", [])
+    lines = [
+        f"# Feedback Brief for {ticket} (iteration {iteration})",
+        "",
+        "## Intent Alignment Judge Assessment",
+        "",
+        rationales.get("intent_alignment", "(none)"),
+        "",
+        "## Doc Quality Judge Assessment",
+        "",
+        rationales.get("doc_quality", "(none)"),
+        "",
+    ]
+
+    if coverage_check is not None:
+        covered = coverage_check.get("covered", 0)
+        total = coverage_check.get("total", 0)
+        lines += [
+            "## Coverage Check Results",
+            "",
+            f"AC coverage: {covered}/{total} acceptance criteria addressed with verified quotes.",
+            "",
+            "### Uncovered AC Items",
+            "",
+        ]
+        uncovered = [
+            it for it in coverage_check.get("items", []) if it.get("classification") != "covered"
+        ]
+        if uncovered:
+            for it in uncovered:
+                note = _action_instruction(it.get("classification"), it.get("action"))
+                lines += [
+                    f"- **{it.get('ac_text', '')}** (from {it.get('req_id', '?')})",
+                    f"  - Classification: {it.get('classification', 'unknown')}",
+                    f"  - Evidence status: {it.get('evidence_status', 'unknown')}",
+                    f"  - Action: {note}",
+                ]
+        else:
+            lines.append("All acceptance criteria are covered with verified quotes.")
+        lines.append("")
+
+    lines += ["## Classified Gaps with Recommended Actions", ""]
+    if gaps:
+        for g in gaps:
+            lines += [
+                f"### Gap: {g.get('ac_item', '')}",
+                f"- **File**: {g.get('file', '(unspecified)')}",
+                f"- **Section**: {g.get('section', '(unspecified)')}",
+                f"- **Evidence status**: {g.get('evidence_status', 'unknown')}",
+                f"- **Action**: {_action_instruction(g.get('classification'), g.get('action'))}",
+                "",
+            ]
+    else:
+        lines += ["No classified gaps.", ""]
+
+    if iteration > 1:
+        lines += [
+            "## Prior attempts",
+            "",
+            f"This is iteration {iteration}. A previous fix pass was attempted but did not "
+            "resolve these gaps. The writer must try a DIFFERENT approach — do not repeat the "
+            "same fix. Consider:",
+            "- Adding more concrete detail (specific API fields, config values, command examples)",
+            "- Restructuring the section rather than appending",
+            "- Checking source code for evidence that was missed in the first attempt",
+            "",
+        ]
+
+    lines += [
+        "## Priority",
+        "",
+        "Address gaps in this order:",
+        '1. Items flagged as "missing" or "barely covered" — the largest scoring deductions',
+        '2. Items flagged as "weakly covered" or "partially covered" — expand existing content',
+        "3. Scope rebalancing — if the judge flagged over-indexing on one area, tighten it",
+        "",
+    ]
+
+    return "\n".join(lines)
+
+
+def cmd_brief(args):
+    """Render feedback-brief-<iteration>.md from the quality-gate sidecar + coverage check."""
+    output_dir = Path(args.base_path) / "quality-gate"
+    sidecar_path = output_dir / "step-result.json"
+    if not sidecar_path.exists():
+        print(f"ERROR: {sidecar_path} not found", file=sys.stderr)
+        sys.exit(1)
+    sidecar = json.loads(sidecar_path.read_text())
+
+    coverage_check = None
+    coverage_path = output_dir / "coverage-check.json"
+    if coverage_path.exists():
+        coverage_check = json.loads(coverage_path.read_text())
+
+    brief = render_brief(args.ticket, args.iteration, sidecar, coverage_check)
+    brief_path = output_dir / f"feedback-brief-{args.iteration}.md"
+    brief_path.write_text(brief)
+    print(f"Written {brief_path}")
 
 
 def cmd_prepare(args):
@@ -429,72 +594,96 @@ def cmd_verify(args):
     if args.prepare:
         ac_items = read_ac_items(base_path)
         if not ac_items:
-            result = {"items": []}
-            json.dump(result, sys.stdout, indent=2)
-            print()
+            print("prepared coverage prompt: 0 AC items (skip the coverage check)")
             return
 
         doc_content = read_doc_content(base_path)
-        prompts_dir = output_dir / "coverage-prompts"
-        prompts_dir.mkdir(parents=True, exist_ok=True)
-        results_dir = output_dir / "coverage-results"
-        results_dir.mkdir(parents=True, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-        for stale in results_dir.glob("*.json"):
-            stale.unlink()
-        stale_check = output_dir / "coverage-check.json"
-        if stale_check.exists():
-            stale_check.unlink()
+        # Clear stale artifacts from a prior run so a re-run cannot mix results.
+        for stale_name in ("coverage-results.json", "coverage-check.json"):
+            stale = output_dir / stale_name
+            if stale.exists():
+                stale.unlink()
 
         manifest_items = []
+        ac_lines = []
         for item in ac_items:
             item_id = f"{_safe_artifact_id(item['req_id'])}_AC{item['ac_index']:02d}"
-            prompt = COVERAGE_CHECK_PROMPT.format(
-                ac_text=item["ac_text"],
-                doc_content=doc_content,
-            )
-            prompt_file = prompts_dir / f"{item_id}.md"
-            prompt_file.write_text(prompt)
-
+            ac_lines.append(f"- [ID: {item_id}] {item['ac_text']}")
             manifest_items.append(
                 {
                     "id": item_id,
                     "req_id": item["req_id"],
                     "ac_index": item["ac_index"],
                     "ac_text": item["ac_text"],
-                    "prompt_file": str(prompt_file),
-                    "result_file": str(results_dir / f"{item_id}.json"),
                 }
             )
 
-        manifest = {"items": manifest_items}
-        (prompts_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
-        json.dump(manifest, sys.stdout, indent=2)
-        print()
+        # One combined prompt: the documentation is embedded once, every AC item
+        # listed. A single agent answers all of them, reading the docs once.
+        prompt = COVERAGE_CHECK_PROMPT.format(
+            ac_list="\n".join(ac_lines),
+            doc_content=doc_content,
+        )
+        prompt_file = output_dir / "coverage-prompt.md"
+        prompt_file.write_text(prompt)
+
+        manifest = {
+            "items": manifest_items,
+            "prompt_file": str(prompt_file),
+            "result_file": str(output_dir / "coverage-results.json"),
+        }
+        (output_dir / "coverage-manifest.json").write_text(json.dumps(manifest, indent=2))
+        print(f"prepared coverage prompt: {len(manifest_items)} AC items -> {prompt_file}")
 
     elif args.classify:
-        manifest_path = output_dir / "coverage-prompts" / "manifest.json"
+        manifest_path = output_dir / "coverage-manifest.json"
         if not manifest_path.exists():
             print(f"ERROR: {manifest_path} not found", file=sys.stderr)
             sys.exit(1)
 
         manifest = json.loads(manifest_path.read_text())
+        items = manifest.get("items", [])
+
+        # The coverage agent returns one JSON array; the orchestrator writes it
+        # verbatim to coverage-results.json. Index it by AC item id.
+        results_by_id = {}
+        results_path = output_dir / "coverage-results.json"
+        if results_path.exists():
+            try:
+                raw = json.loads(results_path.read_text())
+            except json.JSONDecodeError:
+                raw = []
+            for entry in raw if isinstance(raw, list) else []:
+                if isinstance(entry, dict) and entry.get("id"):
+                    results_by_id[entry["id"]] = entry
+
+        missing = [it["id"] for it in items if it["id"] not in results_by_id]
+        if missing:
+            print(
+                f"WARNING: {len(missing)} of {len(items)} AC items have no agent result "
+                f"(treated as uncovered): {', '.join(missing)}",
+                file=sys.stderr,
+            )
+
         doc_content = read_doc_content(base_path)
         evidence_status = read_evidence_status(base_path)
 
-        if args.evidence_expected and evidence_status is None:
+        if getattr(args, "evidence_expected", False) and evidence_status is None:
             print(
                 "WARNING: --evidence-expected set but no evidence-status.json found. "
                 "Gap classifications will degrade to unknown/investigate.",
                 file=sys.stderr,
             )
 
-        coverage = classify_coverage(manifest, doc_content, evidence_status, output_dir)
-        coverage_path = output_dir / "coverage-check.json"
-        coverage_path.write_text(json.dumps(coverage, indent=2))
+        coverage = classify_coverage(manifest, results_by_id, doc_content, evidence_status)
+        (output_dir / "coverage-check.json").write_text(json.dumps(coverage, indent=2))
 
-        json.dump(coverage, sys.stdout, indent=2)
-        print()
+        print(
+            f"total={coverage['total']} covered={coverage['covered']} "
+            f"uncovered={coverage['uncovered']}"
+        )
 
 
 def cmd_classify(args):
@@ -504,15 +693,6 @@ def cmd_classify(args):
 
     judge_results = json.loads(Path(args.judge_results).read_text())
     evidence_status = read_evidence_status(base_path)
-
-    evidence_expected = getattr(args, "evidence_expected", False)
-    evidence_warning = None
-    if evidence_expected and evidence_status is None:
-        evidence_warning = (
-            "scope-req-audit ran but evidence-status.json not found — "
-            "gap classifications degraded to unknown/investigate"
-        )
-        print(f"WARNING: {evidence_warning}", file=sys.stderr)
 
     dq_result = judge_results["doc_quality"]
     ia_result = judge_results["intent_alignment"]
@@ -544,8 +724,19 @@ def cmd_classify(args):
                         "evidence_status": item["evidence_status"],
                         "action": item["action"],
                         "classification": item["classification"],
+                        "file": None,
+                        "section": None,
                     }
                 )
+
+    evidence_expected = getattr(args, "evidence_expected", False)
+    evidence_warning = None
+    if evidence_expected and evidence_status is None:
+        evidence_warning = (
+            "scope-req-audit ran but evidence-status.json was not found; "
+            "gap classifications may be incomplete"
+        )
+        print(f"WARNING: {evidence_warning}", file=sys.stderr)
 
     sidecar = write_results(
         output_dir,
@@ -559,8 +750,11 @@ def cmd_classify(args):
         evidence_warning=evidence_warning,
     )
 
-    json.dump(sidecar, sys.stdout, indent=2)
-    print()
+    print(
+        f"doc_quality={sidecar['doc_quality']} "
+        f"intent_alignment={sidecar['intent_alignment']} "
+        f"passed={sidecar['passed']} gaps={len(sidecar['gaps'])}"
+    )
 
 
 def main():
@@ -580,20 +774,11 @@ def main():
         help="Path to JSON file with doc_quality and intent_alignment results",
     )
     classify.add_argument("--iteration", type=int, default=1)
-    classify.add_argument(
-        "--evidence-expected",
-        action="store_true",
-        help="Warn if evidence-status.json is missing (scope-req-audit ran)",
-    )
+    classify.add_argument("--evidence-expected", action="store_true", default=False)
 
     verify_parser = subparsers.add_parser("verify", help="Per-AC coverage verification")
     verify_parser.add_argument("--ticket", required=True)
     verify_parser.add_argument("--base-path", required=True)
-    verify_parser.add_argument(
-        "--evidence-expected",
-        action="store_true",
-        help="Warn if evidence-status.json is missing (scope-req-audit ran)",
-    )
     verify_mode = verify_parser.add_mutually_exclusive_group(required=True)
     verify_mode.add_argument("--prepare", action="store_true", help="Write per-AC prompt files")
     verify_mode.add_argument(
@@ -601,6 +786,16 @@ def main():
         action="store_true",
         help="Validate quotes, classify coverage",
     )
+    verify_parser.add_argument(
+        "--evidence-expected",
+        action="store_true",
+        help="Warn if evidence-status.json is missing (scope-req-audit ran)",
+    )
+
+    brief = subparsers.add_parser("brief", help="Render feedback-brief-<iteration>.md")
+    brief.add_argument("--ticket", required=True)
+    brief.add_argument("--base-path", required=True)
+    brief.add_argument("--iteration", type=int, default=1)
 
     args = parser.parse_args()
     if args.command == "prepare":
@@ -609,6 +804,8 @@ def main():
         cmd_classify(args)
     elif args.command == "verify":
         cmd_verify(args)
+    elif args.command == "brief":
+        cmd_brief(args)
 
 
 if __name__ == "__main__":

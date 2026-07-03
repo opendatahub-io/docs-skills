@@ -76,6 +76,7 @@ Select the prompt below based on the `--format` flag. Substitute `<SOURCE_FILES_
 **Agent tool parameters:**
 - `subagent_type`: `docs-skills:docs-reviewer`
 - `description`: `Review documentation for <TICKET>`
+- `run_in_background`: `false` (the orchestrator must wait for the reviewer to finish before verifying output)
 
 **Prompt for AsciiDoc** (`--format adoc`):
 
@@ -93,6 +94,15 @@ Select the prompt below based on the `--format` flag. Substitute `<SOURCE_FILES_
 >    - IBM Style Guide: ibm-sg-audience-and-medium, ibm-sg-language-and-grammar, ibm-sg-punctuation, ibm-sg-numbers-and-measurement, ibm-sg-structure-and-format, ibm-sg-references, ibm-sg-technical-elements, ibm-sg-legal-information
 >    - Red Hat SSG: rh-ssg-grammar-and-language, rh-ssg-formatting, rh-ssg-structure, rh-ssg-technical-examples, rh-ssg-gui-and-links, rh-ssg-legal-and-support, rh-ssg-accessibility, rh-ssg-release-notes (if applicable)
 > 4. Skip ambiguous issues requiring broader context
+>
+> After writing the report to `<OUTPUT_FILE>`, do NOT print the review contents. Print ONLY these four lines (counts let the orchestrator record style metrics without re-reading the report):
+>
+> ```
+> Written <OUTPUT_FILE>
+> Fixes applied: N
+> Warnings: N
+> Suggestions: N
+> ```
 
 **Prompt for MkDocs** (`--format mkdocs`):
 
@@ -110,22 +120,45 @@ Select the prompt below based on the `--format` flag. Substitute `<SOURCE_FILES_
 >    - IBM Style Guide: ibm-sg-audience-and-medium, ibm-sg-language-and-grammar, ibm-sg-punctuation, ibm-sg-numbers-and-measurement, ibm-sg-structure-and-format, ibm-sg-references, ibm-sg-technical-elements, ibm-sg-legal-information
 >    - Red Hat SSG: rh-ssg-grammar-and-language, rh-ssg-formatting, rh-ssg-structure, rh-ssg-technical-examples, rh-ssg-gui-and-links, rh-ssg-legal-and-support, rh-ssg-accessibility
 > 4. Skip ambiguous issues requiring broader context
+>
+> After writing the report to `<OUTPUT_FILE>`, do NOT print the review contents. Print ONLY these four lines (counts let the orchestrator record style metrics without re-reading the report):
+>
+> ```
+> Written <OUTPUT_FILE>
+> Fixes applied: N
+> Warnings: N
+> Suggestions: N
+> ```
 
 Note: MkDocs review omits `docs-review-modular-docs` (AsciiDoc-specific) and `rh-ssg-release-notes`.
 
 ### 4. Verify output
 
-After the agent completes, verify the review report exists at `<OUTPUT_FILE>`.
+After the agent completes, verify the review report exists and is non-empty:
+
+```bash
+test -f "$OUTPUT_FILE" && test -s "$OUTPUT_FILE" && echo "OK" || echo "MISSING_OR_EMPTY"
+```
+
+**HARD GATE — if the file is missing or empty, do NOT write the sidecar or report completion.** Treat this as a step failure. The orchestrator will handle the failure per its standard step-failure logic.
 
 ### 5. Write step-result.json
 
-Write the sidecar to `<OUTPUT_DIR>/step-result.json`:
+Read the `Fixes applied: N`, `Warnings: N`, and `Suggestions: N` lines the docs-reviewer agent
+printed (do not re-read the full report to recount). Write the sidecar to
+`<OUTPUT_DIR>/step-result.json`:
 
 ```json
 {
   "schema_version": 1,
   "step": "style-review",
   "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>"
+  "completed_at": "<current ISO 8601 timestamp>",
+  "fixes_applied": <N>,
+  "warnings": <N>,
+  "suggestions": <N>
 }
 ```
+
+Use `date -u +%Y-%m-%dT%H:%M:%SZ` for `completed_at`. All count fields must be integers; if the
+agent did not print a count line, default that field to `0`.

@@ -164,19 +164,19 @@ See [agent prompts](references/agent-prompts.md#fan-out-classifier-prompt) for t
 
 ### 6. Collect results from disk
 
-After all agents complete, verify which per-requirement JSON files were written:
+After all agents complete, verify that the expected per-requirement JSON files were written to disk.
 
 ```bash
-ls <OUTPUT_DIR>/evidence-*.json 2>/dev/null | wc -l
+EXPECTED_COUNT=<number of requirements from step 3>
+ACTUAL_COUNT=$(ls ${OUTPUT_DIR}/evidence-*.json 2>/dev/null | wc -l)
+echo "Evidence files: ${ACTUAL_COUNT}/${EXPECTED_COUNT}"
 ```
 
-For each expected requirement (from step 3's requirement list):
+**HARD GATE — do NOT proceed to step 7 (merge) until `ACTUAL_COUNT` equals `EXPECTED_COUNT`.** If any agents are still running, wait for them to complete. After all agents have returned, if files are still missing:
 
-1. Check if `<OUTPUT_DIR>/evidence-<NNN>.json` exists
-2. If the file exists, it will be read by the merge agent in the next step
-3. If the file is missing (agent failed or was skipped), the merge agent will create a fallback entry
-
-Log: `"<found_count>/<total_count> classification files written to disk"`
+1. Identify which REQ IDs have no corresponding `evidence-<NNN>.json`
+2. Log: `"Missing evidence files for: REQ-003, REQ-007"` (list actual missing IDs)
+3. The merge agent (step 7) will create fallback entries for missing files — proceed to step 7 only after confirming the missing IDs
 
 ### 7. Assemble output via merge agent
 

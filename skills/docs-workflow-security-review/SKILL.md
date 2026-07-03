@@ -59,16 +59,22 @@ Set `DRAFTS_DIR="${BASE_PATH}/writing"` and glob for `.adoc`, `.md`, `.dita`, an
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-review-security/scripts/pii_scanner.py scan <file1> <file2> ... > "$SCANNER_FILE"
+SCANNER_EXIT=$?
 ```
 
-Check the exit code. If the scanner failed (non-zero exit), write an error to the report and exit with a non-zero status:
+Check the exit code. The scanner uses these exit codes:
+- **0** — clean scan or warnings only (proceed normally)
+- **1** — critical findings (credentials, private keys — proceed but flag in report)
+- **2** — script error (bad paths, invalid args — stop)
 
 ```bash
-if [ $? -ne 0 ]; then
-  echo "ERROR: PII scanner failed. See output above." >&2
+if [ $SCANNER_EXIT -eq 2 ]; then
+  echo "ERROR: PII scanner failed (exit 2). See output above." >&2
   exit 1
 fi
 ```
+
+Do NOT treat exit code 0 or 1 as failures — both produce valid JSON output. Exit 1 means critical findings were detected, which the report will surface.
 
 Validate the JSON output is well-formed before parsing:
 
@@ -100,41 +106,52 @@ Start the review report with the scanner results:
 [Apply the checklist from step 5 and add findings here]
 ```
 
-### 5. Apply agent analysis checklist (Layer 2)
+### 5. Dispatch the security-reviewer agent (Layer 2)
 
-Read the checklist from `${CLAUDE_PLUGIN_ROOT}/skills/docs-review-security/SKILL.md` — specifically the "Layer 2: Agent analysis checklist" section. Apply each checklist item against the source files. For each finding, add it to the "Agent analysis" section of the report with file, line, category `agent-detected`, and a description.
+**You MUST use the Agent tool** to invoke the `security-reviewer` subagent. Do NOT read the checklist or apply it yourself — the agent reads the source files and the Layer 2 checklist in its own isolated context and appends findings directly to the report, so neither the doc content nor the checklist enters the orchestrator's context.
+
+**Agent tool parameters:**
+- `subagent_type`: `docs-skills:security-reviewer`
+- `description`: `Security Layer 2 review for <TICKET>`
+- `run_in_background`: `false` (the orchestrator must wait for the reviewer to finish before verifying output)
+
+**Prompt** (substitute `<SOURCE_FILES>` with the file list from step 2 and `<OUTPUT_FILE>` with the report path):
+
+> Apply the Layer 2 agent-analysis checklist to the documentation for ticket `<TICKET>`.
+>
+> **Source files** — review each of these:
+> <SOURCE_FILES>
+>
+> **Report file**: `<OUTPUT_FILE>` — this file already contains the report header and scanner results. Append your findings to its **Agent analysis** section by editing it in place. Do NOT overwrite the existing content and do NOT write to any other location.
+>
+> After appending all findings, do NOT print the report contents. Print ONLY these two lines:
+>
+> ```
+> Written <OUTPUT_FILE>
+> Agent findings: N
+> ```
 
 ### 6. Verify output
 
-After the review completes, verify the review report exists at `<OUTPUT_FILE>`.
+After the agent completes, verify the review report exists at `<OUTPUT_FILE>`.
 
 ### 7. Write step-result.json
 
-Parse the scanner results from `$SCANNER_FILE` to extract counts.
+Do **not** hand-author the sidecar — a hand-written sidecar drifts from the schema. Run the script,
+which derives every scanner field from `$SCANNER_FILE` and sums `context_size_bytes` from the output
+folder. Pass `--agent-findings` from the `Agent findings: N` line the security-reviewer agent
+printed (do not read the full report back to recount):
 
-Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
-
-```json
-{
-  "schema_version": 1,
-  "step": "security-review",
-  "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>",
-  "scanner_findings": 0,
-  "critical_findings": 0,
-  "agent_findings": 0,
-  "categories": {
-    "ip": 0,
-    "email": 0,
-    "credential": 0,
-    "url": 0,
-    "mac": 0,
-    "internal_hostname": 0
-  },
-  "context_size_bytes": 0
-}
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+  --ticket "<TICKET>" \
+  --scanner-results "$SCANNER_FILE" \
+  --agent-findings <N> \
+  --output-dir "$OUTPUT_DIR" \
+  --sidecar "${OUTPUT_DIR}/step-result.json"
 ```
 
-Replace the `0` placeholders with actual counts from the scanner results and agent analysis. All numeric fields must be integers, not strings.
-
-After writing the sidecar, sum the byte sizes of all output files in the step's output folder and add `context_size_bytes` to the sidecar.
+The script writes the conformant `step-result.json` with `scanner_findings`, `critical_findings`,
+`agent_findings`, per-category counts, `context_size_bytes`, and a real wall-clock `completed_at`.
+If the script exits non-zero, the sidecar was not written — fix the scanner-results path and re-run;
+do not substitute a stub.

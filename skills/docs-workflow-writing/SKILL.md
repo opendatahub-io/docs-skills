@@ -19,7 +19,7 @@ Run the build script to parse arguments, validate inputs, determine mode, and cr
 bash ${CLAUDE_SKILL_DIR}/scripts/build_writing_args.sh <args>
 ```
 
-Pass through the full args string. The script emits JSON on stdout:
+Pass through the args **unquoted** so each flag and value is a separate shell word. Do NOT wrap the entire args string in quotes — the script uses positional argument parsing and each `--flag value` pair must be a separate argument. The script emits JSON on stdout:
 
 ```json
 {
@@ -61,6 +61,7 @@ Select the prompt based on `mode` and `format` from the JSON output. See [agent 
 **Agent tool parameters for all modes:**
 - `subagent_type`: `docs-skills:docs-writer`
 - `description`: use the value from the Description column
+- `run_in_background`: `false` (the orchestrator must wait for the writer to finish before verifying output)
 
 In every prompt, substitute the `<TICKET>`, `<INPUT_FILE>`, `<OUTPUT_FILE>`, `<OUTPUT_DIR>`, `<DOCS_REPO_PATH>`, `<FIX_FROM>`, `<CODE_ANALYSIS_DIR>`, `<PR_ANALYSIS_DIR>`, `<SOURCE_REPO>`, `<ADDITIONAL_REPO_PATHS>`, `<ADDITIONAL_CODE_ANALYSIS_DIRS>`, `HAS_CODE_ANALYSIS`, and `HAS_PR_ANALYSIS` placeholders with the corresponding values from the script's JSON.
 
