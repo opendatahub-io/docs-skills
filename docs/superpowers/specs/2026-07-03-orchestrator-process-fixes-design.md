@@ -190,7 +190,7 @@ Two mitigations: (a) document the pre-resolution pattern so users can skip the r
 
 **New file: `skills/docs-orchestrator/defaults/docs-workflow-fast.yaml`:**
 
-A 7-step workflow for straightforward documentation updates. Drops scope-req-audit (advisory), pr-analysis (PR-only), security-review (new-content-only), quality-gate (large-change-only), and pipeline-diagnostics (audit-only).
+An 8-step workflow for straightforward documentation updates. Drops scope-req-audit (advisory), security-review (new-content-only), quality-gate (large-change-only), and pipeline-diagnostics (audit-only). Keeps pr-analysis since it's already gated by `when: has_pr` and adds zero overhead when unused.
 
 ```yaml
 workflow:
@@ -211,10 +211,16 @@ workflow:
       when: has_source_repo
       inputs: [requirements]
 
+    - name: pr-analysis
+      skill: docs-workflow-pr-analysis
+      description: Analyze PR/MR changes for documentation context
+      when: has_pr
+      inputs: [code-analysis]
+
     - name: planning
       skill: docs-workflow-planning
       description: Create documentation plan
-      inputs: [requirements, code-analysis]
+      inputs: [requirements, code-analysis, pr-analysis]
 
     - name: writing
       skill: docs-workflow-writing
