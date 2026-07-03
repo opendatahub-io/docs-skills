@@ -104,7 +104,7 @@ Each case's `input.yaml` carries: `ticket`, `source_repo` (url + sha), `docs_rep
 | `execution.timeout` | `5400` | 1h30m; complex tickets with review cycles run long |
 | `execution.max_budget_usd` | `50` | Per case |
 | `execution.parallelism` | `3` | Concurrent cases |
-| `models.skill` | `claude-opus-4-8` | Pipeline under test — current model |
+| `models.skill` | `claude-opus-4-6` | Pipeline under test — 4.6 is available to everyone who runs the harness (4.8 is not) |
 | `models.judge` | `claude-opus-4-6` | Stable model for consistent scoring across runs |
 | `models.hook` | `claude-haiku-4-5` | Answers AskUserQuestion prompts cheaply |
 | `permissions.allow` | `Read, Write, Edit, Bash, Glob, Grep, Skill, Agent, AskUserQuestion` | `Skill`/`Agent` required for the nested pipeline |
