@@ -329,7 +329,15 @@ def classify_coverage(manifest, doc_content, evidence_status, output_dir):
 
 
 def write_results(
-    output_dir, ticket, doc_quality_result, intent_result, gaps, iteration, coverage_check=None
+    output_dir,
+    ticket,
+    doc_quality_result,
+    intent_result,
+    gaps,
+    iteration,
+    coverage_check=None,
+    evidence_expected=False,
+    evidence_warning=None,
 ):
     """Write step-result.json and judge-results.md."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -347,6 +355,8 @@ def write_results(
         "intent_alignment": ia_score,
         "passed": passed,
         "iteration": iteration,
+        "evidence_expected": evidence_expected,
+        "evidence_warning": evidence_warning,
         "gaps": gaps,
         "rationales": {
             "doc_quality": doc_quality_result.get("rationale", ""),
@@ -472,6 +482,13 @@ def cmd_verify(args):
         doc_content = read_doc_content(base_path)
         evidence_status = read_evidence_status(base_path)
 
+        if args.evidence_expected and evidence_status is None:
+            print(
+                "WARNING: --evidence-expected set but no evidence-status.json found. "
+                "Gap classifications will degrade to unknown/investigate.",
+                file=sys.stderr,
+            )
+
         coverage = classify_coverage(manifest, doc_content, evidence_status, output_dir)
         coverage_path = output_dir / "coverage-check.json"
         coverage_path.write_text(json.dumps(coverage, indent=2))
@@ -487,6 +504,15 @@ def cmd_classify(args):
 
     judge_results = json.loads(Path(args.judge_results).read_text())
     evidence_status = read_evidence_status(base_path)
+
+    evidence_expected = getattr(args, "evidence_expected", False)
+    evidence_warning = None
+    if evidence_expected and evidence_status is None:
+        evidence_warning = (
+            "scope-req-audit ran but evidence-status.json not found — "
+            "gap classifications degraded to unknown/investigate"
+        )
+        print(f"WARNING: {evidence_warning}", file=sys.stderr)
 
     dq_result = judge_results["doc_quality"]
     ia_result = judge_results["intent_alignment"]
@@ -529,6 +555,8 @@ def cmd_classify(args):
         gaps,
         args.iteration,
         coverage_check=coverage_check,
+        evidence_expected=evidence_expected,
+        evidence_warning=evidence_warning,
     )
 
     json.dump(sidecar, sys.stdout, indent=2)
@@ -552,10 +580,20 @@ def main():
         help="Path to JSON file with doc_quality and intent_alignment results",
     )
     classify.add_argument("--iteration", type=int, default=1)
+    classify.add_argument(
+        "--evidence-expected",
+        action="store_true",
+        help="Warn if evidence-status.json is missing (scope-req-audit ran)",
+    )
 
     verify_parser = subparsers.add_parser("verify", help="Per-AC coverage verification")
     verify_parser.add_argument("--ticket", required=True)
     verify_parser.add_argument("--base-path", required=True)
+    verify_parser.add_argument(
+        "--evidence-expected",
+        action="store_true",
+        help="Warn if evidence-status.json is missing (scope-req-audit ran)",
+    )
     verify_mode = verify_parser.add_mutually_exclusive_group(required=True)
     verify_mode.add_argument("--prepare", action="store_true", help="Write per-AC prompt files")
     verify_mode.add_argument(
