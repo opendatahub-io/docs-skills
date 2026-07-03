@@ -40,9 +40,11 @@ All sidecars share these fields:
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
 | `title` | string | First heading from requirements.md (max 80 chars, ticket prefix stripped) | `create_merge_request.sh` — PR/MR title |
-| `requirement_count` | integer | Number of requirements discovered in pass 1 | Orchestrator — `when: has_many_requirements` condition for quality-gate |
+| `requirement_count` | integer | Number of requirements discovered in pass 1 | Orchestrator — recorded for diagnostics |
 
 ### scope-req-audit
+
+> **Note:** scope-req-audit is opt-in (via `--with-scope-audit`). In the default workflow, quality-gate performs an inline evidence check instead. The scope-req-audit sidecar schema is retained for opt-in runs.
 
 ```json
 {
@@ -338,7 +340,7 @@ When an existing linked ticket is found:
   "step": "quality-gate",
   "ticket": "PROJ-123",
   "completed_at": "2026-04-23T15:50:00Z",
-  "doc_quality": 4,
+  "doc_quality": null,
   "intent_alignment": 3,
   "passed": false,
   "iteration": 1,
@@ -360,7 +362,7 @@ When an existing linked ticket is found:
     }
   ],
   "rationales": {
-    "doc_quality": "Full judge rationale text...",
+    "doc_quality": null,
     "intent_alignment": "Full judge rationale text with per-acceptance-criteria coverage assessments..."
   }
 }
@@ -368,11 +370,11 @@ When an existing linked ticket is found:
 
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
-| `doc_quality` | integer | Doc quality score (1-5) from Opus judge agent | Orchestrator — iteration logic |
+| `doc_quality` | integer\|null | Doc quality score (1-5) from Opus judge agent, or null when the doc_quality judge is skipped (default) | Orchestrator — iteration logic |
 | `intent_alignment` | integer | Intent alignment score (1-5) from Opus judge agent | Orchestrator — iteration logic |
 | `passed` | boolean | Whether intent_alignment >= 4 (doc_quality is informational only) | Orchestrator — iteration logic |
 | `iteration` | integer | Which iteration of the quality gate loop (1-based) | Orchestrator |
-| `evidence_expected` | boolean | Whether scope-req-audit ran and evidence-status.json was expected | Pipeline diagnostics |
+| `evidence_expected` | boolean | Whether scope-req-audit ran (opt-in via `--with-scope-audit`) and evidence-status.json was expected | Pipeline diagnostics |
 | `evidence_warning` | string\|null | Warning message when evidence was expected but not found; null otherwise | Pipeline diagnostics, orchestrator logging |
 | `coverage_check` | object\|null | Per-AC quote-based coverage verification summary (null if no AC items found) | Quality gate iteration |
 | `coverage_check.total` | integer | Total acceptance criteria checked | Informational |
@@ -387,7 +389,7 @@ When an existing linked ticket is found:
 | `gaps[].section` | string\|null | Section heading or insertion point within the file | Quality gate iteration — targeted section edits |
 | `gaps[].classification` | string | Present only on gaps sourced from the coverage check (`gaps[].judge == "coverage_check"`): `"covered"`, `"real_defect"`, `"correctly_absent"`, `"unverified"`, or `"investigate"` | Feedback brief — selects the fix instruction |
 | `rationales` | object | Full judge rationale texts for the feedback brief | Quality gate iteration |
-| `rationales.doc_quality` | string | Complete doc_quality judge rationale | Quality gate iteration — included verbatim in feedback brief |
+| `rationales.doc_quality` | string\|null | Complete doc_quality judge rationale, or null when the doc_quality judge is skipped (default) | Quality gate iteration — included verbatim in feedback brief |
 | `rationales.intent_alignment` | string | Complete intent_alignment judge rationale with per-acceptance-criteria coverage assessments, missing artifacts, scope analysis | Quality gate iteration — included verbatim in feedback brief |
 
 ### action-comments

@@ -6,7 +6,7 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 - Log the `title` field: `"Requirements extracted: <title>"`
 - Record `requirement_count` from the sidecar. Log: `"Requirements: <requirement_count> requirements discovered"`
-- Evaluate `when: has_many_requirements` for any deferred steps (see [`when: has_many_requirements` condition](../SKILL.md#when-has_many_requirements-condition))
+- Evaluate `when:` conditions for any deferred steps
 - If `options.source` is `null` → run [Post-requirements source resolution](../SKILL.md#post-requirements-source-resolution). This may change `deferred` steps to `pending` or `skipped`
 
 ## code-analysis
@@ -38,7 +38,7 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 ## technical-review
 
-- After the [Technical review iteration](../SKILL.md#technical-review-iteration) loop completes, re-evaluate `when: has_many_requirements` Phase 2 for the quality-gate step (see [`when: has_many_requirements` condition](../SKILL.md#when-has_many_requirements-condition))
+- After the [Technical review iteration](../SKILL.md#technical-review-iteration) loop completes, proceed to the next step. (The quality-gate step no longer uses a conditional `when:` clause — it always runs.)
 - If the loop ended at `MEDIUM` with `severity_counts.critical > 0` or `severity_counts.significant > 0`, do not let the persisting issues pass silently. Emit an explicit warning that names the counts and lists each unresolved finding:
 
   > Technical review proceeding at MEDIUM confidence with `<critical>` critical + `<significant>` significant issue(s) unresolved after 2 iterations. These were not fixed and need SME/human review:
@@ -55,7 +55,8 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 ## quality-gate
 
-- Log: `"Quality gate: doc_quality=<N>/5, intent_alignment=<N>/5, passed=<true|false>, gaps=<N>"`
+- Log: `"Quality gate: intent_alignment=<N>/5, passed=<true|false>, gaps=<N>"`
+- If `result.doc_quality` is not null: also log `doc_quality=<N>/5`
 - If `result.evidence_warning` is not null, log: `"WARNING: <evidence_warning>"`
 - If `passed` is false → enter [Quality gate iteration](../SKILL.md#quality-gate-iteration) loop
 
@@ -93,6 +94,7 @@ Build the args string for the step skill. The orchestrator maps its user-facing 
    - `writing`: `--format <adoc|mkdocs> [--draft] [--repo <repo_path>]... [--repo-path <path>]` — pass `--repo` for the primary source repo AND for each entry in `options.additional_sources` (in order)
    - `technical-review`: `[--repo <repo_path>]...` — pass `--repo` for the primary source repo AND for each entry in `options.additional_sources` (in order)
    - `style-review`: `--format <adoc|mkdocs>`
+   - `quality-gate`: `[--repo <repo_path>]`
    - `create-merge-request`: `[--draft] [--repo-path <path>]`
    - `action-comments`: `[--pr <url>] [--include-resolved]` — pass `--pr` from `options.pr_urls[0]` or from `steps.create-merge-request.result.url` if available
    - `pipeline-diagnostics`: `[--ci-log <path>]` — pass `--ci-log` if `options.ci_log` is set

@@ -88,7 +88,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/load_workflow.py \
 
 `--workflow` defaults to `workflow` (the bundled `docs-workflow.yaml`). The script **STOPs with a non-zero exit and a stderr error** if a skill reference is unknown, a step name is duplicated, or an `input` names a missing step — surface that error to the user and do not proceed with an invalid step list.
 
-The emitted JSON has `workflow`, `yaml_path`, and an ordered `steps` array; each step carries `name`, `skill`, `description`, `when`, `inputs`, and an initial `status` of `pending` (will run), `skipped` (permanent), or `deferred` (`has_source_repo` unresolved or [`has_many_requirements`](#when-has_many_requirements-condition); re-evaluated after requirements). At run time a `skipped` upstream still satisfies a dependency; only a `failed` upstream blocks execution.
+The emitted JSON has `workflow`, `yaml_path`, and an ordered `steps` array; each step carries `name`, `skill`, `description`, `when`, `inputs`, and an initial `status` of `pending` (will run), `skipped` (permanent), or `deferred` (`has_source_repo` unresolved; re-evaluated after source resolution). At run time a `skipped` upstream still satisfies a dependency; only a `failed` upstream blocks execution.
 
 ## Output conventions
 
@@ -258,9 +258,9 @@ Loop up to N iterations (same dynamic `--max-iter` as tech-review — 2 by defau
    - `accept_with_warning` → emit a warning that `intent_alignment` is below target after max iterations, then proceed
    - `ask_user` → ask the user whether to proceed or stop
 
-### `when: has_many_requirements` condition
+### Quality gate
 
-The `quality-gate` step uses `when: has_many_requirements`. Evaluated in two phases: Phase 1 after requirements (threshold: `requirement_count >= 6`), Phase 2 after technical-review (skip if `confidence == HIGH`). See [quality gate conditions](references/quality-gate-conditions.md) for the full evaluation logic and rationale.
+The quality-gate step runs unconditionally. See [quality gate conditions](references/quality-gate-conditions.md) for historical context. To skip it, use `--workflow fast` (which uses `docs-workflow-fast.yaml`).
 
 ## Commit confirmation gate
 
