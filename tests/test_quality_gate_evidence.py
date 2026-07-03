@@ -1,9 +1,26 @@
 """Tests for inline evidence check functions in quality_gate.py."""
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
-from quality_gate import extract_key_terms
+from quality_gate import (
+    build_inline_evidence,
+    check_grep_evidence,
+    check_registry_evidence,
+    extract_key_terms,
+    read_analysis_path,
+    write_results,
+)
+
+SCRIPT = (
+    Path(__file__).resolve().parent.parent
+    / "skills"
+    / "docs-workflow-quality-gate"
+    / "scripts"
+    / "quality_gate.py"
+)
 
 
 class TestExtractKeyTerms:
@@ -42,9 +59,6 @@ class TestExtractKeyTerms:
     def test_short_tokens_filtered(self):
         terms = extract_key_terms("an ok it do go")
         assert len(terms) == 0
-
-
-from quality_gate import check_registry_evidence
 
 
 class TestCheckRegistryEvidence:
@@ -92,9 +106,6 @@ class TestCheckRegistryEvidence:
         assert module == "api-gateway"
 
 
-from quality_gate import check_grep_evidence
-
-
 class TestCheckGrepEvidence:
     def test_grounded_on_many_hits(self, tmp_path):
         for i in range(6):
@@ -116,9 +127,6 @@ class TestCheckGrepEvidence:
     def test_handles_missing_directory(self, tmp_path):
         status = check_grep_evidence(["term"], tmp_path / "nope")
         assert status == "absent"
-
-
-from quality_gate import build_inline_evidence, read_analysis_path
 
 
 class TestReadAnalysisPath:
@@ -231,18 +239,6 @@ class TestBuildInlineEvidence:
         assert result["requirements"][0]["status"] == "unknown"
 
 
-import subprocess
-import sys
-
-SCRIPT = (
-    Path(__file__).resolve().parent.parent
-    / "skills"
-    / "docs-workflow-quality-gate"
-    / "scripts"
-    / "quality_gate.py"
-)
-
-
 def _build_pipeline_fixture(tmp_path):
     """Create a complete pipeline fixture for verify --classify with inline evidence."""
     # requirements/discovery.json with AC items
@@ -350,9 +346,6 @@ class TestVerifyClassifyWithInlineEvidence:
         # REQ-002_AC00 uncovered, REQ-002 has no code evidence -> absent
         assert items["REQ-002_AC00"]["evidence_status"] == "absent"
         assert items["REQ-002_AC00"]["classification"] == "correctly_absent"
-
-
-from quality_gate import write_results
 
 
 class TestWriteResultsOptionalDocQuality:
