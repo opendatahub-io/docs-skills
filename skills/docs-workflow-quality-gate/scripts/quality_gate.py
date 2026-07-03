@@ -10,6 +10,7 @@ Subcommands:
 import argparse
 import json
 import re
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +21,160 @@ _SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 def _safe_artifact_id(value):
     """Sanitize a string for use as a filename component."""
     return _SAFE_ID_RE.sub("_", value).strip("._") or "item"
+
+
+_DOC_STOPWORDS = frozenset({
+    "document", "documentation", "procedure", "users", "user", "can",
+    "should", "must", "following", "include", "including", "describes",
+    "described", "provides", "provided", "support", "supported",
+    "feature", "functionality", "capability", "section", "page",
+    "guide", "reference", "tutorial", "how", "what", "when", "where",
+    "the", "a", "an", "is", "are", "was", "were", "be", "been",
+    "being", "have", "has", "had", "do", "does", "did", "will",
+    "would", "could", "shall", "may", "might", "this", "that",
+    "these", "those", "and", "but", "or", "nor", "not", "no",
+    "for", "of", "in", "on", "at", "to", "from", "by", "with",
+    "about", "into", "through", "during", "before", "after",
+    "above", "below", "between", "under", "over", "own", "same",
+    "other", "than", "too", "very", "just", "also", "only",
+    "its", "new", "added", "updated", "ensure", "verify", "based",
+    "using", "used", "set", "get", "make", "take", "give",
+    "specific", "related", "relevant", "appropriate", "necessary",
+})
+
+
+def extract_key_terms(text):
+    """Extract key technical terms from requirement/AC text."""
+    tokens = re.findall(r"[a-z][a-z0-9]+(?:-[a-z0-9]+)*", text.lower())
+    seen = set()
+    terms = []
+    for t in tokens:
+        if t not in _DOC_STOPWORDS and len(t) > 2 and t not in seen:
+            seen.add(t)
+            terms.append(t)
+    return terms[:8]
+
+
+def check_registry_evidence(terms, registry):
+    """Check if any module's purpose/name matches the given terms.
+
+    Returns (status, module_name) where status is grounded/partial/absent.
+    """
+    best_count = 0
+    best_module = None
+    for entry in registry:
+        text = f"{entry.get('module', '')} {entry.get('purpose', '')}".lower()
+        count = sum(1 for t in terms if t in text)
+        if count > best_count:
+            best_count = count
+            best_module = entry.get("module", "")
+    if best_count >= 2:
+        return "grounded", best_module
+    if best_count == 1:
+        return "partial", best_module
+    return "absent", None
+
+
+_GREP_EXTENSIONS = (
+    "--include=*.py", "--include=*.go", "--include=*.java",
+    "--include=*.ts", "--include=*.js", "--include=*.rb",
+    "--include=*.rs", "--include=*.yaml", "--include=*.yml",
+)
+
+
+def check_grep_evidence(terms, repo_path):
+    """Grep source repo for key terms as a fallback evidence check.
+
+    Returns grounded (5+ file hits), partial (1-4), or absent (0).
+    """
+    hit_files = set()
+    for term in terms[:4]:
+        try:
+            result = subprocess.run(
+                ["grep", "-rl", "-i", *_GREP_EXTENSIONS, term, str(repo_path)],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode == 0:
+                for line in result.stdout.strip().split("\n"):
+                    if line:
+                        hit_files.add(line)
+        except (subprocess.TimeoutExpired, OSError):
+            continue
+    if len(hit_files) >= 5:
+        return "grounded"
+    if len(hit_files) >= 1:
+        return "partial"
+    return "absent"
+
+
+def read_analysis_path(base_path):
+    """Read repo_analysis_path from code-analysis sidecar."""
+    sidecar = Path(base_path) / "code-analysis" / "step-result.json"
+    if not sidecar.exists():
+        return None
+    try:
+        data = json.loads(sidecar.read_text())
+        return data.get("repo_analysis_path")
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _load_registry(analysis_path):
+    """Load module registry from learn-code analysis output."""
+    if not analysis_path:
+        return []
+    registry_file = Path(analysis_path) / "module-registry" / "registry.json"
+    if not registry_file.exists():
+        return []
+    try:
+        data = json.loads(registry_file.read_text())
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict) and "modules" in data:
+            return [{"module": k, **v} for k, v in data["modules"].items()]
+        return []
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def build_inline_evidence(base_path, repo_path):
+    """Build evidence status from module registry + grep fallback.
+
+    Returns the same shape as read_evidence_status() so callers need no changes.
+    Returns None if discovery.json is missing.
+    """
+    discovery = Path(base_path) / "requirements" / "discovery.json"
+    if not discovery.exists():
+        return None
+
+    analysis_path = read_analysis_path(base_path)
+    registry = _load_registry(analysis_path)
+    data = json.loads(discovery.read_text())
+    requirements = []
+
+    for req in data.get("requirements", []):
+        req_id = req.get("id", "")
+        title = req.get("title", "")
+        summary = req.get("one_line_summary", "")
+        terms = extract_key_terms(f"{title} {summary}")
+
+        if not terms:
+            requirements.append({"id": req_id, "title": title, "status": "unknown"})
+            continue
+
+        if registry:
+            status, _ = check_registry_evidence(terms, registry)
+            if status != "absent":
+                requirements.append({"id": req_id, "title": title, "status": status})
+                continue
+
+        if repo_path and Path(repo_path).is_dir():
+            status = check_grep_evidence(terms, repo_path)
+        else:
+            status = "unknown"
+        requirements.append({"id": req_id, "title": title, "status": status})
+
+    return {"requirements": requirements} if requirements else None
 
 
 PASS_THRESHOLD_INTENT = 4
