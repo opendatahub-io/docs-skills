@@ -1,13 +1,13 @@
 ---
 name: docs-workflow-quality-gate
-description: Score documentation quality and intent alignment using LLM judge agents (Opus). Dispatches two judge agents in parallel (doc_quality, intent_alignment), extracts specific gaps from AC coverage analysis, and cross-references against scope-req-audit evidence. Produces pass/fail gate with actionable gap list. Iteration logic is owned by the orchestrator, not this skill.
+description: Score documentation intent alignment using an LLM judge agent (Opus) and classify coverage gaps with inline code-evidence checking. Dispatches one coverage agent and one intent_alignment judge. When scope-req-audit did not run, classifies gaps via module registry lookup + grep. Produces pass/fail gate with actionable gap list. Iteration logic is owned by the orchestrator, not this skill.
 argument-hint: <ticket> --base-path <path>
 allowed-tools: Read, Write, Bash, Glob, Grep, Agent
 ---
 
 # Quality Gate
 
-Score the pipeline's documentation output before creating a merge request. This skill dispatches two judge agents in parallel — one for doc_quality, one for intent_alignment — using the same model as the eval harness (Opus). The agents return structured JSON via schema validation.
+Score the pipeline's documentation output before creating a merge request. This skill dispatches one coverage agent (per-AC quote verification) and one intent_alignment judge agent. When `--repo` is provided and no `evidence-status.json` exists from a prior scope-req-audit run, the classify step performs an inline code-evidence check using the learn-code module registry and grep fallback — no separate scope-req-audit step required.
 
 The quality gate produces a pass/fail verdict and, when intent alignment is below threshold, a structured list of gaps with recommended actions and a feedback brief (`feedback-brief.md`) ready for the orchestrator to dispatch the writer in fix mode.
 
@@ -15,6 +15,7 @@ The quality gate produces a pass/fail verdict and, when intent alignment is belo
 
 - `$1` — Ticket ID (required, e.g., `RHAIENG-2620`)
 - `--base-path <path>` — Base output path (required, e.g., `.agent_workspace/rhaieng-2620`)
+- `--repo <path>` — Source code repository path (optional). When provided and no `evidence-status.json` exists, enables inline code-evidence checking via learn-code module registry + grep fallback. Passed through to the `verify --classify` and `classify` subcommands
 
 ## Inputs
 
@@ -24,7 +25,8 @@ Reads from upstream steps by convention:
 |--------|------|----------|
 | Writing output | `<base-path>/writing/step-result.json` | Yes — files array lists AsciiDoc paths |
 | Requirements context | `<base-path>/requirements/discovery.json` | Yes — ticket summary and AC items |
-| Evidence status | `<base-path>/scope-req-audit/evidence-status.json` or `<base-path>/validate/evidence-status.json` | No — used to classify gaps by code evidence. When scope-req-audit ran but the file is missing, the gate warns and records `evidence_warning` in the sidecar |
+| Code analysis | `<base-path>/code-analysis/step-result.json` | No — provides `repo_analysis_path` for inline evidence check |
+| Evidence status | `<base-path>/scope-req-audit/evidence-status.json` or `<base-path>/validate/evidence-status.json` | No — used when scope-req-audit ran (opt-in). When absent and `--repo` is provided, inline evidence check runs instead |
 
 ## Execution
 
@@ -32,7 +34,7 @@ Reads from upstream steps by convention:
 
 Extract `TICKET` from `$1` and `BASE_PATH` from `--base-path`.
 
-### 2. Prepare judge prompts
+### 2. Prepare judge prompt
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py prepare \
@@ -40,9 +42,10 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py prepare \
   --base-path "${BASE_PATH}"
 ```
 
-This reads the writing output and ticket context, then writes two prompt files:
-- `${BASE_PATH}/quality-gate/dq-prompt.md` — doc_quality judge prompt with doc content interpolated
+This reads the writing output and ticket context, then writes:
 - `${BASE_PATH}/quality-gate/ia-prompt.md` — intent_alignment judge prompt with doc content and ticket context interpolated
+
+It also writes `dq-prompt.md` (doc_quality) but this prompt is not used in the default flow. The doc_quality judge is skipped unless explicitly requested.
 
 ### 3. AC coverage verification
 
@@ -92,10 +95,13 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py verify \
   --ticket "${TICKET}" \
   --base-path "${BASE_PATH}" \
   --classify \
+  [--repo "${REPO_PATH}"] \
   [--evidence-expected]
 ```
 
-Reads `coverage-results.json`, validates quotes against the documentation (whitespace-normalized substring match), joins to scope-req-audit evidence status, and writes `${BASE_PATH}/quality-gate/coverage-check.json`. It prints only a `total=… covered=… uncovered=…` summary and warns (on stderr) if any AC item had no agent result.
+When `--repo` is provided and no `evidence-status.json` exists from a prior scope-req-audit run, the script performs an inline code-evidence check using the learn-code module registry (from `<base-path>/code-analysis/step-result.json → repo_analysis_path`) and grep fallback. This replaces the separate scope-req-audit step for gap classification.
+
+Reads `coverage-results.json`, validates quotes against the documentation (whitespace-normalized substring match), joins to evidence status, and writes `${BASE_PATH}/quality-gate/coverage-check.json`. It prints only a `total=… covered=… uncovered=…` summary and warns (on stderr) if any AC item had no agent result.
 
 Classifications:
 - `covered` — AC is addressed with a verified quote. No action needed.
@@ -104,27 +110,11 @@ Classifications:
 - `unverified` — Agent claimed coverage but the quote was not found in the document. Investigate.
 - `investigate` — AC is not covered and evidence status is unknown.
 
-### 4. Dispatch judge agents
+### 4. Dispatch intent alignment agent
 
-Dispatch **both agents in a single message** so they run in parallel. These are independent reads of the same docs — there is no dependency between them. **Do NOT dispatch them in separate messages** — sequential dispatch adds unnecessary latency and has caused ~65s delays in observed runs.
+Dispatch **one agent** (doc_quality judge is skipped in the default flow).
 
-For each agent, pass the `schema` JSON object as the Agent tool's `schema` parameter. This forces the agent to return structured output via the StructuredOutput tool with automatic retry on schema mismatch. **Do NOT omit the schema parameter** — without it, agents return free-text that requires manual parsing and loses the retry-on-mismatch safety net.
-
-#### doc_quality agent
-
-- **Model**: opus
-- **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/dq-prompt.md` and follow the instructions exactly.
-- **Schema** (pass as the `schema` parameter to the Agent tool):
-  ```json
-  {
-    "type": "object",
-    "properties": {
-      "score": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Quality score 1-5"},
-      "rationale": {"type": "string", "description": "Detailed rationale for the score"}
-    },
-    "required": ["score", "rationale"]
-  }
-  ```
+Pass the `schema` JSON object as the Agent tool's `schema` parameter. This forces the agent to return structured output via the StructuredOutput tool with automatic retry on schema mismatch. **Do NOT omit the schema parameter** — without it, the agent returns free-text that requires manual parsing and loses the retry-on-mismatch safety net.
 
 #### intent_alignment agent
 
@@ -158,16 +148,17 @@ For each agent, pass the `schema` JSON object as the Agent tool's `schema` param
 
 ### 5. Write judge results
 
-After both agents return, each agent's result is a structured JSON object (enforced by the `schema` parameter). Write the objects directly to `${BASE_PATH}/quality-gate/judge-results.json` — no manual parsing or score extraction needed:
+After the agent returns, write its structured output to `${BASE_PATH}/quality-gate/judge-results.json`:
 
 ```json
 {
-  "doc_quality": { "score": <N>, "rationale": "<text>" },
   "intent_alignment": { "score": <N>, "rationale": "<text>", "missed_items": [...] }
 }
 ```
 
-If an agent returns `null` (skipped or died), mark the quality gate as `failed` — do not substitute default scores.
+Note: `doc_quality` is omitted from `judge-results.json` when the doc_quality judge is skipped. The classify step handles this gracefully.
+
+If the agent returns `null` (skipped or died), mark the quality gate as `failed` — do not substitute default scores.
 
 ### 6. Classify gaps and write step-result.json
 
@@ -181,6 +172,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py classify \
   --base-path "${BASE_PATH}" \
   --judge-results "${BASE_PATH}/quality-gate/judge-results.json" \
   --iteration <N> \
+  [--repo "${REPO_PATH}"] \
   [--evidence-expected]
 ```
 
@@ -213,7 +205,7 @@ The rendered brief includes the **full judge rationales verbatim** (per-AC sever
 ### 8. Verify output (always runs)
 
 Read `${BASE_PATH}/quality-gate/step-result.json` and verify it contains:
-- `doc_quality` (integer 1-5)
+- `doc_quality` (integer 1-5, or null when the doc_quality judge is skipped)
 - `intent_alignment` (integer 1-5)
 - `passed` (boolean)
 - `gaps` (array)
@@ -262,7 +254,7 @@ Report the scores and pass/fail status:
   "step": "quality-gate",
   "ticket": "PROJ-123",
   "completed_at": "2026-06-11T16:00:00+00:00",
-  "doc_quality": 5,
+  "doc_quality": null,
   "intent_alignment": 4,
   "passed": false,
   "iteration": 1,
@@ -284,7 +276,7 @@ Report the scores and pass/fail status:
     }
   ],
   "rationales": {
-    "doc_quality": "Full judge rationale text...",
+    "doc_quality": null,
     "intent_alignment": "Full judge rationale text with per-AC coverage assessments..."
   }
 }
@@ -305,9 +297,9 @@ Structured feedback document containing full judge rationales and classified gap
 ## Thresholds
 
 - `intent_alignment >= 4` → `passed = true`
-- `doc_quality` is reported but does **not** trigger a fix pass. If `doc_quality < 4`, the orchestrator logs a warning ("manual review recommended") but proceeds. Only intent_alignment gaps — specific missed AC items — are actionable via targeted rewrites
+- `doc_quality` is skipped by default. When present (opt-in), it is reported but does **not** trigger a fix pass — the orchestrator logs a warning if `< 4` but proceeds. Only intent_alignment gaps are actionable
 - When `passed = false`, this skill produces `feedback-brief-<iteration>.md` alongside the sidecar. The orchestrator dispatches the writer in fix mode with this file, or accepts with warning after max iterations
 
 ## Model
 
-Judge agents use Opus to match the eval harness judge configuration. The coverage agent (step 3b) also uses Opus — running coverage on a cheaper model than the judges produced false negatives when the two disagreed. The model is specified via the Agent tool's `model` parameter — no separate API key or credentials required.
+The intent alignment agent and coverage agent (step 3b) both use Opus to match the eval harness judge configuration. The model is specified via the Agent tool's `model` parameter — no separate API key or credentials required.
