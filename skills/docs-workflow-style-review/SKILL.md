@@ -133,7 +133,13 @@ Note: MkDocs review omits `docs-review-modular-docs` (AsciiDoc-specific) and `rh
 
 ### 4. Verify output
 
-After the agent completes, verify the review report exists at `<OUTPUT_FILE>`.
+After the agent completes, verify the review report exists and is non-empty:
+
+```bash
+test -f "$OUTPUT_FILE" && test -s "$OUTPUT_FILE" && echo "OK" || echo "MISSING_OR_EMPTY"
+```
+
+**HARD GATE — if the file is missing or empty, do NOT write the sidecar or report completion.** Treat this as a step failure. The orchestrator will handle the failure per its standard step-failure logic.
 
 ### 5. Write step-result.json
 
