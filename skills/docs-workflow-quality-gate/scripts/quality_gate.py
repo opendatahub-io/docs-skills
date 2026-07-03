@@ -520,7 +520,7 @@ def write_results(
     """Write step-result.json and judge-results.md."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    dq_score = doc_quality_result.get("score", 0)
+    dq_score = doc_quality_result.get("score", 0) if doc_quality_result else None
     ia_score = intent_result.get("score", 0)
     passed = ia_score >= PASS_THRESHOLD_INTENT
 
@@ -537,7 +537,7 @@ def write_results(
         "evidence_warning": evidence_warning,
         "gaps": gaps,
         "rationales": {
-            "doc_quality": doc_quality_result.get("rationale", ""),
+            "doc_quality": doc_quality_result.get("rationale", "") if doc_quality_result else None,
             "intent_alignment": intent_result.get("rationale", ""),
         },
     }
@@ -554,12 +554,19 @@ def write_results(
 
     md_lines = [
         f"# Quality Gate Results — {ticket}\n",
-        f"**doc_quality**: {dq_score}/5",
+        f"**doc_quality**: {dq_score if dq_score is not None else 'skipped'}/5",
         f"**intent_alignment**: {ia_score}/5",
         f"**passed**: {passed}",
         f"**iteration**: {iteration}\n",
-        "## Doc Quality Rationale\n",
-        doc_quality_result.get("rationale", "(none)"),
+    ]
+
+    if doc_quality_result:
+        md_lines += [
+            "## Doc Quality Rationale\n",
+            doc_quality_result.get("rationale", "(none)"),
+        ]
+
+    md_lines += [
         "\n## Intent Alignment Rationale\n",
         intent_result.get("rationale", "(none)"),
     ]
@@ -615,6 +622,7 @@ def render_brief(ticket, iteration, sidecar, coverage_check):
     """
     rationales = sidecar.get("rationales", {})
     gaps = sidecar.get("gaps", [])
+    dq_rationale = rationales.get("doc_quality")
     lines = [
         f"# Feedback Brief for {ticket} (iteration {iteration})",
         "",
@@ -622,11 +630,15 @@ def render_brief(ticket, iteration, sidecar, coverage_check):
         "",
         rationales.get("intent_alignment", "(none)"),
         "",
-        "## Doc Quality Judge Assessment",
-        "",
-        rationales.get("doc_quality", "(none)"),
-        "",
     ]
+
+    if dq_rationale is not None:
+        lines += [
+            "## Doc Quality Judge Assessment",
+            "",
+            dq_rationale,
+            "",
+        ]
 
     if coverage_check is not None:
         covered = coverage_check.get("covered", 0)
@@ -865,7 +877,7 @@ def cmd_classify(args):
                 file=sys.stderr,
             )
 
-    dq_result = judge_results["doc_quality"]
+    dq_result = judge_results.get("doc_quality")
     ia_result = judge_results["intent_alignment"]
 
     missed_items = ia_result.get("missed_items", [])

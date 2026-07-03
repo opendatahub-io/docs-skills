@@ -94,6 +94,13 @@ class TestRenderBrief:
         assert "Absent AC" in md
         assert "Unverified AC" in md
 
+    def test_no_doc_quality_section_when_null(self):
+        sidecar = _sidecar()
+        sidecar["rationales"]["doc_quality"] = None
+        md = render_brief("PROJ-1", 1, sidecar, None)
+        assert "Doc Quality Judge Assessment" not in md
+        assert "Intent Alignment Judge Assessment" in md
+
     def test_unverified_note_rendered(self):
         md = render_brief("PROJ-1", 1, _sidecar(), _coverage())
         assert "could not be verified" in md.lower()

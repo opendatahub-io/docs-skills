@@ -105,6 +105,11 @@ class TestDecideQualityGate:
         d = decide_quality_gate(intent_alignment=4, doc_quality=5, iteration=2)
         assert d["decision"] == "done"
 
+    def test_none_doc_quality_no_secondary_warning(self):
+        d = decide_quality_gate(intent_alignment=4, doc_quality=None, iteration=1)
+        assert d["decision"] == "done"
+        assert d["secondary_warning"] is None
+
 
 # ── CLI / sidecar integration ────────────────────────────────────────────────
 
@@ -141,6 +146,15 @@ class TestCli:
         assert result.returncode == 0, result.stderr
         out = json.loads(result.stdout)
         assert out["decision"] == "accept_with_warning"
+
+    def test_quality_gate_null_doc_quality(self, tmp_path):
+        sidecar = tmp_path / "step-result.json"
+        sidecar.write_text(json.dumps({"intent_alignment": 4, "doc_quality": None, "iteration": 1}))
+        result = _run(["quality-gate", "--sidecar", str(sidecar)])
+        assert result.returncode == 0, result.stderr
+        out = json.loads(result.stdout)
+        assert out["decision"] == "done"
+        assert out["secondary_warning"] is None
 
     def test_missing_sidecar_errors(self, tmp_path):
         result = _run(["tech-review", "--sidecar", str(tmp_path / "nope.json")])

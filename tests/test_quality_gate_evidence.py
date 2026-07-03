@@ -350,3 +350,34 @@ class TestVerifyClassifyWithInlineEvidence:
         # REQ-002_AC00 uncovered, REQ-002 has no code evidence -> absent
         assert items["REQ-002_AC00"]["evidence_status"] == "absent"
         assert items["REQ-002_AC00"]["classification"] == "correctly_absent"
+
+
+from quality_gate import write_results
+
+
+class TestWriteResultsOptionalDocQuality:
+    def test_null_doc_quality_in_sidecar(self, tmp_path):
+        sidecar = write_results(
+            output_dir=tmp_path,
+            ticket="TEST-1",
+            doc_quality_result=None,
+            intent_result={"score": 4, "rationale": "Good", "missed_items": []},
+            gaps=[],
+            iteration=1,
+        )
+        assert sidecar["doc_quality"] is None
+        assert sidecar["intent_alignment"] == 4
+        assert sidecar["passed"] is True
+
+    def test_sidecar_json_with_null_doc_quality(self, tmp_path):
+        write_results(
+            output_dir=tmp_path,
+            ticket="TEST-1",
+            doc_quality_result=None,
+            intent_result={"score": 3, "rationale": "Weak", "missed_items": []},
+            gaps=[],
+            iteration=1,
+        )
+        data = json.loads((tmp_path / "step-result.json").read_text())
+        assert data["doc_quality"] is None
+        assert data["rationales"]["doc_quality"] is None

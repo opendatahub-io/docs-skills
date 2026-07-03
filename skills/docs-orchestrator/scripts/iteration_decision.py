@@ -72,7 +72,7 @@ def decide_tech_review(
 
 def decide_quality_gate(
     intent_alignment: int,
-    doc_quality: int,
+    doc_quality: int | None,
     iteration: int,
     max_iter: int = 2,
 ) -> dict:
@@ -147,9 +147,10 @@ def main() -> int:
             max_iter=args.max_iter,
         )
     else:
+        raw_dq = sidecar.get("doc_quality")
         decision = decide_quality_gate(
             intent_alignment=int(sidecar.get("intent_alignment", 0)),
-            doc_quality=int(sidecar.get("doc_quality", 0)),
+            doc_quality=int(raw_dq) if raw_dq is not None else None,
             iteration=int(sidecar.get("iteration", 1)),
             max_iter=args.max_iter,
         )
