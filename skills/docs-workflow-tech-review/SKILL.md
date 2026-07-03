@@ -82,6 +82,18 @@ Agent:
     After writing, print ONLY: Written <OUTPUT_FILE>
 ```
 
+#### 2b-verify. Verify batch verdicts before merging
+
+The `batch_count` from `prepare_claims.py` tells you how many verdict files to expect.
+
+```bash
+EXPECTED_BATCHES=<batch_count from prepare_claims.py output>
+ACTUAL_BATCHES=$(ls ${OUTPUT_DIR}/batch-verdict-*.json 2>/dev/null | wc -l)
+echo "Batch verdicts: ${ACTUAL_BATCHES}/${EXPECTED_BATCHES}"
+```
+
+**HARD GATE — do NOT proceed to step 2c (merge verdicts) until `ACTUAL_BATCHES` equals `EXPECTED_BATCHES`.** If agents are still running, wait. After all agents have returned, if verdict files are missing, log which batch sanitized names are missing — `merge_verdicts.py` assigns `no_evidence_found` fallback verdicts for claims in missing batches, so proceed to 2c after logging.
+
 #### 2c. Merge verdicts — set `HAS_CLAIMS=true` after this completes
 
 ```bash
