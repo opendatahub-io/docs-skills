@@ -668,6 +668,13 @@ def cmd_verify(args):
         doc_content = read_doc_content(base_path)
         evidence_status = read_evidence_status(base_path)
 
+        if getattr(args, "evidence_expected", False) and evidence_status is None:
+            print(
+                "WARNING: --evidence-expected set but no evidence-status.json found. "
+                "Gap classifications will degrade to unknown/investigate.",
+                file=sys.stderr,
+            )
+
         coverage = classify_coverage(manifest, results_by_id, doc_content, evidence_status)
         (output_dir / "coverage-check.json").write_text(json.dumps(coverage, indent=2))
 
@@ -727,6 +734,7 @@ def cmd_classify(args):
             "scope-req-audit ran but evidence-status.json was not found; "
             "gap classifications may be incomplete"
         )
+        print(f"WARNING: {evidence_warning}", file=sys.stderr)
 
     sidecar = write_results(
         output_dir,
@@ -775,6 +783,11 @@ def main():
         "--classify",
         action="store_true",
         help="Validate quotes, classify coverage",
+    )
+    verify_parser.add_argument(
+        "--evidence-expected",
+        action="store_true",
+        help="Warn if evidence-status.json is missing (scope-req-audit ran)",
     )
 
     brief = subparsers.add_parser("brief", help="Render feedback-brief-<iteration>.md")

@@ -85,11 +85,14 @@ The classify step (3c) reports any AC ids missing from the array; you do not nee
 
 #### 3c. Classify coverage results
 
+Determine whether code evidence was expected: check if `${BASE_PATH}/scope-req-audit/` or `${BASE_PATH}/validate/` exists as a directory. If either exists, add `--evidence-expected` to the command.
+
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py verify \
   --ticket "${TICKET}" \
   --base-path "${BASE_PATH}" \
-  --classify
+  --classify \
+  [--evidence-expected]
 ```
 
 Reads `coverage-results.json`, validates quotes against the documentation (whitespace-normalized substring match), joins to scope-req-audit evidence status, and writes `${BASE_PATH}/quality-gate/coverage-check.json`. It prints only a `total=… covered=… uncovered=…` summary and warns (on stderr) if any AC item had no agent result.
