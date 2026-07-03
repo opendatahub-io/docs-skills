@@ -154,7 +154,11 @@ Skill: <step.skill>, args: "<constructed args>"
 
 1. Verify output folder exists — if missing, mark `failed` and **STOP**
 2. Read `step-result.json` sidecar if present; store fields in `steps.<step-name>.result`. If missing, log warning and store default result: `{"module_count": 0, "files": [], "passed": true}` — downstream post-processing must handle these defaults gracefully
-3. Set status to `completed` with output path. Get the real wall-clock timestamp by running `date -u +%Y-%m-%dT%H:%M:%SZ` and use it for `updated_at` and for the step's `completed_at` in the sidecar. **Do not estimate or round timestamps** — synthetic timestamps break duration calculations and bottleneck detection in pipeline diagnostics
+3. Set status to `completed` with output path. Use two different timestamp sources:
+   - **`steps.<name>.result`**: copy the `completed_at` value verbatim from the step's `step-result.json` sidecar. This is the step's own completion time and must not be overwritten with a later timestamp
+   - **`updated_at`** (top-level progress field): get the real wall-clock time by running `date -u +%Y-%m-%dT%H:%M:%SZ`. This reflects when the orchestrator recorded the completion, which is always equal to or later than the sidecar timestamp
+   
+   **Do not estimate or round timestamps** — synthetic timestamps break duration calculations and bottleneck detection in pipeline diagnostics. **Do not use `date -u` for the result's `completed_at`** — the gap between step completion and orchestrator bookkeeping inflates step durations in diagnostics
 4. Do NOT read step output files into orchestrator context — read only sidecars
 5. Run [step-specific post-processing](#step-specific-post-processing)
 6. Re-read the progress file from disk before the next step (post-step context refresh)
@@ -210,20 +214,23 @@ Both methods bypass `resolve_source.py` entirely. Use for repos you've already c
 Loop up to N iterations. The default `--max-iter` is 2. When the writing step produced more than 5 files (check `steps.writing.result.files` array length in the progress file), pass `--max-iter 3` to allow an additional fix-and-confirm pass for larger changes. The loop decision — the confidence/severity/iteration rules — is owned by `iteration_decision.py`; do NOT evaluate it by hand.
 
 1. Invoke `docs-workflow-tech-review`. It writes `technical-review/step-result.json` (confidence, severity counts, auto-incremented iteration). Update `steps.technical-review.result` from the sidecar
-2. Get the decision, then act on it:
+2. Compute the dynamic `MAX_ITER` and **write it back** to the progress file so resume sessions see the actual value used:
    ```bash
    FILE_COUNT=$(python3 -c "import json; d=json.load(open('<progress_file>')); print(len(d.get('steps',{}).get('writing',{}).get('result',{}).get('files',[])))")
    MAX_ITER=$( [ "$FILE_COUNT" -gt 5 ] 2>/dev/null && echo 3 || echo 2 )
-
+   ```
+   Update `options.max_iter` in the progress file to `$MAX_ITER` if it differs from the current value. This ensures resume sessions and pipeline diagnostics see the effective iteration cap, not the CLI default.
+3. Get the decision, then act on it:
+   ```bash
    python3 ${CLAUDE_SKILL_DIR}/scripts/iteration_decision.py tech-review \
      --sidecar <base_path>/technical-review/step-result.json \
      --max-iter $MAX_ITER
    ```
    - `done` → proceed to the next step
-   - `fix` → run the fix-and-confirm pass (step 3), then return to step 2
+   - `fix` → run the fix-and-confirm pass (step 4), then return to step 3
    - `proceed_with_warning` → emit the returned `warning`; since `list_findings` is true, append the title of each unresolved critical/significant finding from `technical-review/review.md`, and carry the counts into the Completion summary. Then proceed
    - `ask_user` → ask the user whether to proceed or stop for SME/human review
-3. Fix-and-confirm pass (only when `decision == fix`):
+4. Fix-and-confirm pass (only when `decision == fix`):
    a. Fix via `docs-workflow-writing --fix-from <base_path>/technical-review/review.md` (pass all `--repo` flags)
    b. **Verify fixes landed.** After the fix agent returns, use **absolute paths** from `steps.writing.result.files` to verify modifications. Run `git diff --name-only` from the **docs repo root** (`git rev-parse --show-toplevel` of the docs repository, NOT of any cloned source repo). If no files changed, log a workaround entry and investigate — the fix agent may have written to the wrong directory
    c. **Delete the prior review report** before re-running the reviewer: `rm -f <base_path>/technical-review/review.md`. This prevents the iteration 2 reviewer from reading stale findings
@@ -234,11 +241,12 @@ Loop up to N iterations. The default `--max-iter` is 2. When the writing step pr
 Loop up to N iterations (same dynamic `--max-iter` as tech-review — 2 by default, 3 when writing produced >5 files). The loop decision — the `intent_alignment` thresholds — is owned by `iteration_decision.py`; do NOT evaluate it by hand.
 
 1. Invoke `docs-workflow-quality-gate`. It writes `quality-gate/step-result.json` (`doc_quality`, `intent_alignment`, `passed`, `iteration`) and, when not passing, `feedback-brief-<iteration>.md` — stop if the sidecar is missing or incomplete
-2. Get the decision, then act on it:
+2. Reuse the `MAX_ITER` value computed and persisted in the tech-review loop (read `options.max_iter` from the progress file). If the quality gate runs without a prior tech-review loop (e.g., tech-review was skipped), compute it fresh using the same formula and write it back:
    ```bash
-   FILE_COUNT=$(python3 -c "import json; d=json.load(open('<progress_file>')); print(len(d.get('steps',{}).get('writing',{}).get('result',{}).get('files',[])))")
-   MAX_ITER=$( [ "$FILE_COUNT" -gt 5 ] 2>/dev/null && echo 3 || echo 2 )
-
+   MAX_ITER=$(python3 -c "import json; d=json.load(open('<progress_file>')); print(d.get('options',{}).get('max_iter', 2))")
+   ```
+3. Get the decision, then act on it:
+   ```bash
    python3 ${CLAUDE_SKILL_DIR}/scripts/iteration_decision.py quality-gate \
      --sidecar <base_path>/quality-gate/step-result.json \
      --max-iter $MAX_ITER

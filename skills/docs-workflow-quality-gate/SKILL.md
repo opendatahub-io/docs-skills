@@ -106,13 +106,15 @@ Classifications:
 
 ### 4. Dispatch judge agents
 
-Dispatch **two agents in parallel** (both are independent reads of the same docs):
+Dispatch **both agents in a single message** so they run in parallel. These are independent reads of the same docs — there is no dependency between them. **Do NOT dispatch them in separate messages** — sequential dispatch adds unnecessary latency and has caused ~65s delays in observed runs.
+
+For each agent, pass the `schema` JSON object as the Agent tool's `schema` parameter. This forces the agent to return structured output via the StructuredOutput tool with automatic retry on schema mismatch. **Do NOT omit the schema parameter** — without it, agents return free-text that requires manual parsing and loses the retry-on-mismatch safety net.
 
 #### doc_quality agent
 
 - **Model**: opus
-- **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/dq-prompt.md` and use it as the agent prompt
-- **Schema**:
+- **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/dq-prompt.md` and follow the instructions exactly.
+- **Schema** (pass as the `schema` parameter to the Agent tool):
   ```json
   {
     "type": "object",
@@ -127,8 +129,8 @@ Dispatch **two agents in parallel** (both are independent reads of the same docs
 #### intent_alignment agent
 
 - **Model**: opus
-- **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/ia-prompt.md` and use it as the agent prompt
-- **Schema**:
+- **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/ia-prompt.md` and follow the instructions exactly.
+- **Schema** (pass as the `schema` parameter to the Agent tool):
   ```json
   {
     "type": "object",
@@ -156,7 +158,7 @@ Dispatch **two agents in parallel** (both are independent reads of the same docs
 
 ### 5. Write judge results
 
-After both agents return, write their structured outputs to `${BASE_PATH}/quality-gate/judge-results.json`:
+After both agents return, each agent's result is a structured JSON object (enforced by the `schema` parameter). Write the objects directly to `${BASE_PATH}/quality-gate/judge-results.json` — no manual parsing or score extraction needed:
 
 ```json
 {
@@ -164,6 +166,8 @@ After both agents return, write their structured outputs to `${BASE_PATH}/qualit
   "intent_alignment": { "score": <N>, "rationale": "<text>", "missed_items": [...] }
 }
 ```
+
+If an agent returns `null` (skipped or died), mark the quality gate as `failed` — do not substitute default scores.
 
 ### 6. Classify gaps and write step-result.json
 
