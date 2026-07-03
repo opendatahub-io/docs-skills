@@ -164,11 +164,17 @@ After both agents return, write their structured outputs to `${BASE_PATH}/qualit
 
 ### 6. Classify gaps and write step-result.json
 
+Determine the iteration number: count existing `feedback-brief-*.md` files in `${BASE_PATH}/quality-gate/`. If none exist, this is iteration 1. Otherwise, iteration = count + 1.
+
+Determine whether code evidence was expected: check if `${BASE_PATH}/scope-req-audit/` or `${BASE_PATH}/validate/` exists as a directory. If either exists, add `--evidence-expected` to the command.
+
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py classify \
   --ticket "${TICKET}" \
   --base-path "${BASE_PATH}" \
-  --judge-results "${BASE_PATH}/quality-gate/judge-results.json"
+  --judge-results "${BASE_PATH}/quality-gate/judge-results.json" \
+  --iteration <N> \
+  [--evidence-expected]
 ```
 
 The script:
@@ -253,6 +259,8 @@ Report the scores and pass/fail status:
   "intent_alignment": 4,
   "passed": false,
   "iteration": 1,
+  "evidence_expected": true,
+  "evidence_warning": null,
   "coverage_check": {
     "total": 12,
     "covered": 9,

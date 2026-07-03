@@ -278,11 +278,9 @@ def classify_gaps(missed_items, evidence_status):
             "judge": "intent_alignment",
             "evidence_status": ev_status,
             "action": action,
+            "file": item.get("file") or None,
+            "section": item.get("section") or None,
         }
-        if item.get("file"):
-            gap["file"] = item["file"]
-        if item.get("section"):
-            gap["section"] = item["section"]
         gaps.append(gap)
 
     return gaps
@@ -386,12 +384,15 @@ def write_results(
             "intent_alignment": intent_result.get("rationale", ""),
         },
     }
-    if coverage_check is not None:
-        sidecar["coverage_check"] = {
+    sidecar["coverage_check"] = (
+        {
             "total": coverage_check["total"],
             "covered": coverage_check["covered"],
             "uncovered": coverage_check["uncovered"],
         }
+        if coverage_check is not None
+        else None
+    )
     (output_dir / "step-result.json").write_text(json.dumps(sidecar, indent=2))
 
     md_lines = [
@@ -714,6 +715,8 @@ def cmd_classify(args):
                         "evidence_status": item["evidence_status"],
                         "action": item["action"],
                         "classification": item["classification"],
+                        "file": None,
+                        "section": None,
                     }
                 )
 
