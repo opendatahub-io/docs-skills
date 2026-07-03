@@ -1,6 +1,6 @@
 workflow:
   name: docs-workflow
-  description: Multi-stage documentation workflow for a JIRA ticket. Requirements analysis, code-learner analysis, scope audit, optional PR analysis, planning, writing, technical review, style review, and security review. Source repo discovery is attempted automatically; if no repo is found, source-dependent steps are skipped unless --no-source-repo is passed to skip source resolution entirely.
+  description: Multi-stage documentation workflow for a JIRA ticket. Requirements analysis, code-learner analysis, optional PR analysis, planning, writing, technical review, style review, security review, and quality gate. Source repo discovery is attempted automatically; if no repo is found, source-dependent steps are skipped unless --no-source-repo is passed to skip source resolution entirely.
 
   # All step outputs go to: .agent_workspace/<ticket>/<step-name>/
   # Each step reads its inputs from upstream step folders by convention.
@@ -15,12 +15,6 @@ workflow:
       when: has_source_repo
       inputs: [requirements]
 
-    - name: scope-req-audit
-      skill: docs-workflow-scope-req-audit
-      description: Classify requirements by code evidence status
-      when: has_source_repo
-      inputs: [requirements, code-analysis]
-
     - name: pr-analysis
       skill: docs-workflow-pr-analysis
       description: Analyze PR/MR changes for documentation context
@@ -30,7 +24,7 @@ workflow:
     - name: planning
       skill: docs-workflow-planning
       description: Create documentation plan
-      inputs: [requirements, code-analysis, pr-analysis, scope-req-audit]
+      inputs: [requirements, code-analysis, pr-analysis]
 
     - name: writing
       skill: docs-workflow-writing
@@ -54,9 +48,8 @@ workflow:
 
     - name: quality-gate
       skill: docs-workflow-quality-gate
-      description: Score documentation quality and intent alignment
-      when: has_many_requirements
-      inputs: [writing, requirements, scope-req-audit]
+      description: Score documentation intent alignment and classify coverage gaps
+      inputs: [writing, requirements, code-analysis]
 
     - name: create-merge-request
       skill: docs-workflow-create-merge-request

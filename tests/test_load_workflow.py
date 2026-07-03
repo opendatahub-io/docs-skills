@@ -132,7 +132,7 @@ class TestLoad:
         status = {s["name"]: s["status"] for s in result["steps"]}
         assert status["requirements"] == "pending"  # no when
         assert status["code-analysis"] == "deferred"  # has_source_repo, unresolved
-        assert status["quality-gate"] == "deferred"  # has_many_requirements
+        assert status["quality-gate"] == "pending"  # no when — always runs
         assert status["create-merge-request"] == "skipped"  # flag off
         assert status["pipeline-diagnostics"] == "pending"
 
