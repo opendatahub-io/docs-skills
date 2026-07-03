@@ -97,7 +97,8 @@ All sidecars share these fields:
   "module_count": 12,
   "relationship_count": 8,
   "languages_detected": ["go", "python"],
-  "repo_path": "/home/user/docs-repo/.agent_workspace/proj-123/code-repo/my-project"
+  "repo_path": "/home/user/docs-repo/.agent_workspace/proj-123/code-repo/my-project",
+  "repo_analysis_path": "/home/user/docs-repo/.agent_workspace/my-project"
 }
 ```
 
@@ -107,6 +108,7 @@ All sidecars share these fields:
 | `relationship_count` | integer | Number of cross-module relationships discovered | Informational (orchestrator summary) |
 | `languages_detected` | string[] | Programming languages found in the repo | Informational |
 | `repo_path` | string | Absolute path to the analyzed source repository | Informational |
+| `repo_analysis_path` | string | Absolute path to the learn-code analysis directory (contains detection/, module-registry/, module-analysis/, relationships/, synthesis/) | Orchestrator — recorded in progress file for downstream steps |
 
 ### pr-analysis
 

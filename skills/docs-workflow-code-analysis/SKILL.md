@@ -46,18 +46,13 @@ if [[ -z "$LEARN_CODE_ONBOARDING" ]]; then
 fi
 ```
 
-If an `ONBOARDING.md` is found at either location, the analysis was already completed. Locate the corresponding base directory (the parent of `synthesis/`) and copy cached results to `--output-dir`:
+If an `ONBOARDING.md` is found at either location, the analysis was already completed. Locate the corresponding base directory (the parent of `synthesis/`) and copy the onboarding guide to `--output-dir`. All other analysis files stay at the cached location — downstream agents read them from there directly.
 
 ```bash
 # Find the learn-code base directory containing the cached analysis
 LEARN_CODE_BASE="$(dirname "$(dirname "$LEARN_CODE_ONBOARDING")")"
 
 cp "${LEARN_CODE_BASE}/synthesis/ONBOARDING.md" "${OUTPUT_DIR}/"
-cp "${LEARN_CODE_BASE}/detection/detection.json" "${OUTPUT_DIR}/detection.json" 2>/dev/null
-cp "${LEARN_CODE_BASE}/module-registry/registry.json" "${OUTPUT_DIR}/registry.json" 2>/dev/null
-mkdir -p "${OUTPUT_DIR}/summaries" "${OUTPUT_DIR}/relationships"
-cp "${LEARN_CODE_BASE}/module-analysis/"*.json "${OUTPUT_DIR}/summaries/" 2>/dev/null
-cp "${LEARN_CODE_BASE}/relationships/"*.json "${OUTPUT_DIR}/relationships/" 2>/dev/null
 ```
 
 Skip to step 4.
@@ -96,22 +91,17 @@ fi
 LEARN_CODE_BASE="$(dirname "$(dirname "$LEARN_CODE_ONBOARDING")")"
 
 cp "${LEARN_CODE_BASE}/synthesis/ONBOARDING.md" "${OUTPUT_DIR}/"
-cp "${LEARN_CODE_BASE}/detection/detection.json" "${OUTPUT_DIR}/detection.json" 2>/dev/null
-cp "${LEARN_CODE_BASE}/module-registry/registry.json" "${OUTPUT_DIR}/registry.json" 2>/dev/null
-mkdir -p "${OUTPUT_DIR}/summaries" "${OUTPUT_DIR}/relationships"
-cp "${LEARN_CODE_BASE}/module-analysis/"*.json "${OUTPUT_DIR}/summaries/" 2>/dev/null
-cp "${LEARN_CODE_BASE}/relationships/"*.json "${OUTPUT_DIR}/relationships/" 2>/dev/null
 ```
 
 If `ONBOARDING.md` is not found at either location after the agent completes, mark the step as `failed` and report the error.
 
 ### 4. Write step-result.json
 
-Extract metrics from the copied analysis files:
+Extract metrics from the analysis files at `LEARN_CODE_BASE` (not from `OUTPUT_DIR` — analysis files are not copied):
 
-- **module_count**: `registry.json` is a JSON **array** — the count is its length (e.g. `len(json.load(f))` or `jq length`).
-- **relationship_count**: count of `.json` files in `relationships/`.
-- **languages_detected**: read `detection.json` (a JSON object) — use the keys of `language_counts`, or fall back to `primary_language` as a single-element list.
+- **module_count**: `${LEARN_CODE_BASE}/module-registry/registry.json` is a JSON **array** — the count is its length (e.g. `len(json.load(f))` or `jq length`).
+- **relationship_count**: count of `.json` files in `${LEARN_CODE_BASE}/relationships/`.
+- **languages_detected**: read `${LEARN_CODE_BASE}/detection/detection.json` (a JSON object) — use the keys of `language_counts`, or fall back to `primary_language` as a single-element list.
 
 Write the sidecar:
 
@@ -124,7 +114,8 @@ Write the sidecar:
   "module_count": "<length of registry.json array>",
   "relationship_count": "<count of .json files in relationships/>",
   "languages_detected": ["<keys from detection.json language_counts>"],
-  "repo_path": "<absolute path to repo>"
+  "repo_path": "<absolute path to repo>",
+  "repo_analysis_path": "<absolute path to LEARN_CODE_BASE>"
 }
 ```
 

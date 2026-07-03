@@ -13,6 +13,7 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 - Log: `"Code analysis completed: N modules, N relationships, languages: <languages_detected>"`
 - Record `repo_path` from the sidecar for downstream steps
+- Record `repo_analysis_path` from the sidecar. This is the canonical location of learn-code analysis data. Downstream steps that need analysis files (scope-req-audit, tech-review) can use this path directly rather than re-deriving it
 - **Multi-repo code analysis**: If `options.additional_sources` is non-empty, run code-analysis for each additional repo sequentially. For each additional source entry (indexed starting at 1):
   1. Derive the repo name: `basename(additional_source.repo_path)`
   2. Invoke the code-analysis step skill with a custom output dir that includes the index to avoid name collisions:
