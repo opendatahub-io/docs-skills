@@ -69,6 +69,15 @@ tests/eval/                     Tests for the diagnostics judges + pipeline_diag
 
 Reading `doc_quality`, `intent_alignment`, and `reference_comparison` together is the point: high quality + low intent = well-written but off-target; high intent + low reference = addresses the ticket but diverges from the human approach; all three high = near production-ready.
 
+### Relationship to the quality gate
+
+The `doc_quality` and `intent_alignment` judges here are the **same judges the in-pipeline quality gate uses** (`skills/docs-workflow-quality-gate`). That is deliberate: the eval is the instrument for measuring and calibrating the gate offline, not just a parallel scorer. Two known weaknesses of the gate are directly addressable by this harness:
+
+- **Single-judge boundary noise.** The gate's pass/fail pivots on one Opus `intent_alignment` score at the 3/4 cut (`passed = ia_score >= 4`), where LLM scoring variance is highest. Running the eval's 8 baselines repeatedly gives us the score spread around that boundary — turning "the gate might be noisy" into a measured number we can drive down. Judge-variance measurement is an explicit intended use of the harness, not a side effect.
+- **No gold-standard anchor.** The gate has no comparison to human output. The eval's `reference_comparison` supplies one, so gate pass/fail can be **calibration-checked** against it: if the gate passes docs that score low against the human MR, the threshold is miscalibrated. The 8 human-anchored cases exist partly to enable exactly this cross-check.
+
+A later opportunity (not in the four phases below): the gate's deterministic, quote-grounded **per-AC coverage check** could be lifted into the eval as a `check`/`module` judge — a more verifiable intent signal than a raw LLM score. Noted here so the design leaves room for it; it is out of scope for the initial build.
+
 ### Dataset
 
 Eight human-anchored cases, one JIRA ticket each. Every kept case pins `docs_repo.sha` to the **pre-merge state** of a real tech-writer MR, so the pipeline starts from the same point the human did — a fair head-to-head. Gold-standard AsciiDoc is extracted on demand from the merged MR (not committed).
