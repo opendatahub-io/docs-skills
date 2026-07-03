@@ -54,11 +54,20 @@ def main() -> int:
 
     output_dir = Path(args.output_dir)
 
-    # Collect verdicts from every batch file, keyed by claim_id.
+    # Derive expected verdict files from the batch-claims files that
+    # split_claims wrote for THIS run (plus the carryover from
+    # incremental_claims). Stale verdict files from prior runs are skipped.
+    expected_names = {"batch-verdict-carryover.json"}
+    for claims_file in output_dir.glob("batch-claims-*.json"):
+        expected_names.add(claims_file.name.replace("batch-claims-", "batch-verdict-"))
+
     verdict_map: dict[str, dict] = {}
     batch_files = sorted(output_dir.glob("batch-verdict-*.json"))
     loaded_count = 0
     for batch_file in batch_files:
+        if batch_file.name not in expected_names:
+            print(f"Skipping stale verdict file: {batch_file.name}", file=sys.stderr)
+            continue
         data = load_json(batch_file)
         if not isinstance(data, list):
             continue

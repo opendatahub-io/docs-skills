@@ -84,6 +84,9 @@ def main() -> int:
 
     by_file: dict[str, list] = {}
     for claim in claims:
+        if not isinstance(claim, dict):
+            print("ERROR: claims list entries must be JSON objects.", file=sys.stderr)
+            return 1
         doc = claim.get("file", "unknown")
         by_file.setdefault(doc, []).append(claim)
 

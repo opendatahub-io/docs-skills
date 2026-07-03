@@ -65,6 +65,8 @@ def main() -> int:
     prior_map = {}
     if isinstance(prior, dict):
         for claim in prior.get("claims", []):
+            if not isinstance(claim, dict):
+                continue
             key = (claim.get("file", ""), normalize(claim.get("text", "")))
             prior_map[key] = {
                 "verdict": claim.get("verdict", "no_evidence_found"),
@@ -74,6 +76,8 @@ def main() -> int:
     carryover = []
     to_validate = []
     for claim in claims:
+        if not isinstance(claim, dict):
+            continue
         key = (claim.get("file", ""), normalize(claim.get("text", "")))
         match = prior_map.get(key)
         if match is not None:

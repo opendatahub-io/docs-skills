@@ -254,6 +254,8 @@ def classify_gaps(missed_items, evidence_status):
                 reqs_by_title[title_lower] = req
 
     for item in missed_items:
+        if not isinstance(item, dict):
+            continue
         ac_text = item.get("ac_item", "")
         ac_lower = ac_text.lower()
         req_id = item.get("id", "")
