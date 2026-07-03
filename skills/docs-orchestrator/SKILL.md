@@ -207,13 +207,17 @@ Both methods bypass `resolve_source.py` entirely. Use for repos you've already c
 
 ## Technical review iteration
 
-Loop up to 2 iterations (one review, one fix-and-confirm). The loop decision — the confidence/severity/iteration rules — is owned by `iteration_decision.py`; do NOT evaluate it by hand.
+Loop up to N iterations. The default `--max-iter` is 2. When the writing step produced more than 5 files (check `steps.writing.result.files` array length in the progress file), pass `--max-iter 3` to allow an additional fix-and-confirm pass for larger changes. The loop decision — the confidence/severity/iteration rules — is owned by `iteration_decision.py`; do NOT evaluate it by hand.
 
 1. Invoke `docs-workflow-tech-review`. It writes `technical-review/step-result.json` (confidence, severity counts, auto-incremented iteration). Update `steps.technical-review.result` from the sidecar
 2. Get the decision, then act on it:
    ```bash
+   FILE_COUNT=$(python3 -c "import json; d=json.load(open('<progress_file>')); print(len(d.get('steps',{}).get('writing',{}).get('result',{}).get('files',[])))")
+   MAX_ITER=$( [ "$FILE_COUNT" -gt 5 ] 2>/dev/null && echo 3 || echo 2 )
+
    python3 ${CLAUDE_SKILL_DIR}/scripts/iteration_decision.py tech-review \
-     --sidecar <base_path>/technical-review/step-result.json
+     --sidecar <base_path>/technical-review/step-result.json \
+     --max-iter $MAX_ITER
    ```
    - `done` → proceed to the next step
    - `fix` → run the fix-and-confirm pass (step 3), then return to step 2
@@ -227,13 +231,17 @@ Loop up to 2 iterations (one review, one fix-and-confirm). The loop decision —
 
 ## Quality gate iteration
 
-Loop up to 2 iterations. The loop decision — the `intent_alignment` thresholds — is owned by `iteration_decision.py`; do NOT evaluate it by hand.
+Loop up to N iterations (same dynamic `--max-iter` as tech-review — 2 by default, 3 when writing produced >5 files). The loop decision — the `intent_alignment` thresholds — is owned by `iteration_decision.py`; do NOT evaluate it by hand.
 
 1. Invoke `docs-workflow-quality-gate`. It writes `quality-gate/step-result.json` (`doc_quality`, `intent_alignment`, `passed`, `iteration`) and, when not passing, `feedback-brief-<iteration>.md` — stop if the sidecar is missing or incomplete
 2. Get the decision, then act on it:
    ```bash
+   FILE_COUNT=$(python3 -c "import json; d=json.load(open('<progress_file>')); print(len(d.get('steps',{}).get('writing',{}).get('result',{}).get('files',[])))")
+   MAX_ITER=$( [ "$FILE_COUNT" -gt 5 ] 2>/dev/null && echo 3 || echo 2 )
+
    python3 ${CLAUDE_SKILL_DIR}/scripts/iteration_decision.py quality-gate \
-     --sidecar <base_path>/quality-gate/step-result.json
+     --sidecar <base_path>/quality-gate/step-result.json \
+     --max-iter $MAX_ITER
    ```
    - `done` → proceed (if `secondary_warning` is set, emit it — `doc_quality < 4`, manual review recommended)
    - `fix` → fix via `docs-workflow-writing --fix-from <base_path>/quality-gate/feedback-brief-<iteration>.md` (verify the file exists first; pass all `--repo` flags), then re-run the quality gate (return to step 1)
