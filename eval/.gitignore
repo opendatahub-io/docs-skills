@@ -1,0 +1,6 @@
+# Generated / cached artifacts — never commit
+.docs-repo-cache/
+cases/*/.docs-worktree/
+cases/*/reference/
+cases/*/.output/
+runs/
