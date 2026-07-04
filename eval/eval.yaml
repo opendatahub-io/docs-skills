@@ -121,6 +121,57 @@ judges:
       model: claude-opus-4-6
       threshold: 3
 
+  - name: doc_quality
+    description: Is the documentation well-written, accurate, and well-structured (1-5)?
+    prompt: |
+      You are evaluating AI-generated AsciiDoc documentation for a Red Hat product feature.
+
+      Score the documentation on a 1-5 scale:
+      1 - Unusable: major errors, fabricated content, or missing critical sections
+      2 - Poor: significant gaps in coverage or accuracy
+      3 - Acceptable: covers the basics correctly but lacks depth or polish
+      4 - Good: comprehensive, accurate, well-structured, minor issues only
+      5 - Excellent: production-ready quality, matches a senior tech writer
+
+      Consider: technical accuracy, completeness relative to the JIRA ticket scope,
+      modular documentation structure (concept/procedure/reference separation),
+      and absence of fabricated commands, flags, or API details.
+
+      ## Documentation to evaluate
+      {% for path, content in outputs.files.items() if path.startswith('.output/writing/') and path.endswith('.adoc') %}
+      ### {{ path }}
+      {{ content }}
+      {% endfor %}
+
+  - name: reference_comparison
+    description: How closely does the output match the human gold standard (1-5)?
+    module: eval.scripts.reference_judge
+    function: judge
+    arguments:
+      model: claude-opus-4-6
+
+  - name: intent_alignment
+    description: Does the output fulfill the JIRA ticket's intent (1-5)?
+    if: "annotations"
+    prompt: |
+      You are evaluating whether AI-generated documentation fulfills the intent
+      of the original JIRA ticket that requested it.
+
+      ## JIRA ticket intent
+      {{ annotations }}
+
+      ## Documentation produced
+      {% for path, content in outputs.files.items() if path.startswith('.output/writing/') and path.endswith('.adoc') %}
+      ### {{ path }}
+      {{ content }}
+      {% endfor %}
+
+      ## Scoring criteria (1-5)
+      1 - Off-target  2 - Partially relevant  3 - Addresses the intent, misses some AC
+      4 - Strong alignment (most AC, correct audience)  5 - Full alignment (all AC, in scope)
+
+      Consider scope match, acceptance-criteria coverage, audience alignment, and focus.
+
 thresholds:
   files_exist: { min_pass_rate: 1.0 }
   step_results_valid: { min_pass_rate: 1.0 }
@@ -131,3 +182,5 @@ thresholds:
   review_quality: { min_mean: 3.0 }
   validation_quality: { min_mean: 3.0 }
   planning_fidelity: { min_mean: 3.0 }
+  doc_quality: { min_mean: 3.0 }
+  intent_alignment: { min_mean: 3.0 }
