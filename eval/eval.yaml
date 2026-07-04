@@ -172,6 +172,10 @@ judges:
 
       Consider scope match, acceptance-criteria coverage, audience alignment, and focus.
 
+  - name: pairwise
+    description: Head-to-head comparison against a baseline run (only with --baseline).
+    prompt_file: eval/config/pairwise-judge.md
+
 thresholds:
   files_exist: { min_pass_rate: 1.0 }
   step_results_valid: { min_pass_rate: 1.0 }
