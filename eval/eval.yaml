@@ -99,8 +99,35 @@ judges:
     arguments:
       max_cost_usd: 50.0
 
+  - name: pipeline_health
+    module: eval.scripts.diagnostics_judge
+    function: pipeline_health
+  - name: evidence_quality
+    module: eval.scripts.diagnostics_judge
+    function: evidence_quality
+  - name: review_quality
+    module: eval.scripts.diagnostics_judge
+    function: review_quality
+  - name: validation_quality
+    module: eval.scripts.diagnostics_judge
+    function: validation_quality
+  - name: planning_fidelity
+    module: eval.scripts.diagnostics_judge
+    function: planning_fidelity
+  - name: diagnostics_reflection
+    module: eval.scripts.diagnostics_judge
+    function: diagnostics_reflection
+    arguments:
+      model: claude-opus-4-6
+      threshold: 3
+
 thresholds:
   files_exist: { min_pass_rate: 1.0 }
   step_results_valid: { min_pass_rate: 1.0 }
   pipeline_complete: { min_pass_rate: 1.0 }
   budget_check: { min_pass_rate: 1.0 }
+  pipeline_health: { min_mean: 3.0 }
+  evidence_quality: { min_mean: 3.0 }
+  review_quality: { min_mean: 3.0 }
+  validation_quality: { min_mean: 3.0 }
+  planning_fidelity: { min_mean: 3.0 }
