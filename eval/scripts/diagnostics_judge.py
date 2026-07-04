@@ -20,7 +20,12 @@ import statistics
 import sys
 from pathlib import Path
 
-_PD_DIR = Path(__file__).resolve().parents[2] / "skills" / "docs-workflow-pipeline-diagnostics" / "scripts"
+_PD_DIR = (
+    Path(__file__).resolve().parents[2]
+    / "skills"
+    / "docs-workflow-pipeline-diagnostics"
+    / "scripts"
+)
 if str(_PD_DIR) not in sys.path:
     sys.path.insert(0, str(_PD_DIR))
 
