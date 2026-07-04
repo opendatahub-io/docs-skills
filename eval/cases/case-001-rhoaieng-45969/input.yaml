@@ -1,0 +1,15 @@
+ticket: RHOAIENG-45969
+source_repo:
+  url: https://github.com/opendatahub-io/kubeflow
+  sha: a6c3778f8c25ad19f8f719b80be98d8dd093703b
+source_repo_url: https://github.com/opendatahub-io/kubeflow
+workflow: docs-workflow
+options:
+  format: adoc
+ground_truth:
+  tier: gold-standard
+  source: GitLab MR 2664, authored by Matteo Mortari
+docs_repo:
+  url: https://gitlab.cee.redhat.com/documentation-red-hat-openshift-data-science-documentation/openshift-ai-documentation.git
+  sha: 4dc514d53003a3218a981063b795c9b03abf1296
+  branch: main
