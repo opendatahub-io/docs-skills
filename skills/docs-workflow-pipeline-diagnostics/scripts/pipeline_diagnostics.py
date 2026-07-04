@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 
 BYTES_PER_TOKEN = 4
 DEFAULT_CONTEXT_WINDOW = 200_000
+REQUIRED_PROGRESS_FIELDS = ["ticket", "step_order", "steps", "status"]
 
 
 def parse_iso(ts: str | None) -> datetime | None:
@@ -515,6 +516,7 @@ def detect_failures(
     step_order: list[str],
     steps: dict,
     base_path: str,
+    progress: dict | None = None,
 ) -> list[dict]:
     """Identify failed steps, missing outputs, and anomalies."""
     issues = []
@@ -530,6 +532,19 @@ def detect_failures(
                     "step": name,
                     "severity": "high",
                     "detail": f"Step '{name}' has status 'failed' in progress file",
+                }
+            )
+
+        if progress is not None and status == "in_progress":
+            issues.append(
+                {
+                    "type": "step_stuck",
+                    "step": name,
+                    "severity": "high",
+                    "detail": (
+                        f"Step '{name}' is still in_progress"
+                        " — suggests agent crash or context compaction mid-step"
+                    ),
                 }
             )
 
@@ -557,6 +572,19 @@ def detect_failures(
                         "step": name,
                         "severity": "low",
                         "detail": f"Step '{name}' has no step-result.json sidecar",
+                    }
+                )
+
+            if progress is not None and info.get("result") is None:
+                issues.append(
+                    {
+                        "type": "null_result",
+                        "step": name,
+                        "severity": "medium",
+                        "detail": (
+                            f"Step '{name}' completed but result is null"
+                            " — downstream steps lose structured context"
+                        ),
                     }
                 )
 
@@ -642,6 +670,54 @@ def detect_failures(
                 "detail": "Writing step completed but produced 0 files",
             }
         )
+
+    # Orchestrator-level checks (require full progress dict)
+    if progress is not None:
+        missing_fields = [f for f in REQUIRED_PROGRESS_FIELDS if f not in progress]
+        if missing_fields:
+            issues.append(
+                {
+                    "type": "schema_drift",
+                    "step": None,
+                    "severity": "high",
+                    "detail": (
+                        f"Progress file missing required fields: {', '.join(missing_fields)}"
+                    ),
+                }
+            )
+
+        steps_in_order = set(step_order)
+        steps_in_dict = set(steps.keys())
+        orphaned = steps_in_dict - steps_in_order
+        if orphaned:
+            issues.append(
+                {
+                    "type": "step_order_mismatch",
+                    "step": None,
+                    "severity": "medium",
+                    "detail": (
+                        "Steps in progress dict but not in step_order: "
+                        f"{', '.join(sorted(orphaned))}"
+                    ),
+                }
+            )
+
+        workflow_status = progress.get("status", "unknown")
+        if workflow_status == "completed" and base_path:
+            workspace_root = os.path.dirname(base_path)
+            marker = os.path.join(workspace_root, ".active-workflow")
+            if os.path.isfile(marker):
+                issues.append(
+                    {
+                        "type": "active_workflow_marker",
+                        "step": None,
+                        "severity": "low",
+                        "detail": (
+                            ".active-workflow marker still present after workflow completed"
+                            " — will block future sessions"
+                        ),
+                    }
+                )
 
     return issues
 

@@ -440,6 +440,72 @@ class TestDetectFailures:
         assert "empty_plan" in types
         assert "step_deferred" in types
 
+    def test_progress_gated_checks_absent_without_progress(self, tmp_path):
+        # 3-arg call: new checks must NOT fire even with in_progress / null result
+        steps = {
+            "requirements": {"status": "in_progress"},
+            "planning": {"status": "completed"},  # no 'result' key -> null result
+        }
+        _make_step_dir(str(tmp_path), "planning", sidecar={"schema_version": 1, "step": "planning"})
+        failures = detect_failures(STEP_ORDER, steps, str(tmp_path))
+        types = {f["type"] for f in failures}
+        assert "step_stuck" not in types
+        assert "null_result" not in types
+
+    def test_step_stuck_when_progress_passed(self, tmp_path):
+        steps = {"writing": {"status": "in_progress"}}
+        failures = detect_failures(STEP_ORDER, steps, str(tmp_path), progress={"status": "running"})
+        stuck = [f for f in failures if f["type"] == "step_stuck"]
+        assert len(stuck) == 1
+        assert stuck[0]["severity"] == "high"
+
+    def test_null_result_when_progress_passed(self, tmp_path):
+        steps = {"planning": {"status": "completed"}}  # no 'result'
+        _make_step_dir(str(tmp_path), "planning", sidecar={"schema_version": 1, "step": "planning"})
+        failures = detect_failures(STEP_ORDER, steps, str(tmp_path), progress={"status": "running"})
+        nulls = [f for f in failures if f["type"] == "null_result"]
+        assert len(nulls) == 1
+        assert nulls[0]["severity"] == "medium"
+
+    def test_schema_drift_on_missing_progress_fields(self, tmp_path):
+        steps = {"requirements": _completed_step(result={"ok": 1})}
+        _make_step_dir(
+            str(tmp_path), "requirements", sidecar={"schema_version": 1, "step": "requirements"}
+        )
+        # progress missing 'ticket' and 'step_order'
+        failures = detect_failures(
+            STEP_ORDER, steps, str(tmp_path), progress={"steps": steps, "status": "running"}
+        )
+        drift = [f for f in failures if f["type"] == "schema_drift"]
+        assert len(drift) == 1
+        assert "ticket" in drift[0]["detail"]
+
+    def test_step_order_mismatch_for_orphaned_step(self, tmp_path):
+        steps = {
+            "requirements": _completed_step(result={"ok": 1}),
+            "ghost-step": _completed_step(result={"ok": 1}),
+        }
+        _make_step_dir(
+            str(tmp_path), "requirements", sidecar={"schema_version": 1, "step": "requirements"}
+        )
+        _make_step_dir(
+            str(tmp_path), "ghost-step", sidecar={"schema_version": 1, "step": "ghost-step"}
+        )
+        failures = detect_failures(
+            STEP_ORDER,
+            steps,
+            str(tmp_path),
+            progress={
+                "ticket": "X",
+                "step_order": STEP_ORDER,
+                "steps": steps,
+                "status": "running",
+            },
+        )
+        mism = [f for f in failures if f["type"] == "step_order_mismatch"]
+        assert len(mism) == 1
+        assert "ghost-step" in mism[0]["detail"]
+
 
 # ── detect_bottlenecks ───────────────────────────────────────────────────────
 
