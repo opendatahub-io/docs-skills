@@ -1191,3 +1191,32 @@ class TestDerivePipelineStatus:
         order = ["writing", "missing-step"]
         result = derive_pipeline_status(steps, order, "in_progress")
         assert result == "in_progress"
+
+
+def _write_kb(path, kb):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("x" * int(kb * 1024))
+
+
+def test_context_pressure_reports_token_estimate(tmp_path):
+    import pipeline_diagnostics as pd
+
+    # 8 KB of writing artifacts -> 8*1024/4 = 2048 tokens at 4 bytes/token
+    _write_kb(tmp_path / "writing" / "a.adoc", 8)
+    steps = {"writing": {"status": "completed"}}
+    cp = pd.estimate_context_pressure(["writing"], steps, str(tmp_path))
+    assert cp["total_estimated_tokens"] == 2048
+    assert cp["per_step_estimated_tokens"]["writing"] == 2048
+    assert cp["context_window"] == 200_000
+    assert cp["context_window_pct"] == round(2048 / 200_000 * 100, 1)
+
+
+def test_context_pressure_flags_high_window_fill(tmp_path):
+    import pipeline_diagnostics as pd
+
+    # ~600 KB -> ~153,600 tokens -> ~77% of a 200k window -> risk bump + factor
+    _write_kb(tmp_path / "writing" / "big.adoc", 600)
+    steps = {"writing": {"status": "completed"}}
+    cp = pd.estimate_context_pressure(["writing"], steps, str(tmp_path))
+    assert cp["context_window_pct"] >= 75
+    assert any("context window" in f.lower() for f in cp["risk_factors"])
