@@ -21,10 +21,10 @@ declare -A MR_MAP=(
 
 declare -A JIRA_MAP=(
   ["case-001-rhoaieng-45969"]="RHOAIENG-45969"
-  ["case-006-rhai-eng-2388"]="RHAI-ENG-2388"
-  ["case-007-rhai-eng-4485"]="RHAI-ENG-4485"
-  ["case-008-rhai-eng-2620"]="RHAI-ENG-2620"
-  ["case-009-rhai-eng-1550"]="RHAI-ENG-1550"
+  ["case-006-rhai-eng-2388"]="RHAIENG-2388"
+  ["case-007-rhai-eng-4485"]="RHAIENG-4485"
+  ["case-008-rhai-eng-2620"]="RHAIENG-2620"
+  ["case-009-rhai-eng-1550"]="RHAIENG-1550"
   ["case-010-rhaieng-653"]="RHAIENG-653"
   ["case-011-rhoaieng-16840"]="RHOAIENG-16840"
   ["case-012-rhoaieng-40664"]="RHOAIENG-40664"

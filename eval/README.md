@@ -2,7 +2,7 @@
 
 An evaluation suite that scores the `docs-skills:docs-orchestrator` pipeline end-to-end against a fixed set of human-authored baselines, so we can measure documentation quality, intent alignment, and pipeline health across changes to the skills, prompts, and models.
 
-Built on the [agent-eval-harness](https://github.com/opendatahub-io/agent-eval-harness) plugin (v1.20.0+). This repo supplies only the eval **config**, **dataset**, and a few **local judges/scripts** — the harness itself is an installed dependency, not vendored code.
+Built on the [agent-eval-harness](https://github.com/opendatahub-io/agent-eval-harness) plugin (v1.20.0). This repo supplies only the eval **config**, **dataset**, and a few **local judges/scripts** — the harness itself is an installed dependency, not vendored code.
 
 See [specs/eval-harness.md](../specs/eval-harness.md) for the full design.
 
