@@ -28,6 +28,7 @@ def main() -> int:
     parser.add_argument("ticket", help="JIRA ticket ID")
     parser.add_argument("--base-path", required=True, help="Base output path")
     parser.add_argument("--repo", action="append", default=[], help="Source repo path (repeatable)")
+    parser.add_argument("--iteration", type=int, default=1, help="Review iteration number (1-based)")
     args = parser.parse_args()
 
     base_path = os.path.abspath(args.base_path)
@@ -83,6 +84,7 @@ def main() -> int:
         "has_code_analysis": has_code_analysis,
         "source_files_block": source_files_block,
         "has_prior_validation": has_prior_validation,
+        "iteration": args.iteration,
     }
 
     json.dump(config, sys.stdout, indent=2)

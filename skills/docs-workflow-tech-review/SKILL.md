@@ -1,7 +1,7 @@
 ---
 name: docs-workflow-tech-review
 description: Technical accuracy review with optional code-learner claim validation. Iteration logic owned by the orchestrator.
-argument-hint: "<ticket> --base-path <path> [--repo <path>]..."
+argument-hint: "<ticket> --base-path <path> [--repo <path>]... [--iteration <N>]"
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, WebSearch, WebFetch
 ---
 
