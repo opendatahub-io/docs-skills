@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "AC item ID, e.g. REQ-001_AC00"
+          },
+          "covered": {
+            "type": "boolean",
+            "description": "Whether the AC item is addressed in the documentation"
+          },
+          "quote": {
+            "type": ["string", "null"],
+            "description": "Verbatim sentence from the documentation, or null if not covered"
+          }
+        },
+        "required": ["id", "covered", "quote"]
+      }
+    }
+  },
+  "required": ["items"]
+}

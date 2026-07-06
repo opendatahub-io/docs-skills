@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "score": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Quality score 1-5"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Detailed rationale for the score"
+    }
+  },
+  "required": ["score", "rationale"]
+}

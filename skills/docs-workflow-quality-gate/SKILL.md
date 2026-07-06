@@ -67,27 +67,7 @@ Dispatch **one** agent (a single Agent-tool call). Because there is one prompt a
 
 - **Model**: opus — match the judges. The cheap model produced literal-minded false negatives (e.g. reading "subsection" or "automatically detect" too narrowly), and with a single combined prompt the docs are read once, so the cost argument for a cheaper model no longer applies
 - **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/coverage-prompt.md` and follow the instructions
-- **Schema** (pass as the `schema` parameter to the Agent tool — same enforcement rationale as the judge agents; **do NOT omit**):
-  ```json
-  {
-    "type": "object",
-    "properties": {
-      "items": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "id": {"type": "string", "description": "AC item ID, e.g. REQ-001_AC00"},
-            "covered": {"type": "boolean", "description": "Whether the AC item is addressed in the documentation"},
-            "quote": {"type": ["string", "null"], "description": "Verbatim sentence from the documentation, or null if not covered"}
-          },
-          "required": ["id", "covered", "quote"]
-        }
-      }
-    },
-    "required": ["items"]
-  }
-  ```
+- **Schema**: Read `${CLAUDE_SKILL_DIR}/schema/coverage.json` and pass the parsed JSON object as the `schema` parameter to the Agent tool. **Do NOT omit** — without it, the agent returns free-text that requires manual parsing and loses the retry-on-mismatch safety net
 
 The agent returns a structured JSON object. Extract the `items` array and write it to `${BASE_PATH}/quality-gate/coverage-results.json`:
 
@@ -130,47 +110,13 @@ For each agent, pass the `schema` JSON object as the Agent tool's `schema` param
 
 - **Model**: opus
 - **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/dq-prompt.md` and follow the instructions exactly.
-- **Schema** (pass as the `schema` parameter to the Agent tool):
-  ```json
-  {
-    "type": "object",
-    "properties": {
-      "score": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Quality score 1-5"},
-      "rationale": {"type": "string", "description": "Detailed rationale for the score"}
-    },
-    "required": ["score", "rationale"]
-  }
-  ```
+- **Schema**: Read `${CLAUDE_SKILL_DIR}/schema/doc-quality.json` and pass the parsed JSON object as the `schema` parameter to the Agent tool
 
 #### intent_alignment agent
 
 - **Model**: opus
 - **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/ia-prompt.md` and follow the instructions exactly.
-- **Schema** (pass as the `schema` parameter to the Agent tool):
-  ```json
-  {
-    "type": "object",
-    "properties": {
-      "score": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Intent alignment score 1-5"},
-      "rationale": {"type": "string", "description": "Detailed rationale including per-AC-item coverage assessments"},
-      "missed_items": {
-        "type": "array",
-        "description": "AC items not adequately covered, with location for targeted fixes",
-        "items": {
-          "type": "object",
-          "properties": {
-            "ac_item": {"type": "string", "description": "The acceptance criteria item text"},
-            "severity": {"type": "string", "enum": ["missing", "incomplete"], "description": "Whether the item is entirely missing or partially covered"},
-            "file": {"type": "string", "description": "AsciiDoc filename where the fix should be applied (e.g., proc-deploying-model.adoc)"},
-            "section": {"type": "string", "description": "Section heading or location within the file where content should be added or expanded. For new sections, describe where to insert relative to existing sections"}
-          },
-          "required": ["ac_item", "severity", "file", "section"]
-        }
-      }
-    },
-    "required": ["score", "rationale", "missed_items"]
-  }
-  ```
+- **Schema**: Read `${CLAUDE_SKILL_DIR}/schema/intent-alignment.json` and pass the parsed JSON object as the `schema` parameter to the Agent tool
 
 ### 5. Write judge results
 

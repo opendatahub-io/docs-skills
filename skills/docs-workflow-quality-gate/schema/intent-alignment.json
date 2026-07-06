@@ -1,0 +1,43 @@
+{
+  "type": "object",
+  "properties": {
+    "score": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Intent alignment score 1-5"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Detailed rationale including per-AC-item coverage assessments"
+    },
+    "missed_items": {
+      "type": "array",
+      "description": "AC items not adequately covered, with location for targeted fixes",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ac_item": {
+            "type": "string",
+            "description": "The acceptance criteria item text"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["missing", "incomplete"],
+            "description": "Whether the item is entirely missing or partially covered"
+          },
+          "file": {
+            "type": "string",
+            "description": "AsciiDoc filename where the fix should be applied"
+          },
+          "section": {
+            "type": "string",
+            "description": "Section heading or location within the file where content should be added or expanded"
+          }
+        },
+        "required": ["ac_item", "severity", "file", "section"]
+      }
+    }
+  },
+  "required": ["score", "rationale", "missed_items"]
+}
