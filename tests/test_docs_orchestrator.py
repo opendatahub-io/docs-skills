@@ -1354,6 +1354,138 @@ class TestBuildStepArgsWritingMultiRepo:
         assert "--repo-path /docs" in args
 
 
+class TestStepDoneOverrideMarksInProgress:
+    """cmd_step_done must mark the action_override target step as in_progress."""
+
+    def _setup_progress(self, tmp_path, step_name, override_target, extra_progress=None):
+        """Create a minimal progress file with step_name in_progress."""
+        base = tmp_path / "workspace"
+        base.mkdir(parents=True)
+        workflow_dir = base / "workflow"
+        workflow_dir.mkdir()
+
+        progress = {
+            "workflow": "docs-workflow",
+            "ticket": "TEST-1",
+            "base_path": str(base),
+            "status": "in_progress",
+            "created_at": iso_now(),
+            "updated_at": iso_now(),
+            "options": {},
+            "step_order": [step_name, override_target],
+            "steps": {
+                step_name: {"status": "in_progress", "output": None, "result": None},
+                override_target: {"status": "pending", "output": None, "result": None},
+            },
+            "_step_skills": {
+                step_name: f"docs-workflow-{step_name}",
+                override_target: f"docs-workflow-{override_target}",
+            },
+        }
+        if extra_progress:
+            progress.update(extra_progress)
+
+        pfile = workflow_dir / "docs-workflow_test-1.json"
+        atomic_write_json(str(pfile), progress)
+
+        marker_path = marker_path_for(str(base))
+        atomic_write_json(
+            marker_path,
+            {
+                "ticket": "TEST-1",
+                "workflow": "docs-workflow",
+                "progress_file": str(pfile),
+            },
+        )
+
+        return base, pfile
+
+    def test_tech_review_fix_cycle_marks_writing_in_progress(self, tmp_path):
+        base, pfile = self._setup_progress(
+            tmp_path,
+            "technical-review",
+            "writing",
+            extra_progress={
+                "_step_skills": {
+                    "technical-review": "docs-workflow-tech-review",
+                    "writing": "docs-workflow-writing",
+                },
+            },
+        )
+        # Create a LOW-confidence tech-review sidecar to trigger fix cycle
+        tr_dir = base / "technical-review"
+        tr_dir.mkdir(exist_ok=True)
+        sidecar = {
+            "schema_version": 1,
+            "step": "technical-review",
+            "ticket": "TEST-1",
+            "completed_at": iso_now(),
+            "confidence": "LOW",
+            "severity_counts": {"critical": 1, "significant": 0, "minor": 0, "sme": 0},
+            "iteration": 1,
+            "code_grounded": False,
+        }
+        (tr_dir / "step-result.json").write_text(json.dumps(sidecar))
+
+        # Simulate what cmd_step_done does
+        progress = read_progress(str(pfile))
+        step_name = "technical-review"
+        options = progress.get("options", {})
+
+        progress["steps"][step_name]["output"] = str(tr_dir)
+        progress["steps"][step_name]["status"] = "completed"
+
+        pp_result = post_process(step_name, progress, str(base), options)
+        assert "action_override" in pp_result
+        override = pp_result["action_override"]
+        assert override["action"] == "run_skill"
+        assert override["step"] == "writing"
+
+        # The fix: mark target step in_progress before writing progress
+        target_step = override.get("step")
+        if target_step and target_step in progress["steps"]:
+            progress["steps"][target_step]["status"] = "in_progress"
+
+        write_progress(str(pfile), progress)
+
+        # Verify the writing step is now in_progress
+        saved = read_progress(str(pfile))
+        assert saved["steps"]["writing"]["status"] == "in_progress"
+
+    def test_writing_fix_cycle_marks_tech_review_in_progress(self, tmp_path):
+        base, pfile = self._setup_progress(
+            tmp_path,
+            "writing",
+            "technical-review",
+            extra_progress={
+                "_tech_review_fix_from": "/some/review.md",
+                "_step_skills": {
+                    "writing": "docs-workflow-writing",
+                    "technical-review": "docs-workflow-tech-review",
+                },
+            },
+        )
+        writing_dir = base / "writing"
+        writing_dir.mkdir(exist_ok=True)
+        sidecar = {"schema_version": 1, "step": "writing", "files": ["/a.adoc"]}
+        (writing_dir / "step-result.json").write_text(json.dumps(sidecar))
+
+        progress = read_progress(str(pfile))
+        progress["steps"]["writing"]["status"] = "completed"
+
+        pp_result = post_process("writing", progress, str(base), {})
+        assert pp_result["action_override"]["step"] == "technical-review"
+
+        target_step = pp_result["action_override"]["step"]
+        if target_step and target_step in progress["steps"]:
+            progress["steps"][target_step]["status"] = "in_progress"
+
+        write_progress(str(pfile), progress)
+
+        saved = read_progress(str(pfile))
+        assert saved["steps"]["technical-review"]["status"] == "in_progress"
+
+
 class TestBuildStepArgsScopeReqAudit:
     def test_includes_repo(self):
         opts = {"source": {"repo_path": "/repo"}}

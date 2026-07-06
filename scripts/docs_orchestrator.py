@@ -1549,6 +1549,9 @@ def cmd_step_done(args):
             return
 
         if override["action"] == "run_skill":
+            target_step = override.get("step")
+            if target_step and target_step in progress["steps"]:
+                progress["steps"][target_step]["status"] = "in_progress"
             write_progress(pfile, progress)
             override["warnings"] = all_warnings
             override["messages"] = all_messages
