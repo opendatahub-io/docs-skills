@@ -126,6 +126,26 @@ All `docs-workflow-*` step skills must write a `step-result.json` sidecar alongs
 - Every sidecar must include `schema_version`, `step`, `ticket`, and `completed_at`
 - Each step's full JSON Schema lives in the step skill's own `schema/` directory (e.g., `skills/docs-workflow-requirements/schema/requirements.json`)
 
+## Step schemas are mandatory
+
+Every `docs-workflow-*` step skill must have both an **input schema** and an **output schema** in its `schema/` directory:
+
+- **Output schema** (`<step-name>.json`): defines the `step-result.json` sidecar contract
+- **Input schema** (`<step-name>-input.json`): defines the CLI args contract — what `build_step_args()` produces and what the step expects to receive
+
+When adding or modifying a step, update both schemas. The full index is at `skills/docs-orchestrator/schema/step-result-schema.md`.
+
+## Orchestrator steps must have tests
+
+Every function in `scripts/docs_orchestrator.py` must have test coverage in `tests/test_docs_orchestrator.py`. This includes:
+
+- All post-processor functions (`_pp_*`)
+- All action constructors (`make_run_skill`, `make_complete`, `make_fail`)
+- All pure helpers (`build_step_args`, `evaluate_when`, `check_input_deps`, etc.)
+- All filesystem helpers (`atomic_write_json`, `read_sidecar`, `read/write_progress`, etc.)
+
+When adding or modifying an orchestrator function, add or update corresponding tests. Tests gate in CI via `.github/workflows/test.yml` — PRs with failing tests will not merge. Run `make test` locally before pushing.
+
 ## Authoring skills, agents, and plugins
 
 When creating or modifying skills, agents, hooks, or plugin components, follow the official Anthropic documentation. Do NOT rely on training data for schemas, frontmatter fields, or best practices — use WebFetch to consult the canonical docs.
