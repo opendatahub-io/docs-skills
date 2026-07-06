@@ -68,7 +68,7 @@ def _validate_ticket(ticket):
 
 
 def iso_now():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(timezone.utc).isoformat()
 
 
 def atomic_write_json(path, data):
@@ -423,7 +423,7 @@ def build_step_args(step_name, ticket, base_path, options, progress=None):
         if repo_path:
             parts.insert(1, f"--repo {repo_path}")
         else:
-            print("WARNING: pr-analysis step has no --repo; skill may fail", file=sys.stderr)
+            return None  # pr-analysis requires --repo
         return " ".join(parts)
 
     parts = [ticket, f"--base-path {base_path}"]
@@ -717,6 +717,9 @@ def _pp_writing(sidecar, progress, base_path, options):
                 "skipped": True,
                 "skip_reason": "no_files",
             }
+            sidecar_dir = os.path.join(base_path, "create-merge-request")
+            os.makedirs(sidecar_dir, exist_ok=True)
+            atomic_write_json(os.path.join(sidecar_dir, "step-result.json"), cm["result"])
             messages.append("Skipping create-merge-request: no files to commit")
 
     # Check if this was a fix cycle (tech review iteration)
@@ -1420,6 +1423,23 @@ def cmd_init(args):
 
     skill = yaml_steps_map[next_name]["skill"]
     step_args = build_step_args(next_name, ticket, base_path, options, progress)
+
+    if step_args is None:
+        print(f"WARNING: skipping step {next_name}: missing required arguments", file=sys.stderr)
+        progress["steps"][next_name]["status"] = "skipped"
+        write_progress(pfile, progress)
+        next_name, _ = find_next_step(progress)
+        if not next_name:
+            progress["status"] = "completed"
+            write_progress(pfile, progress)
+            delete_active_marker(base_path)
+            emit(make_complete(progress))
+            return
+        progress["steps"][next_name]["status"] = "in_progress"
+        write_progress(pfile, progress)
+        skill = yaml_steps_map[next_name]["skill"]
+        step_args = build_step_args(next_name, ticket, base_path, options, progress)
+
     completed = [n for n, s in progress["steps"].items() if s["status"] == "completed"]
 
     emit(
@@ -1563,6 +1583,23 @@ def cmd_step_done(args):
     skill = _get_step_skill(progress, next_name)
     step_args = build_step_args(next_name, ticket, base_path, options, progress)
 
+    if step_args is None:
+        print(f"WARNING: skipping step {next_name}: missing required arguments", file=sys.stderr)
+        progress["steps"][next_name]["status"] = "skipped"
+        write_progress(pfile, progress)
+        next_name, _ = find_next_step(progress)
+        if not next_name:
+            progress["status"] = "completed"
+            write_progress(pfile, progress)
+            delete_active_marker(base_path)
+            delete_stop_counter(pfile)
+            emit(make_complete(progress, warnings=all_warnings, messages=all_messages))
+            return
+        progress["steps"][next_name]["status"] = "in_progress"
+        write_progress(pfile, progress)
+        skill = _get_step_skill(progress, next_name)
+        step_args = build_step_args(next_name, ticket, base_path, options, progress)
+
     emit(
         make_run_skill(
             skill=skill,
@@ -1606,6 +1643,17 @@ def cmd_next(args):
 
     skill = _get_step_skill(progress, next_name)
     step_args = build_step_args(next_name, ticket, base_path, options, progress)
+
+    if step_args is None:
+        print(f"WARNING: skipping step {next_name}: missing required arguments", file=sys.stderr)
+        progress["steps"][next_name]["status"] = "skipped"
+        write_progress(pfile, progress)
+        next_name, _ = find_next_step(progress)
+        if not next_name:
+            emit(make_complete(progress))
+            return
+        skill = _get_step_skill(progress, next_name)
+        step_args = build_step_args(next_name, ticket, base_path, options, progress)
 
     emit(
         make_run_skill(

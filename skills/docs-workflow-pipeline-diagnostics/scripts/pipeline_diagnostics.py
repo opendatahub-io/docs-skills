@@ -119,7 +119,6 @@ CONTEXT_HEAVY_STEPS = {
     "technical-review": 1.8,
     "style-review": 0.8,
     "quality-gate": 1.0,
-    "resolve-feedback": 1.5,
 }
 
 
@@ -329,7 +328,7 @@ def build_timeline(
             prev_end = step_mtime
 
     # Detect iteration loops and compute combined durations.
-    # When steps run in a loop (quality-gate → resolve-feedback → quality-gate),
+    # When steps run in a loop (e.g. quality-gate iterating),
     # individual mtimes interleave and per-step durations are misleading.
     # We group them and compute the span from the preceding step's end to the
     # latest file mtime across all directories in the loop.
@@ -353,8 +352,8 @@ KNOWN_LOOPS = [
     {
         "name": "quality-gate-loop",
         "trigger": "quality-gate",
-        "members": ["quality-gate", "resolve-feedback"],
-        "label": "Quality gate + resolve-feedback loop",
+        "members": ["quality-gate"],
+        "label": "Quality gate loop",
     },
 ]
 
@@ -628,7 +627,6 @@ EXPECTED_DURATION_S = {
     "technical-review": 600,
     "style-review": 180,
     "quality-gate": 300,
-    "resolve-feedback": 300,
 }
 
 

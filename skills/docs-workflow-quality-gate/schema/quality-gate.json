@@ -35,15 +35,20 @@
       "description": "Warning message when evidence was expected but not found; null otherwise"
     },
     "coverage_check": {
-      "type": ["object", "null"],
-      "required": ["total", "covered", "uncovered"],
-      "properties": {
-        "total": { "type": "integer", "minimum": 0, "description": "Total acceptance criteria checked" },
-        "covered": { "type": "integer", "minimum": 0, "description": "AC items with verified quotes in the documentation" },
-        "uncovered": { "type": "integer", "minimum": 0, "description": "AC items not covered or with unverified quotes" }
-      },
-      "additionalProperties": false,
-      "description": "Per-AC quote-based coverage verification summary (null if no AC items found)"
+      "description": "Per-AC quote-based coverage verification summary (null if no AC items found)",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["total", "covered", "uncovered"],
+          "properties": {
+            "total": { "type": "integer", "minimum": 0, "description": "Total acceptance criteria checked" },
+            "covered": { "type": "integer", "minimum": 0, "description": "AC items with verified quotes in the documentation" },
+            "uncovered": { "type": "integer", "minimum": 0, "description": "AC items not covered or with unverified quotes" }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "gaps": {
       "type": "array",
@@ -72,7 +77,7 @@
           "classification": {
             "type": "string",
             "enum": ["covered", "real_defect", "correctly_absent", "unverified", "investigate"],
-            "description": "Present only on gaps sourced from the coverage check (judge == coverage_check)"
+            "description": "Classification of the gap. Present only when judge is coverage_check; absent for intent_alignment-sourced gaps. Consumers must guard with .get()."
           }
         },
         "additionalProperties": false

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jira-ready.json",
+  "title": "docs-workflow-jira-ready output",
+  "description": "Output contract for the docs-workflow-jira-ready skill.",
+  "type": "object",
+  "required": ["query", "total_matched", "filtered_out", "ready"],
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "The JQL query that was executed."
+    },
+    "total_matched": {
+      "type": "integer",
+      "description": "Total number of tickets matched by the query."
+    },
+    "filtered_out": {
+      "type": "integer",
+      "description": "Number of tickets filtered out (already processed)."
+    },
+    "ready": {
+      "type": "array",
+      "description": "Tickets that are ready for the docs workflow.",
+      "items": {
+        "type": "object",
+        "required": ["key", "summary", "status", "priority", "labels"],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Jira ticket key."
+          },
+          "summary": {
+            "type": "string",
+            "description": "Ticket summary."
+          },
+          "status": {
+            "type": "string",
+            "description": "Current ticket status."
+          },
+          "priority": {
+            "type": "string",
+            "description": "Ticket priority."
+          },
+          "labels": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Labels attached to the ticket."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "filtered": {
+      "type": "object",
+      "description": "Breakdown of filtered tickets keyed by ticket ID with the filter reason as value.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

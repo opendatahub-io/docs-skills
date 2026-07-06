@@ -20,11 +20,15 @@ All sidecars share these fields:
 | `schema_version` | integer | Always `1`. Bump when the schema changes incompatibly |
 | `step` | string | Step name matching the YAML step list (e.g., `"requirements"`) |
 | `ticket` | string | JIRA ticket ID as provided by the user (preserves original case) |
-| `completed_at` | string | ISO 8601 timestamp of when the step finished. **Must be obtained from** `date -u +%Y-%m-%dT%H:%M:%SZ` — do not estimate or round. Accurate timestamps are required for pipeline diagnostics duration calculations |
+| `completed_at` | string | ISO 8601 timestamp of when the step finished. **Must be obtained from** `datetime.now(timezone.utc).isoformat()` (Python) — do not estimate or round. Accurate timestamps are required for pipeline diagnostics duration calculations |
 
 ## Per-step schemas
 
-Each step's full JSON Schema lives in the step skill's own `schema/` directory:
+Every `docs-workflow-*` skill must have both an input and output JSON Schema in its `schema/` directory.
+
+### Output schemas (step-result.json)
+
+Each step's output JSON Schema defines the sidecar contract:
 
 | Step | Schema file |
 |---|---|
@@ -42,6 +46,29 @@ Each step's full JSON Schema lives in the step skill's own `schema/` directory:
 | quality-gate | `skills/docs-workflow-quality-gate/schema/quality-gate.json` |
 | action-comments | `skills/action-comments/schema/action-comments.json` |
 | pipeline-diagnostics | `skills/docs-workflow-pipeline-diagnostics/schema/pipeline-diagnostics.json` |
+| jira-ready | `skills/docs-workflow-jira-ready/schema/jira-ready.json` |
+
+### Input schemas (CLI args contract)
+
+Each step's input JSON Schema defines what `build_step_args()` in the orchestrator produces:
+
+| Step | Schema file |
+|---|---|
+| requirements | `skills/docs-workflow-requirements/schema/requirements-input.json` |
+| code-analysis | `skills/docs-workflow-code-analysis/schema/code-analysis-input.json` |
+| scope-req-audit | `skills/docs-workflow-scope-req-audit/schema/scope-req-audit-input.json` |
+| pr-analysis | `skills/docs-workflow-pr-analysis/schema/pr-analysis-input.json` |
+| planning | `skills/docs-workflow-planning/schema/planning-input.json` |
+| writing | `skills/docs-workflow-writing/schema/writing-input.json` |
+| technical-review | `skills/docs-workflow-tech-review/schema/technical-review-input.json` |
+| style-review | `skills/docs-workflow-style-review/schema/style-review-input.json` |
+| security-review | `skills/docs-workflow-security-review/schema/security-review-input.json` |
+| quality-gate | `skills/docs-workflow-quality-gate/schema/quality-gate-input.json` |
+| pipeline-diagnostics | `skills/docs-workflow-pipeline-diagnostics/schema/pipeline-diagnostics-input.json` |
+| create-merge-request | `skills/docs-workflow-create-merge-request/schema/create-merge-request-input.json` |
+| create-jira | `skills/docs-workflow-create-jira/schema/create-jira-input.json` |
+| start | `skills/docs-workflow-start/schema/start-input.json` |
+| jira-ready | `skills/docs-workflow-jira-ready/schema/jira-ready-input.json` |
 
 ## Backward compatibility
 

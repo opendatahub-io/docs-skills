@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "create-jira step input",
+  "description": "CLI args contract for the create-jira workflow step.",
+  "type": "object",
+  "required": ["ticket", "base_path", "project"],
+  "properties": {
+    "ticket": {
+      "type": "string"
+    },
+    "base_path": {
+      "type": "string"
+    },
+    "project": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

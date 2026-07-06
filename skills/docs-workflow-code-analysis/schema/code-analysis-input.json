@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "code-analysis step input",
+  "description": "CLI args contract for the code-analysis workflow step.",
+  "type": "object",
+  "required": ["repo", "ticket", "output_dir"],
+  "properties": {
+    "repo": {
+      "type": "string",
+      "description": "Source code repo path."
+    },
+    "ticket": {
+      "type": "string",
+      "description": "Jira ticket key (e.g. PROJ-123)."
+    },
+    "output_dir": {
+      "type": "string",
+      "description": "Output directory path."
+    }
+  },
+  "additionalProperties": false
+}

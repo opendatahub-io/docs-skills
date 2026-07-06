@@ -133,7 +133,7 @@ If an agent returns `null` (skipped or died), mark the quality gate as `failed` 
 
 ### 6. Classify gaps and write step-result.json
 
-Determine the iteration number: count existing `feedback-brief-*.md` files in `${BASE_PATH}/quality-gate/`. If none exist, this is iteration 1. Otherwise, iteration = count + 1.
+Determine the iteration number: if `--iteration N` was provided in the step arguments, use N. Otherwise, this is iteration 1.
 
 Determine whether code evidence was expected: check if `${BASE_PATH}/scope-req-audit/` or `${BASE_PATH}/validate/` exists as a directory. If either exists, add `--evidence-expected` to the command.
 

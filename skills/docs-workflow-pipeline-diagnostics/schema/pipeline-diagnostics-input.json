@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pipeline-diagnostics step input",
+  "description": "CLI args contract for the pipeline-diagnostics workflow step.",
+  "type": "object",
+  "required": ["ticket", "base_path"],
+  "properties": {
+    "ticket": {
+      "type": "string"
+    },
+    "base_path": {
+      "type": "string"
+    },
+    "ci_log": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

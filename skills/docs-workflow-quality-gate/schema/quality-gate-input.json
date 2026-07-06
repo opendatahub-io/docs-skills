@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "quality-gate step input",
+  "description": "CLI args contract for the quality-gate workflow step.",
+  "type": "object",
+  "required": ["ticket", "base_path"],
+  "properties": {
+    "ticket": {
+      "type": "string"
+    },
+    "base_path": {
+      "type": "string"
+    },
+    "iteration": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "additionalProperties": false
+}

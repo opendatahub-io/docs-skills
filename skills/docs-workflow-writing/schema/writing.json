@@ -16,7 +16,7 @@
     },
     "mode": {
       "type": "string",
-      "enum": ["update-in-place", "draft", "fix"],
+      "enum": ["update-in-place", "draft"],
       "description": "Writing mode used"
     },
     "format": {

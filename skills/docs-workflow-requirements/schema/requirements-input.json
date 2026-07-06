@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "requirements step input",
+  "description": "CLI args contract for the requirements workflow step.",
+  "type": "object",
+  "required": ["ticket", "base_path"],
+  "properties": {
+    "ticket": {
+      "type": "string",
+      "description": "Jira ticket key (e.g. PROJ-123)."
+    },
+    "base_path": {
+      "type": "string",
+      "description": "Base path for the documentation repository."
+    },
+    "pr": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "PR URLs to analyze."
+    },
+    "repo": {
+      "type": "string",
+      "description": "Source code repo path."
+    }
+  },
+  "additionalProperties": false
+}
