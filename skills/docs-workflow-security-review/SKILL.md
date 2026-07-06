@@ -63,18 +63,18 @@ SCANNER_EXIT=$?
 ```
 
 Check the exit code. The scanner uses these exit codes:
-- **0** — clean scan or warnings only (proceed normally)
-- **1** — critical findings (credentials, private keys — proceed but flag in report)
-- **2** — script error (bad paths, invalid args — stop)
+- **0** — clean scan, no findings
+- **1** — warnings only (non-RFC IPs, URLs, emails — proceed normally)
+- **2** — critical findings (credentials, private keys — proceed but flag in report)
 
 ```bash
-if [ $SCANNER_EXIT -eq 2 ]; then
-  echo "ERROR: PII scanner failed (exit 2). See output above." >&2
+if [ $SCANNER_EXIT -gt 2 ]; then
+  echo "ERROR: PII scanner failed (exit $SCANNER_EXIT). See output above." >&2
   exit 1
 fi
 ```
 
-Do NOT treat exit code 0 or 1 as failures — both produce valid JSON output. Exit 1 means critical findings were detected, which the report will surface.
+Do NOT treat exit codes 0, 1, or 2 as script failures — all three produce valid JSON output. Exit 1 means warnings were detected. Exit 2 means critical findings were detected, which the report will surface.
 
 Validate the JSON output is well-formed before parsing:
 

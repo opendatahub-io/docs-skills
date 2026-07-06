@@ -67,17 +67,33 @@ Dispatch **one** agent (a single Agent-tool call). Because there is one prompt a
 
 - **Model**: opus — match the judges. The cheap model produced literal-minded false negatives (e.g. reading "subsection" or "automatically detect" too narrowly), and with a single combined prompt the docs are read once, so the cost argument for a cheaper model no longer applies
 - **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/coverage-prompt.md` and follow the instructions
-- **Returns**: a JSON **array**, one object per AC item, each shaped:
+- **Schema** (pass as the `schema` parameter to the Agent tool — same enforcement rationale as the judge agents; **do NOT omit**):
   ```json
-  {"id": "REQ-001_AC00", "covered": true, "quote": "verbatim sentence"}
+  {
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {"type": "string", "description": "AC item ID, e.g. REQ-001_AC00"},
+            "covered": {"type": "boolean", "description": "Whether the AC item is addressed in the documentation"},
+            "quote": {"type": ["string", "null"], "description": "Verbatim sentence from the documentation, or null if not covered"}
+          },
+          "required": ["id", "covered", "quote"]
+        }
+      }
+    },
+    "required": ["items"]
+  }
   ```
-  with `covered` false and `quote` null when the item is not addressed.
 
-Write the agent's array output verbatim to `${BASE_PATH}/quality-gate/coverage-results.json`:
+The agent returns a structured JSON object. Extract the `items` array and write it to `${BASE_PATH}/quality-gate/coverage-results.json`:
 
 ```bash
 cat > "${BASE_PATH}/quality-gate/coverage-results.json" <<'EOF'
-<the agent's JSON array>
+<the items array from the agent's structured output>
 EOF
 ```
 
