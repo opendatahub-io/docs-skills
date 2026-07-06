@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "security-review step result",
+  "description": "Sidecar schema for the security-review workflow step.",
+  "type": "object",
+  "required": ["schema_version", "step", "ticket", "completed_at", "scanner_findings", "critical_findings", "agent_findings", "categories", "context_size_bytes"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "step": { "const": "security-review" },
+    "ticket": { "type": "string", "description": "JIRA ticket ID as provided by the user (preserves original case)" },
+    "completed_at": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`" },
+    "scanner_findings": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total findings from the deterministic PII scanner. Consumed by orchestrator for iteration logic."
+    },
+    "critical_findings": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Critical-severity findings (credentials, private keys). Consumed by orchestrator for iteration logic."
+    },
+    "agent_findings": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Findings from the Layer 2 agent analysis checklist"
+    },
+    "categories": {
+      "type": "object",
+      "required": ["ip", "email", "credential", "url", "mac", "internal_hostname"],
+      "properties": {
+        "ip": { "type": "integer", "minimum": 0 },
+        "email": { "type": "integer", "minimum": 0 },
+        "credential": { "type": "integer", "minimum": 0 },
+        "url": { "type": "integer", "minimum": 0 },
+        "mac": { "type": "integer", "minimum": 0 },
+        "internal_hostname": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false,
+      "description": "Finding counts by category"
+    },
+    "context_size_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total bytes of step output files. Consumed by orchestrator for size logging."
+    }
+  },
+  "additionalProperties": false
+}

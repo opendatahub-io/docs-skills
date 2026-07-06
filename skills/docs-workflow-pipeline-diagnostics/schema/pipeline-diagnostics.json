@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pipeline-diagnostics step result",
+  "description": "Sidecar schema for the pipeline-diagnostics workflow step. Written by pipeline_diagnostics.py --emit-sidecar — every field is derived from the computed analysis, never hand-authored.",
+  "type": "object",
+  "required": ["schema_version", "step", "ticket", "completed_at", "pipeline_status", "context_pressure_level", "context_pressure_score", "failure_count", "high_severity_failure_count", "bottleneck_count", "orchestrator_issue_count", "workaround_count", "recommendation_count", "total_duration_min"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "step": { "const": "pipeline-diagnostics" },
+    "ticket": { "type": "string", "description": "JIRA ticket ID as provided by the user (preserves original case)" },
+    "completed_at": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`" },
+    "pipeline_status": { "type": "string", "description": "Overall pipeline status from the progress file" },
+    "context_pressure_level": {
+      "type": "string",
+      "enum": ["low", "moderate", "high", "critical"],
+      "description": "Context pressure assessment"
+    },
+    "context_pressure_score": { "type": "integer", "description": "Numeric risk score from the diagnostics heuristic" },
+    "failure_count": { "type": "integer", "minimum": 0, "description": "Total failures detected across all steps" },
+    "high_severity_failure_count": { "type": "integer", "minimum": 0, "description": "High-severity failures only" },
+    "bottleneck_count": { "type": "integer", "minimum": 0, "description": "Number of steps flagged as bottlenecks" },
+    "orchestrator_issue_count": { "type": "integer", "minimum": 0, "description": "Number of orchestrator-level problems found by self-introspection" },
+    "workaround_count": { "type": "integer", "minimum": 0, "description": "Number of script workarounds recorded in the progress file" },
+    "recommendation_count": { "type": "integer", "minimum": 0, "description": "Number of actionable recommendations generated" },
+    "total_duration_min": {
+      "type": ["number", "null"],
+      "description": "Total pipeline duration in minutes (from file mtimes), or null if not computable"
+    }
+  },
+  "additionalProperties": false
+}

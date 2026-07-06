@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "requirements step result",
+  "description": "Sidecar schema for the requirements workflow step.",
+  "type": "object",
+  "required": ["schema_version", "step", "ticket", "completed_at", "title", "requirement_count"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "step": { "const": "requirements" },
+    "ticket": { "type": "string", "description": "JIRA ticket ID as provided by the user (preserves original case)" },
+    "completed_at": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`" },
+    "title": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "First heading from requirements.md (max 80 chars, ticket prefix stripped). Consumed by create_merge_request.sh as PR/MR title."
+    },
+    "requirement_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of requirements discovered in pass 1. Consumed by orchestrator for `when: has_many_requirements` condition."
+    }
+  },
+  "additionalProperties": false
+}

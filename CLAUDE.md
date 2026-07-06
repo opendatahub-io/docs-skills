@@ -124,7 +124,7 @@ All `docs-workflow-*` step skills must write a `step-result.json` sidecar alongs
 
 - Follow the common schema defined in `skills/docs-orchestrator/schema/step-result-schema.md`
 - Every sidecar must include `schema_version`, `step`, `ticket`, and `completed_at`
-- Add step-specific fields as per-step extensions in the schema doc
+- Each step's full JSON Schema lives in the step skill's own `schema/` directory (e.g., `skills/docs-workflow-requirements/schema/requirements.json`)
 
 ## Authoring skills, agents, and plugins
 
@@ -162,7 +162,7 @@ Plugin-level hooks are registered in `hooks/hooks.json`. The orchestrator also h
 
 When investigating issues in this repo:
 
-- **Wrong workflow output**: Read the relevant skill's `SKILL.md` for expected behavior. Check `skills/docs-orchestrator/schema/step-result-schema.md` for output schema. Verify `step-result.json` was written correctly.
+- **Wrong workflow output**: Read the relevant skill's `SKILL.md` for expected behavior. Check the step skill's `schema/<step-name>.json` for the output schema (index at `skills/docs-orchestrator/schema/step-result-schema.md`). Verify `step-result.json` was written correctly.
 - **Orchestrator stuck or skipping steps**: Check the workflow progress JSON in `.agent_workspace/<TICKET>/workflow/`. Verify step dependencies and `when:` conditions in the workflow YAML.
 - **Script failures**: Check that PEP 723 scripts are invoked with `uv run --script`, not `python3`. Check that `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PLUGIN_ROOT}` resolve correctly.
 - **Agent missing context**: Agents must explicitly Read reference files — they are not auto-injected. Check the agent's Read instructions point to valid `${CLAUDE_PLUGIN_ROOT}/reference/` paths.

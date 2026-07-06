@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "planning step result",
+  "description": "Sidecar schema for the planning workflow step.",
+  "type": "object",
+  "required": ["schema_version", "step", "ticket", "completed_at", "module_count"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "step": { "const": "planning" },
+    "ticket": { "type": "string", "description": "JIRA ticket ID as provided by the user (preserves original case)" },
+    "completed_at": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`" },
+    "module_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of documentation modules in the plan"
+    }
+  },
+  "additionalProperties": false
+}

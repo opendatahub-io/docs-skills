@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pr-analysis step result",
+  "description": "Sidecar schema for the pr-analysis workflow step.",
+  "type": "object",
+  "required": ["schema_version", "step", "ticket", "completed_at", "pr_number", "pr_url", "modules_affected", "platform"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "step": { "const": "pr-analysis" },
+    "ticket": { "type": "string", "description": "JIRA ticket ID as provided by the user (preserves original case)" },
+    "completed_at": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`" },
+    "pr_number": { "type": "integer", "description": "PR/MR number" },
+    "pr_url": { "type": "string", "format": "uri", "description": "Full URL to the PR/MR" },
+    "modules_affected": { "type": "integer", "minimum": 0, "description": "Number of modules with changes in the PR" },
+    "platform": {
+      "type": "string",
+      "enum": ["github", "gitlab"],
+      "description": "Source platform"
+    }
+  },
+  "additionalProperties": false
+}

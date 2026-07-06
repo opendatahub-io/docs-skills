@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "code-analysis step result",
+  "description": "Sidecar schema for the code-analysis workflow step.",
+  "type": "object",
+  "required": ["schema_version", "step", "ticket", "completed_at", "module_count", "relationship_count", "languages_detected", "repo_path", "repo_analysis_path"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "step": { "const": "code-analysis" },
+    "ticket": { "type": "string", "description": "JIRA ticket ID as provided by the user (preserves original case)" },
+    "completed_at": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`" },
+    "module_count": { "type": "integer", "minimum": 0, "description": "Number of modules analyzed by learn-code" },
+    "relationship_count": { "type": "integer", "minimum": 0, "description": "Number of cross-module relationships discovered" },
+    "languages_detected": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Programming languages found in the repo"
+    },
+    "repo_path": { "type": "string", "description": "Absolute path to the analyzed source repository" },
+    "repo_analysis_path": {
+      "type": "string",
+      "description": "Absolute path to the learn-code analysis directory (contains detection/, module-registry/, module-analysis/, relationships/, synthesis/). Recorded in progress file for downstream steps."
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "action-comments step result",
+  "description": "Sidecar schema for the action-comments skill.",
+  "type": "object",
+  "required": ["schema_version", "step", "ticket", "completed_at", "ci_mode", "comments_resolved", "comments_skipped", "comments_outdated", "comments_replied", "files_modified"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "step": { "const": "action-comments" },
+    "ticket": { "type": "string", "description": "JIRA ticket ID as provided by the user (preserves original case)" },
+    "completed_at": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`" },
+    "ci_mode": { "type": "boolean", "description": "Whether the skill ran in autonomous CI mode" },
+    "comments_resolved": { "type": "integer", "minimum": 0, "description": "Number of review comments applied or edited" },
+    "comments_skipped": { "type": "integer", "minimum": 0, "description": "Number of comments skipped by user (or autonomously in CI)" },
+    "comments_outdated": { "type": "integer", "minimum": 0, "description": "Number of comments auto-skipped as outdated" },
+    "comments_replied": { "type": "integer", "minimum": 0, "description": "Number of reply comments posted to the PR/MR (CI mode only, 0 in interactive)" },
+    "files_modified": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths of files modified"
+    }
+  },
+  "additionalProperties": false
+}
