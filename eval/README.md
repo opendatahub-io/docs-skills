@@ -27,6 +27,20 @@ This does two things:
 
 Re-run `bash eval/scripts/setup.sh` between eval runs — the worktrees get modified during pipeline execution and need to be reset.
 
+## First live run checklist
+
+This harness was built and unit-tested offline but has not yet been run end-to-end. On the **first** live run, verify each item before trusting a full run:
+
+- [ ] `gitlab.cee.redhat.com` resolves and `glab auth status` shows it reachable (the docs repo and gold standards live there).
+- [ ] `bash eval/scripts/setup.sh` completes: `eval/.docs-repo-cache/` clones, per-case worktrees check out, and `docs_repo_path` is appended to each case's `input.yaml`.
+- [ ] `reference/` directories are populated (`ls eval/cases/*/reference/`).
+- [ ] A single-case run finishes: `/eval-run --model claude-opus-4-6 --cases case-001-rhoaieng-45969`.
+- [ ] `doc_quality` / `intent_alignment` score non-null — confirms `collect-docs-repo-output.sh` ran and the judges saw `.output/writing/*.adoc`.
+- [ ] `step_results_valid` and `pipeline_complete` pass and the five diagnostics judges score non-null — confirms the `.agent_workspace/` run artifacts were collected into `modified_files`.
+- [ ] `reference_comparison` scores non-null on the gold-standard case — confirms `reference/` was found.
+
+Once a single case is clean end-to-end, run the full 8-case set and cut the first baseline (`--run-id baseline-v1`).
+
 ## Running the eval
 
 **Quick run** (a single case, for iterating on a skill/prompt/judge change):
