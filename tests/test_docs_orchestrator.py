@@ -9,16 +9,35 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from docs_orchestrator import (
+    _count_modules_fallback,
     _eval_has_many_requirements_phase1,
     _eval_has_many_requirements_phase2,
+    _extract_files_from_sidecar,
+    _find_additional_repo,
+    _get_step_skill,
+    _parse_review_fallback,
+    atomic_write_json,
     build_step_args,
+    check_input_deps,
     classify_step,
     create_progress,
+    delete_active_marker,
+    delete_stop_counter,
     evaluate_when,
     find_next_step,
+    iso_now,
+    make_complete,
+    make_fail,
+    make_run_skill,
+    marker_path_for,
     parse_workflow_yaml,
     post_process,
+    progress_path,
+    read_progress,
+    read_sidecar,
     validate_steps,
+    write_active_marker,
+    write_progress,
 )
 
 
@@ -729,3 +748,618 @@ class TestPostProcessWritingQualityGateCycle:
         }
         result = post_process("writing", progress, base, {})
         assert result["action_override"]["step"] == "technical-review"
+
+
+# ---------------------------------------------------------------------------
+# Group 1: Pure helper functions
+# ---------------------------------------------------------------------------
+
+
+class TestIsoNow:
+    def test_returns_iso_format_with_timezone(self):
+        result = iso_now()
+        assert "+00:00" in result or "Z" in result
+
+    def test_returns_parseable_datetime(self):
+        from datetime import datetime
+
+        result = iso_now()
+        dt = datetime.fromisoformat(result)
+        assert dt.tzinfo is not None
+
+
+class TestProgressPath:
+    def test_constructs_correct_path(self):
+        result = progress_path("/base", "docs-workflow", "proj-123")
+        assert result == "/base/workflow/docs-workflow_proj-123.json"
+
+    def test_uses_provided_ticket_as_is(self):
+        result = progress_path("/base", "wf", "UPPER")
+        assert "UPPER" in result
+
+
+class TestMarkerPathFor:
+    def test_returns_active_workflow_in_parent(self):
+        result = marker_path_for("/workspace/PROJ-123")
+        assert result == "/workspace/.active-workflow"
+
+
+class TestFindAdditionalRepo:
+    def test_finds_by_basename(self):
+        additional = [{"repo_path": "/home/user/my-repo"}]
+        result = _find_additional_repo(additional, "my-repo")
+        assert result == {"repo_path": "/home/user/my-repo"}
+
+    def test_returns_none_when_not_found(self):
+        additional = [{"repo_path": "/home/user/other"}]
+        assert _find_additional_repo(additional, "missing") is None
+
+    def test_empty_list(self):
+        assert _find_additional_repo([], "anything") is None
+
+
+class TestExtractFilesFromSidecar:
+    def test_files_key(self):
+        sidecar = {"files": ["/a.adoc", "/b.adoc"]}
+        assert _extract_files_from_sidecar(sidecar) == ["/a.adoc", "/b.adoc"]
+
+    def test_legacy_files_written(self):
+        sidecar = {
+            "files": [],
+            "files_written": {
+                "assemblies": ["/a.adoc"],
+                "modules": ["/m.adoc"],
+                "snippets": ["/s.adoc"],
+            },
+        }
+        result = _extract_files_from_sidecar(sidecar)
+        assert "/a.adoc" in result
+        assert "/m.adoc" in result
+        assert "/s.adoc" in result
+
+    def test_none_sidecar(self):
+        assert _extract_files_from_sidecar(None) == []
+
+    def test_empty_sidecar(self):
+        assert _extract_files_from_sidecar({}) == []
+
+
+class TestGetStepSkill:
+    def test_strips_colon_prefix(self):
+        progress = {"_step_skills": {"writing": "docs-tools:docs-workflow-writing"}}
+        assert _get_step_skill(progress, "writing") == "docs-workflow-writing"
+
+    def test_no_colon(self):
+        progress = {"_step_skills": {"writing": "docs-workflow-writing"}}
+        assert _get_step_skill(progress, "writing") == "docs-workflow-writing"
+
+    def test_missing_key_uses_default(self):
+        progress = {"_step_skills": {}}
+        assert _get_step_skill(progress, "writing") == "docs-workflow-writing"
+
+    def test_no_step_skills_key(self):
+        assert _get_step_skill({}, "planning") == "docs-workflow-planning"
+
+
+class TestMakeRunSkill:
+    def test_basic_fields(self):
+        result = make_run_skill("my-skill", "--arg val", "step-1", "Run step-1")
+        assert result["action"] == "run_skill"
+        assert result["skill"] == "my-skill"
+        assert result["args"] == "--arg val"
+        assert result["step"] == "step-1"
+        assert result["message"] == "Run step-1"
+
+    def test_with_warnings_and_messages(self):
+        result = make_run_skill(
+            "s", "a", "st", "msg", warnings=["w1"], messages=["m1"],
+        )
+        assert result["warnings"] == ["w1"]
+        assert result["messages"] == ["m1"]
+
+    def test_extra_kwargs(self):
+        result = make_run_skill("s", "a", "st", "msg", custom_key="val")
+        assert result["custom_key"] == "val"
+
+    def test_no_warnings_key_when_empty(self):
+        result = make_run_skill("s", "a", "st", "msg")
+        assert "warnings" not in result
+
+
+class TestMakeComplete:
+    def test_counts_statuses(self):
+        progress = {
+            "ticket": "T-1",
+            "steps": {
+                "a": {"status": "completed", "result": None},
+                "b": {"status": "skipped", "result": None},
+                "c": {"status": "deferred", "result": None},
+            },
+        }
+        result = make_complete(progress)
+        assert result["action"] == "complete"
+        assert "a" in result["summary"]["steps_completed"]
+        assert "b" in result["summary"]["steps_skipped"]
+        assert "c" in result["summary"]["steps_deferred"]
+
+    def test_deferred_warning(self):
+        progress = {
+            "ticket": "T-1",
+            "steps": {"a": {"status": "deferred", "result": None}},
+        }
+        result = make_complete(progress)
+        assert any("Deferred" in w for w in result["summary"]["warnings"])
+
+    def test_extracts_mr_url(self):
+        progress = {
+            "ticket": "T-1",
+            "steps": {
+                "create-merge-request": {
+                    "status": "completed",
+                    "result": {"url": "https://github.com/pr/1"},
+                },
+            },
+        }
+        result = make_complete(progress)
+        assert result["summary"]["mr_url"] == "https://github.com/pr/1"
+
+    def test_extracts_jira_fields(self):
+        progress = {
+            "ticket": "T-1",
+            "steps": {
+                "create-jira": {
+                    "status": "completed",
+                    "result": {"jira_url": "https://jira/T-2", "jira_key": "T-2"},
+                },
+            },
+        }
+        result = make_complete(progress)
+        assert result["summary"]["jira_url"] == "https://jira/T-2"
+        assert result["summary"]["jira_key"] == "T-2"
+
+    def test_file_count_from_writing(self):
+        progress = {
+            "ticket": "T-1",
+            "steps": {
+                "writing": {
+                    "status": "completed",
+                    "result": {"files": ["/a.adoc", "/b.adoc"]},
+                },
+                "planning": {
+                    "status": "completed",
+                    "result": {"module_count": 3},
+                },
+            },
+        }
+        result = make_complete(progress)
+        assert result["summary"]["file_count"] == 2
+        assert result["summary"]["module_count"] == 3
+
+
+class TestMakeFail:
+    def test_basic_fields(self):
+        result = make_fail("step-1", "error occurred", "Workflow failed")
+        assert result["action"] == "fail"
+        assert result["step"] == "step-1"
+        assert result["reason"] == "error occurred"
+        assert result["message"] == "Workflow failed"
+
+    def test_with_warnings(self):
+        result = make_fail("s", "r", "m", warnings=["w1"])
+        assert result["warnings"] == ["w1"]
+
+    def test_no_warnings_key_when_none(self):
+        result = make_fail("s", "r", "m")
+        assert "warnings" not in result
+
+
+class TestCheckInputDeps:
+    def test_all_satisfied(self):
+        progress = {
+            "steps": {
+                "a": {"status": "completed"},
+                "b": {"status": "completed"},
+            },
+        }
+        yaml_map = {"c": {"inputs": ["a", "b"]}}
+        assert check_input_deps("c", progress, yaml_map) == []
+
+    def test_failed_dep(self):
+        progress = {"steps": {"a": {"status": "failed"}}}
+        yaml_map = {"b": {"inputs": ["a"]}}
+        errors = check_input_deps("b", progress, yaml_map)
+        assert len(errors) == 1
+        assert "failed" in errors[0]
+
+    def test_pending_dep(self):
+        progress = {"steps": {"a": {"status": "pending"}}}
+        yaml_map = {"b": {"inputs": ["a"]}}
+        errors = check_input_deps("b", progress, yaml_map)
+        assert len(errors) == 1
+        assert "pending" in errors[0]
+
+    def test_missing_step_no_error(self):
+        progress = {"steps": {}}
+        yaml_map = {"b": {"inputs": ["nonexistent"]}}
+        assert check_input_deps("b", progress, yaml_map) == []
+
+    def test_no_inputs(self):
+        progress = {"steps": {}}
+        yaml_map = {"a": {"inputs": []}}
+        assert check_input_deps("a", progress, yaml_map) == []
+
+
+# ---------------------------------------------------------------------------
+# Group 2: Post-processors not yet tested
+# ---------------------------------------------------------------------------
+
+
+class TestReadSidecar:
+    def test_reads_valid_json(self, tmp_path):
+        step_dir = tmp_path / "my-step"
+        step_dir.mkdir()
+        data = {"schema_version": 1, "step": "my-step"}
+        (step_dir / "step-result.json").write_text(json.dumps(data))
+        result = read_sidecar(str(tmp_path), "my-step")
+        assert result == data
+
+    def test_missing_file(self, tmp_path):
+        assert read_sidecar(str(tmp_path), "nonexistent") is None
+
+    def test_corrupt_json(self, tmp_path):
+        step_dir = tmp_path / "bad"
+        step_dir.mkdir()
+        (step_dir / "step-result.json").write_text("{not valid json")
+        assert read_sidecar(str(tmp_path), "bad") is None
+
+
+class TestPostProcessScopeReqAudit:
+    def _make_sidecar(self, tmp_path, grounded=3, partial=1, absent=0, total=4, discovered=0):
+        base = str(tmp_path)
+        d = tmp_path / "scope-req-audit"
+        d.mkdir(exist_ok=True)
+        sidecar = {
+            "schema_version": 1,
+            "step": "scope-req-audit",
+            "grounded": grounded,
+            "partial": partial,
+            "absent": absent,
+            "total": total,
+            "recommendation": "proceed",
+            "discovered_repos_count": discovered,
+        }
+        (d / "step-result.json").write_text(json.dumps(sidecar))
+        return base
+
+    def test_message_formatting(self, tmp_path):
+        base = self._make_sidecar(tmp_path)
+        progress = {
+            "ticket": "T-1",
+            "steps": {"scope-req-audit": _step()},
+        }
+        result = post_process("scope-req-audit", progress, base, {})
+        assert any("3 grounded" in m for m in result.get("messages", []))
+
+    def test_discovered_repos_warning(self, tmp_path):
+        base = self._make_sidecar(tmp_path, discovered=2)
+        progress = {
+            "ticket": "T-1",
+            "steps": {"scope-req-audit": _step()},
+        }
+        result = post_process("scope-req-audit", progress, base, {})
+        assert any("2 additional" in w for w in result.get("warnings", []))
+
+
+class TestPostProcessCodeAnalysis:
+    def test_logs_metrics(self, tmp_path):
+        base = str(tmp_path)
+        d = tmp_path / "code-analysis"
+        d.mkdir()
+        sidecar = {
+            "schema_version": 1,
+            "step": "code-analysis",
+            "module_count": 5,
+            "relationship_count": 12,
+            "languages_detected": ["python", "go"],
+        }
+        (d / "step-result.json").write_text(json.dumps(sidecar))
+        progress = {
+            "ticket": "T-1",
+            "steps": {"code-analysis": _step()},
+        }
+        result = post_process("code-analysis", progress, base, {})
+        msgs = result.get("messages", [])
+        assert any("5 modules" in m for m in msgs)
+        assert any("python" in m for m in msgs)
+
+
+class TestPostProcessPrAnalysis:
+    def test_logs_pr_info(self, tmp_path):
+        base = str(tmp_path)
+        d = tmp_path / "pr-analysis"
+        d.mkdir()
+        sidecar = {
+            "schema_version": 1,
+            "step": "pr-analysis",
+            "pr_number": 42,
+            "modules_affected": 3,
+        }
+        (d / "step-result.json").write_text(json.dumps(sidecar))
+        progress = {
+            "ticket": "T-1",
+            "steps": {"pr-analysis": _step()},
+        }
+        result = post_process("pr-analysis", progress, base, {})
+        assert any("#42" in m for m in result.get("messages", []))
+
+
+class TestCountModulesFallback:
+    def test_counts_module_headings(self, tmp_path):
+        plan = tmp_path / "plan.md"
+        plan.write_text(
+            "# Plan\n\n### Module One\nContent\n\n### Module Two\nContent\n"
+        )
+        assert _count_modules_fallback(str(plan)) == 2
+
+    def test_ignores_code_blocks(self, tmp_path):
+        plan = tmp_path / "plan.md"
+        plan.write_text(
+            "### Module Real\n\n```\n### Module Fake\n```\n\n### Module Also Real\n"
+        )
+        assert _count_modules_fallback(str(plan)) == 2
+
+    def test_empty_file(self, tmp_path):
+        plan = tmp_path / "plan.md"
+        plan.write_text("")
+        assert _count_modules_fallback(str(plan)) == 0
+
+
+class TestParseReviewFallback:
+    def test_parses_confidence_and_severity(self, tmp_path):
+        review = tmp_path / "review.md"
+        review.write_text(
+            "Overall technical confidence: HIGH\n"
+            "Severity counts: critical=1 significant=2 minor=3 sme=0\n"
+        )
+        conf, sev = _parse_review_fallback(str(review))
+        assert conf == "HIGH"
+        assert sev == {"critical": 1, "significant": 2, "minor": 3, "sme": 0}
+
+    def test_missing_confidence(self, tmp_path):
+        review = tmp_path / "review.md"
+        review.write_text("No confidence line here\n")
+        conf, sev = _parse_review_fallback(str(review))
+        assert conf is None
+
+    def test_missing_file(self, tmp_path):
+        conf, sev = _parse_review_fallback(str(tmp_path / "missing.md"))
+        assert conf is None
+        assert sev == {}
+
+
+class TestPostProcessCreateMergeRequest:
+    def _make_sidecar(self, tmp_path, pushed=True, skipped=False, url=None):
+        base = str(tmp_path)
+        d = tmp_path / "create-merge-request"
+        d.mkdir(exist_ok=True)
+        sidecar = {
+            "schema_version": 1,
+            "step": "create-merge-request",
+            "pushed": pushed,
+            "skipped": skipped,
+        }
+        if url:
+            sidecar["url"] = url
+        (d / "step-result.json").write_text(json.dumps(sidecar))
+        return base
+
+    def test_pushed_no_warning(self, tmp_path):
+        base = self._make_sidecar(tmp_path, pushed=True)
+        progress = {
+            "ticket": "T-1",
+            "steps": {"create-merge-request": _step()},
+        }
+        result = post_process("create-merge-request", progress, base, {})
+        assert not result.get("warnings", [])
+
+    def test_not_pushed_not_skipped_warns(self, tmp_path):
+        base = self._make_sidecar(tmp_path, pushed=False, skipped=False)
+        progress = {
+            "ticket": "T-1",
+            "steps": {"create-merge-request": _step()},
+        }
+        result = post_process("create-merge-request", progress, base, {})
+        assert any("not pushed" in w for w in result.get("warnings", []))
+
+    def test_url_message(self, tmp_path):
+        base = self._make_sidecar(tmp_path, pushed=True, url="https://github.com/pr/1")
+        progress = {
+            "ticket": "T-1",
+            "steps": {"create-merge-request": _step()},
+        }
+        result = post_process("create-merge-request", progress, base, {})
+        assert any("https://github.com/pr/1" in m for m in result.get("messages", []))
+
+
+class TestPostProcessCreateJira:
+    def test_extracts_url_and_key(self, tmp_path):
+        base = str(tmp_path)
+        d = tmp_path / "create-jira"
+        d.mkdir()
+        sidecar = {
+            "schema_version": 1,
+            "step": "create-jira",
+            "jira_url": "https://jira/DOCS-1",
+            "jira_key": "DOCS-1",
+        }
+        (d / "step-result.json").write_text(json.dumps(sidecar))
+        progress = {
+            "ticket": "T-1",
+            "steps": {"create-jira": _step()},
+        }
+        result = post_process("create-jira", progress, base, {})
+        assert any("DOCS-1" in m for m in result.get("messages", []))
+
+    def test_no_url_no_message(self, tmp_path):
+        base = str(tmp_path)
+        d = tmp_path / "create-jira"
+        d.mkdir()
+        sidecar = {
+            "schema_version": 1,
+            "step": "create-jira",
+            "jira_url": None,
+            "jira_key": None,
+        }
+        (d / "step-result.json").write_text(json.dumps(sidecar))
+        progress = {
+            "ticket": "T-1",
+            "steps": {"create-jira": _step()},
+        }
+        result = post_process("create-jira", progress, base, {})
+        assert not [m for m in result.get("messages", []) if "JIRA" in m]
+
+
+# ---------------------------------------------------------------------------
+# Group 3: Filesystem helpers
+# ---------------------------------------------------------------------------
+
+
+class TestAtomicWriteJson:
+    def test_writes_valid_json(self, tmp_path):
+        path = str(tmp_path / "out.json")
+        atomic_write_json(path, {"key": "value"})
+        with open(path) as f:
+            data = json.load(f)
+        assert data == {"key": "value"}
+
+    def test_creates_parent_dirs(self, tmp_path):
+        path = str(tmp_path / "sub" / "deep" / "out.json")
+        atomic_write_json(path, {"a": 1})
+        assert os.path.isfile(path)
+
+    def test_file_ends_with_newline(self, tmp_path):
+        path = str(tmp_path / "out.json")
+        atomic_write_json(path, {})
+        with open(path) as f:
+            content = f.read()
+        assert content.endswith("\n")
+
+
+class TestReadWriteProgress:
+    def test_round_trip(self, tmp_path):
+        path = str(tmp_path / "progress.json")
+        data = {"ticket": "T-1", "status": "in_progress"}
+        write_progress(path, data)
+        loaded = read_progress(path)
+        assert loaded["ticket"] == "T-1"
+        assert "updated_at" in loaded
+
+    def test_read_missing_returns_none(self, tmp_path):
+        assert read_progress(str(tmp_path / "missing.json")) is None
+
+    def test_write_updates_timestamp(self, tmp_path):
+        path = str(tmp_path / "progress.json")
+        data = {"ticket": "T-1"}
+        write_progress(path, data)
+        assert "updated_at" in data
+
+
+class TestActiveMarker:
+    def test_write_and_read(self, tmp_path):
+        base_path = str(tmp_path / "PROJ-123")
+        os.makedirs(base_path, exist_ok=True)
+        write_active_marker(base_path, "PROJ-123", "docs-workflow", "workflow/p.json")
+        marker = marker_path_for(base_path)
+        assert os.path.isfile(marker)
+        with open(marker) as f:
+            data = json.load(f)
+        assert data["ticket"] == "PROJ-123"
+        assert data["workflow"] == "docs-workflow"
+
+    def test_delete(self, tmp_path):
+        base_path = str(tmp_path / "PROJ-123")
+        os.makedirs(base_path, exist_ok=True)
+        write_active_marker(base_path, "T-1", "wf", "p.json")
+        delete_active_marker(base_path)
+        assert not os.path.isfile(marker_path_for(base_path))
+
+    def test_delete_missing_is_noop(self, tmp_path):
+        base_path = str(tmp_path / "PROJ-123")
+        os.makedirs(base_path, exist_ok=True)
+        delete_active_marker(base_path)
+
+
+class TestDeleteStopCounter:
+    def test_deletes_file(self, tmp_path):
+        pfile = str(tmp_path / "progress.json")
+        counter = pfile + ".stop_count"
+        with open(counter, "w") as f:
+            f.write("2")
+        delete_stop_counter(pfile)
+        assert not os.path.isfile(counter)
+
+    def test_missing_file_is_noop(self, tmp_path):
+        pfile = str(tmp_path / "progress.json")
+        delete_stop_counter(pfile)
+
+
+# ---------------------------------------------------------------------------
+# Group 4: Build step args edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestBuildStepArgsPrAnalysisBlocking:
+    def test_returns_none_without_repo(self):
+        result = build_step_args(
+            "pr-analysis", "T-1", "/base",
+            {"pr_urls": ["http://pr1"]},
+        )
+        assert result is None
+
+    def test_returns_args_with_repo(self):
+        result = build_step_args(
+            "pr-analysis", "T-1", "/base",
+            {"pr_urls": ["http://pr1"], "source": {"repo_path": "/repo"}},
+        )
+        assert result is not None
+        assert "--repo /repo" in result
+
+
+class TestBuildStepArgsCreateJira:
+    def test_includes_project(self):
+        args = build_step_args(
+            "create-jira", "T-1", "/base",
+            {"create_jira": "DOCS"},
+        )
+        assert "--project DOCS" in args
+
+
+class TestBuildStepArgsWritingMultiRepo:
+    def test_multiple_repos(self):
+        opts = {
+            "source": {"repo_path": "/main-repo"},
+            "additional_sources": [
+                {"repo_path": "/extra1"},
+                {"repo_path": "/extra2"},
+            ],
+        }
+        args = build_step_args("writing", "T-1", "/base", opts)
+        assert "--repo /main-repo" in args
+        assert "--repo /extra1" in args
+        assert "--repo /extra2" in args
+
+    def test_docs_repo_path(self):
+        opts = {"docs_repo_path": "/docs"}
+        args = build_step_args("writing", "T-1", "/base", opts)
+        assert "--repo-path /docs" in args
+
+
+class TestBuildStepArgsScopeReqAudit:
+    def test_includes_repo(self):
+        opts = {"source": {"repo_path": "/repo"}}
+        args = build_step_args("scope-req-audit", "T-1", "/base", opts)
+        assert "--repo /repo" in args
+
+    def test_no_repo(self):
+        args = build_step_args("scope-req-audit", "T-1", "/base", {})
+        assert "--repo" not in args
