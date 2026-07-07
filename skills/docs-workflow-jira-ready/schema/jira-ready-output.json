@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "jira-ready.json",
+  "$id": "jira-ready-output.json",
   "title": "docs-workflow-jira-ready output",
   "description": "Output contract for the docs-workflow-jira-ready skill.",
   "type": "object",

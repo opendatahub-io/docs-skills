@@ -92,7 +92,7 @@ Each step skill knows its own output folder and writes there. Each step reads in
 
 ### Step result sidecars
 
-Every step that produces markdown output also writes a `step-result.json` sidecar with structured metadata. See [schema/step-result-schema.md](../schema/step-result-schema.md) for common fields. Each step's full JSON Schema lives in the step skill's own `schema/` directory (e.g., `skills/docs-workflow-requirements/schema/requirements.json`). Downstream scripts and the orchestrator prefer sidecar data when present, falling back to parsing the markdown output for backward compatibility.
+Every step that produces markdown output also writes a `step-result.json` sidecar with structured metadata. See [schema/step-result-schema.md](../schema/step-result-schema.md) for common fields. Each step's full JSON Schema lives in the step skill's own `schema/` directory (e.g., `skills/docs-workflow-requirements/schema/requirements-output.json`). Downstream scripts and the orchestrator prefer sidecar data when present, falling back to parsing the markdown output for backward compatibility.
 
 ## Progress file
 

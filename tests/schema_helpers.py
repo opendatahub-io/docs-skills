@@ -10,7 +10,7 @@ from jsonschema import Draft202012Validator
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 _ACTION_COMMENTS_SCHEMA = (
-    REPO_ROOT / "skills" / "action-comments" / "schema" / "action-comments.json"
+    REPO_ROOT / "skills" / "action-comments" / "schema" / "action-comments-output.json"
 )
 _EXTRA_OUTPUT_SCHEMAS = [
     ("action-comments", _ACTION_COMMENTS_SCHEMA),
@@ -20,7 +20,7 @@ _EXTRA_OUTPUT_SCHEMAS = [
 def discover_schemas(kind: str = "output") -> list[tuple[str, Path]]:
     """Return (step_name, schema_path) for all workflow step schemas.
 
-    kind="output" returns sidecar schemas (<step>.json).
+    kind="output" returns sidecar schemas (<step>-output.json).
     kind="input" returns CLI-args schemas (<step>-input.json).
     """
     results = []
@@ -31,12 +31,8 @@ def discover_schemas(kind: str = "output") -> list[tuple[str, Path]]:
             if kind == "input" and is_input:
                 results.append((step_name, schema_file))
             elif kind == "output" and not is_input:
-                is_primary = (
-                    schema_file.stem == step_name
-                    or step_name == "tech-review"
-                    and schema_file.stem == "technical-review"
-                )
-                if is_primary:
+                is_output = schema_file.stem.endswith("-output")
+                if is_output:
                     results.append((step_name, schema_file))
     if kind == "output":
         results.extend(_EXTRA_OUTPUT_SCHEMAS)

@@ -32,21 +32,21 @@ Each step's output JSON Schema defines the sidecar contract:
 
 | Step | Schema file |
 |---|---|
-| requirements | `skills/docs-workflow-requirements/schema/requirements.json` |
-| scope-req-audit | `skills/docs-workflow-scope-req-audit/schema/scope-req-audit.json` |
-| planning | `skills/docs-workflow-planning/schema/planning.json` |
-| code-analysis | `skills/docs-workflow-code-analysis/schema/code-analysis.json` |
-| pr-analysis | `skills/docs-workflow-pr-analysis/schema/pr-analysis.json` |
-| writing | `skills/docs-workflow-writing/schema/writing.json` |
-| technical-review | `skills/docs-workflow-tech-review/schema/technical-review.json` |
-| style-review | `skills/docs-workflow-style-review/schema/style-review.json` |
-| security-review | `skills/docs-workflow-security-review/schema/security-review.json` |
-| create-merge-request | `skills/docs-workflow-create-merge-request/schema/create-merge-request.json` |
-| create-jira | `skills/docs-workflow-create-jira/schema/create-jira.json` |
-| quality-gate | `skills/docs-workflow-quality-gate/schema/quality-gate.json` |
-| action-comments | `skills/action-comments/schema/action-comments.json` |
-| pipeline-diagnostics | `skills/docs-workflow-pipeline-diagnostics/schema/pipeline-diagnostics.json` |
-| jira-ready | `skills/docs-workflow-jira-ready/schema/jira-ready.json` |
+| requirements | `skills/docs-workflow-requirements/schema/requirements-output.json` |
+| scope-req-audit | `skills/docs-workflow-scope-req-audit/schema/scope-req-audit-output.json` |
+| planning | `skills/docs-workflow-planning/schema/planning-output.json` |
+| code-analysis | `skills/docs-workflow-code-analysis/schema/code-analysis-output.json` |
+| pr-analysis | `skills/docs-workflow-pr-analysis/schema/pr-analysis-output.json` |
+| writing | `skills/docs-workflow-writing/schema/writing-output.json` |
+| technical-review | `skills/docs-workflow-tech-review/schema/tech-review-output.json` |
+| style-review | `skills/docs-workflow-style-review/schema/style-review-output.json` |
+| security-review | `skills/docs-workflow-security-review/schema/security-review-output.json` |
+| create-merge-request | `skills/docs-workflow-create-merge-request/schema/create-merge-request-output.json` |
+| create-jira | `skills/docs-workflow-create-jira/schema/create-jira-output.json` |
+| quality-gate | `skills/docs-workflow-quality-gate/schema/quality-gate-output.json` |
+| action-comments | `skills/action-comments/schema/action-comments-output.json` |
+| pipeline-diagnostics | `skills/docs-workflow-pipeline-diagnostics/schema/pipeline-diagnostics-output.json` |
+| jira-ready | `skills/docs-workflow-jira-ready/schema/jira-ready-output.json` |
 
 ### Input schemas (CLI args contract)
 
@@ -60,7 +60,7 @@ Each step's input JSON Schema defines what `build_step_args()` in the orchestrat
 | pr-analysis | `skills/docs-workflow-pr-analysis/schema/pr-analysis-input.json` |
 | planning | `skills/docs-workflow-planning/schema/planning-input.json` |
 | writing | `skills/docs-workflow-writing/schema/writing-input.json` |
-| technical-review | `skills/docs-workflow-tech-review/schema/technical-review-input.json` |
+| technical-review | `skills/docs-workflow-tech-review/schema/tech-review-input.json` |
 | style-review | `skills/docs-workflow-style-review/schema/style-review-input.json` |
 | security-review | `skills/docs-workflow-security-review/schema/security-review-input.json` |
 | quality-gate | `skills/docs-workflow-quality-gate/schema/quality-gate-input.json` |

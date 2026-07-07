@@ -124,13 +124,13 @@ All `docs-workflow-*` step skills must write a `step-result.json` sidecar alongs
 
 - Follow the common schema defined in `skills/docs-orchestrator/schema/step-result-schema.md`
 - Every sidecar must include `schema_version`, `step`, `ticket`, and `completed_at`
-- Each step's full JSON Schema lives in the step skill's own `schema/` directory (e.g., `skills/docs-workflow-requirements/schema/requirements.json`)
+- Each step's full JSON Schema lives in the step skill's own `schema/` directory (e.g., `skills/docs-workflow-requirements/schema/requirements-output.json`)
 
 ## Step schemas are mandatory
 
 Every `docs-workflow-*` step skill must have both an **input schema** and an **output schema** in its `schema/` directory:
 
-- **Output schema** (`<step-name>.json`): defines the `step-result.json` sidecar contract
+- **Output schema** (`<step-name>-output.json`): defines the `step-result.json` sidecar contract
 - **Input schema** (`<step-name>-input.json`): defines the CLI args contract — what `build_step_args()` produces and what the step expects to receive
 
 When adding or modifying a step, update both schemas. The full index is at `skills/docs-orchestrator/schema/step-result-schema.md`.
