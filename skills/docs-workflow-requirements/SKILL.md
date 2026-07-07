@@ -353,12 +353,7 @@ Verify that `<OUTPUT_FILE>` and `<OUTPUT_DIR>/step-result.json` exist.
 
 ## Notes
 
-- **Two-pass architecture:** Pass 1 (discovery) is lightweight — JIRA traversal, PR listing, spec identification. Pass 2 (deep analysis) is thorough — each requirement gets a dedicated agent with a clean context window
-- **Disk-based data flow:** Agents write their JSON results to per-requirement files (`req-NNN.json`) on disk instead of returning them to the orchestrator context. The merge agent reads from disk to assemble `requirements.md`. This prevents 15+ agent results (~170KB) from accumulating in the orchestrator's context window
-- **Compact prompts:** Agent prompts reference `discovery.json` by path instead of embedding the full requirement skeleton. Each agent reads its own skeleton from disk. This reduces per-agent prompt size from ~2.5KB to ~0.3KB
-- **Context isolation:** Each deep-analysis agent sees only one requirement's sources. This prevents context degradation when analyzing tickets with 10+ requirements
-- **Parallel execution:** All pass-2 agents are dispatched in a single message for parallel execution
-- **Error isolation:** A failed deep-analysis agent does not block other requirements — the merge agent uses skeleton data from `discovery.json` as a fallback for missing `req-NNN.json` files
-- **Output contract:** The assembled `requirements.md` is identical in format to the previous single-pass output. Downstream consumers (code-analysis, planning, orchestrator) see no change
-- **Repo discovery:** After discovery, the repo extraction script produces `discovered_repos.json` from the JIRA graph. This enables `resolve_source.py` Priority 4 to auto-discover and clone repos without user flags
-- **Discovery JSON:** The `discovery.json` file is retained in the output directory. It is read by analyst agents (for requirement skeletons and persisted sources) and by the merge agent (for metadata and fallback data)
+- **Two-pass architecture:** Pass 1 (discovery) enumerates requirements; pass 2 fans out one agent per requirement for isolated deep analysis
+- **Disk-based data flow:** Agents write per-requirement JSON to disk; the merge agent reads from disk to assemble `requirements.md`, keeping the orchestrator context lean
+- **Error isolation:** A failed analyst agent does not block others — the merge agent falls back to skeleton data from `discovery.json`
+- **Repo discovery:** The extraction script produces `discovered_repos.json` from the JIRA graph for `resolve_source.py` Priority 4 auto-discovery
