@@ -321,7 +321,7 @@ def _required_field_params():
 class TestRequiredFieldRejection:
     """Removing any single required field from a golden example must fail validation."""
 
-    @pytest.mark.parametrize("step_name, schema_path, field", _required_field_params())
+    @pytest.mark.parametrize("step_name, schema_path, field", list(_required_field_params()))
     def test_missing_required_field_rejected(self, step_name, schema_path, field):
         if step_name not in GOLDEN_EXAMPLES:
             pytest.skip(f"No golden example for {step_name}")
