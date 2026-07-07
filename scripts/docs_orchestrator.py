@@ -355,6 +355,69 @@ def call_resolve_source(
     return result.returncode, data
 
 
+def resolve_source_post_requirements(base_path, pfile, progress, options):
+    """Resolve source repos after the requirements step completes.
+
+    Call only after the completed requirements state has been persisted to
+    ``pfile``: resolve_source.py reads and rewrites the whole progress file, so
+    a stale on-disk state would be pulled back in.
+
+    On success, resolve_source.py sets ``options.source`` and flips deferred
+    source-dependent steps to pending (or to skipped, with skip_deferred, when
+    no source is found). Re-read the progress file and update ``progress`` and
+    ``options`` in place so callers holding references see the change.
+    Idempotent via a ``.source-resolved`` stamp. Returns a list of messages.
+    """
+    messages = []
+    if options.get("source") or options.get("no_source_repo"):
+        return messages
+
+    stamp = os.path.join(base_path, "requirements", ".source-resolved")
+    if os.path.isfile(stamp):
+        return messages
+
+    exit_code, result = call_resolve_source(
+        base_path,
+        progress_file=pfile,
+        scan_requirements=True,
+        skip_deferred=True,
+    )
+
+    if exit_code == 0 and result.get("status") == "resolved":
+        _rehydrate_progress(pfile, progress, options)
+        messages.append(f"Source resolved: {result.get('repo_path', '?')}")
+    elif exit_code == 2:
+        # no_source: resolve_source flipped deferred steps to skipped on disk.
+        _rehydrate_progress(pfile, progress, options)
+        messages.append("No source repo discovered — source-dependent steps skipped")
+    else:
+        # Hard error (exit 1): leave the stamp unset so a resume can retry.
+        return messages
+
+    try:
+        Path(stamp).touch()
+    except OSError:
+        pass
+    return messages
+
+
+def _rehydrate_progress(pfile, progress, options):
+    """Re-read pfile and refresh progress/options in place.
+
+    Replace the in-memory dicts' contents while preserving the caller's object
+    identities (callers may hold separate references to progress and options),
+    and keep progress["options"] aliased to the same options object.
+    """
+    updated = read_progress(pfile)
+    if not updated:
+        return
+    progress.clear()
+    progress.update(updated)
+    options.clear()
+    options.update(updated.get("options", {}))
+    progress["options"] = options
+
+
 # ---------------------------------------------------------------------------
 # When-condition evaluator
 # ---------------------------------------------------------------------------
@@ -1613,6 +1676,13 @@ def cmd_step_done(args):
 
     # Normal progression: find next step
     write_progress(pfile, progress)
+
+    # After requirements, resolve source repos discovered in the requirements
+    # output and flip deferred source-dependent steps to pending. Run after the
+    # write above so resolve_source.py reads a consistent progress file.
+    if step_name == "requirements":
+        src_messages = resolve_source_post_requirements(base_path, pfile, progress, options)
+        all_messages.extend(src_messages)
 
     # Rebuild yaml_steps_map from stored skills
     yaml_steps_map = {}

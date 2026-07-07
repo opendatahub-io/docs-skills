@@ -19,6 +19,7 @@ from docs_orchestrator import (
     _get_step_skill,
     _parse_review_fallback,
     _prepare_writing,
+    _rehydrate_progress,
     _render_writing_prompt,
     atomic_write_json,
     build_step_args,
@@ -42,6 +43,7 @@ from docs_orchestrator import (
     progress_path,
     read_progress,
     read_sidecar,
+    resolve_source_post_requirements,
     resolve_yaml_path,
     validate_steps,
     write_active_marker,
@@ -1994,6 +1996,108 @@ steps:
         assert "Unknown step" in out["message"]
 
 
+class TestStepDoneRequirementsResolvesSource:
+    """cmd_step_done for requirements resolves source and advances to code-analysis."""
+
+    WORKFLOW_YAML = """\
+name: docs-workflow
+description: Source-resolution integration workflow
+steps:
+  - name: requirements
+    skill: docs-tools:docs-workflow-requirements
+    description: Gather requirements
+  - name: code-analysis
+    skill: docs-tools:docs-workflow-code-analysis
+    description: Analyze source code
+    when: has_source_repo
+    inputs: [requirements]
+  - name: planning
+    skill: docs-tools:docs-workflow-planning
+    description: Plan
+    inputs: [requirements, code-analysis]
+"""
+
+    def _init_args(self, ticket="TEST-1"):
+        return argparse.Namespace(
+            ticket=ticket,
+            workflow=None,
+            pr=None,
+            source_code_repo=None,
+            mkdocs=False,
+            draft=False,
+            docs_repo_path=None,
+            create_merge_request=False,
+            create_jira=None,
+            no_source_repo=False,
+            auto_discover_repos=False,
+            max_secondary_repos=3,
+            plugin_root=None,
+        )
+
+    def test_requirements_advances_to_code_analysis(self, tmp_path, monkeypatch, capsys):
+        from docs_orchestrator import (
+            cmd_init,
+            cmd_step_done,
+            read_progress,
+            resolve_progress_file,
+        )
+
+        root = tmp_path
+        ws = root / ".agent_workspace"
+        ws.mkdir()
+        (ws / "docs-workflow.yaml").write_text(self.WORKFLOW_YAML)
+        monkeypatch.chdir(root)
+        monkeypatch.setattr("docs_orchestrator.git_root", lambda: str(root))
+
+        cmd_init(self._init_args())
+        capsys.readouterr()
+
+        base = ws / "test-1"
+        pfile = resolve_progress_file(str(base), str(root))
+        # code-analysis is deferred until source is resolved.
+        assert read_progress(pfile)["steps"]["code-analysis"]["status"] == "deferred"
+
+        # Write the requirements output + sidecar.
+        req_dir = base / "requirements"
+        req_dir.mkdir(parents=True, exist_ok=True)
+        (req_dir / "step-result.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "step": "requirements",
+                    "ticket": "TEST-1",
+                    "completed_at": iso_now(),
+                    "requirement_count": 3,
+                }
+            )
+        )
+
+        def fake_resolve(base_path, progress_file=None, **kwargs):
+            p = read_progress(progress_file)
+            p["options"]["source"] = {"repo_path": "/clone"}
+            for s in p["steps"].values():
+                if s["status"] == "deferred":
+                    s["status"] = "pending"
+            with open(progress_file, "w") as f:
+                json.dump(p, f)
+            return 0, {"status": "resolved", "repo_path": "/clone"}
+
+        monkeypatch.setattr("docs_orchestrator.call_resolve_source", fake_resolve)
+
+        cmd_step_done(
+            argparse.Namespace(ticket="TEST-1", step_name="requirements", failed=False, force=False)
+        )
+        out = json.loads(capsys.readouterr().out)
+
+        assert out["step"] == "code-analysis"
+        assert "--repo /clone" in out["args"]
+        # Source resolution persisted and stamped.
+        final = read_progress(pfile)
+        assert final["options"]["source"]["repo_path"] == "/clone"
+        assert final["steps"]["code-analysis"]["status"] == "in_progress"
+        assert os.path.isfile(base / "requirements" / ".source-resolved")
+
+
 class TestBuildStepArgsScopeReqAudit:
     def test_includes_repo(self):
         opts = {"source": {"repo_path": "/repo"}}
@@ -2003,3 +2107,142 @@ class TestBuildStepArgsScopeReqAudit:
     def test_no_repo(self):
         args = build_step_args("scope-req-audit", "T-1", "/base", {})
         assert "--repo" not in args
+
+
+def _write_progress_json(pfile, progress):
+    with open(pfile, "w") as f:
+        json.dump(progress, f)
+
+
+class TestRehydrateProgress:
+    def test_preserves_object_identity_and_updates(self, tmp_path):
+        pfile = str(tmp_path / "progress.json")
+        _write_progress_json(
+            pfile,
+            {
+                "steps": {"code-analysis": {"status": "pending"}},
+                "options": {"source": {"repo_path": "/repo"}},
+            },
+        )
+        options = {"stale": True}
+        progress = {"options": options, "steps": {"code-analysis": {"status": "deferred"}}}
+
+        _rehydrate_progress(pfile, progress, options)
+
+        # Same object identities preserved for both callers' references.
+        assert progress["options"] is options
+        # Content refreshed from disk.
+        assert options == {"source": {"repo_path": "/repo"}}
+        assert progress["steps"]["code-analysis"]["status"] == "pending"
+
+    def test_missing_file_is_noop(self, tmp_path):
+        pfile = str(tmp_path / "does-not-exist.json")
+        options = {"a": 1}
+        progress = {"options": options, "steps": {}}
+        _rehydrate_progress(pfile, progress, options)
+        assert options == {"a": 1}
+        assert progress["options"] is options
+
+
+class TestResolveSourcePostRequirements:
+    def _setup(self, tmp_path, options):
+        base = tmp_path / "base"
+        (base / "requirements").mkdir(parents=True)
+        (base / "workflow").mkdir(parents=True)
+        pfile = str(base / "workflow" / "progress.json")
+        progress = {
+            "ticket": "TEST-1",
+            "options": options,
+            "steps": {
+                "requirements": {"status": "completed"},
+                "code-analysis": {"status": "deferred"},
+            },
+            "step_order": ["requirements", "code-analysis"],
+        }
+        _write_progress_json(pfile, progress)
+        return str(base), pfile, progress
+
+    def test_resolved_flips_deferred_and_sets_source(self, tmp_path, monkeypatch):
+        options = {}
+        base, pfile, progress = self._setup(tmp_path, options)
+
+        def fake_resolve(base_path, progress_file=None, **kwargs):
+            # Simulate resolve_source.py's on-disk _sync_progress mutation.
+            p = read_progress(progress_file)
+            p["options"]["source"] = {"repo_path": "/clone"}
+            p["steps"]["code-analysis"]["status"] = "pending"
+            _write_progress_json(progress_file, p)
+            return 0, {"status": "resolved", "repo_path": "/clone"}
+
+        monkeypatch.setattr("docs_orchestrator.call_resolve_source", fake_resolve)
+
+        messages = resolve_source_post_requirements(base, pfile, progress, options)
+
+        assert any("Source resolved" in m for m in messages)
+        assert options["source"] == {"repo_path": "/clone"}
+        assert progress["options"] is options
+        assert progress["steps"]["code-analysis"]["status"] == "pending"
+        assert os.path.isfile(os.path.join(base, "requirements", ".source-resolved"))
+
+    def test_no_source_skips_deferred(self, tmp_path, monkeypatch):
+        options = {}
+        base, pfile, progress = self._setup(tmp_path, options)
+
+        def fake_resolve(base_path, progress_file=None, **kwargs):
+            p = read_progress(progress_file)
+            p["steps"]["code-analysis"]["status"] = "skipped"
+            _write_progress_json(progress_file, p)
+            return 2, {"status": "no_source"}
+
+        monkeypatch.setattr("docs_orchestrator.call_resolve_source", fake_resolve)
+
+        messages = resolve_source_post_requirements(base, pfile, progress, options)
+
+        assert any("No source repo discovered" in m for m in messages)
+        assert progress["steps"]["code-analysis"]["status"] == "skipped"
+        assert os.path.isfile(os.path.join(base, "requirements", ".source-resolved"))
+
+    def test_hard_error_leaves_no_stamp(self, tmp_path, monkeypatch):
+        options = {}
+        base, pfile, progress = self._setup(tmp_path, options)
+        monkeypatch.setattr(
+            "docs_orchestrator.call_resolve_source",
+            lambda *a, **k: (1, {"status": "error", "message": "boom"}),
+        )
+
+        messages = resolve_source_post_requirements(base, pfile, progress, options)
+
+        assert messages == []
+        assert not os.path.isfile(os.path.join(base, "requirements", ".source-resolved"))
+
+    def test_skips_when_source_already_present(self, tmp_path, monkeypatch):
+        options = {"source": {"repo_path": "/existing"}}
+        base, pfile, progress = self._setup(tmp_path, options)
+
+        def boom(*a, **k):
+            raise AssertionError("call_resolve_source must not be called")
+
+        monkeypatch.setattr("docs_orchestrator.call_resolve_source", boom)
+        assert resolve_source_post_requirements(base, pfile, progress, options) == []
+
+    def test_skips_when_no_source_repo_option(self, tmp_path, monkeypatch):
+        options = {"no_source_repo": True}
+        base, pfile, progress = self._setup(tmp_path, options)
+
+        def boom(*a, **k):
+            raise AssertionError("call_resolve_source must not be called")
+
+        monkeypatch.setattr("docs_orchestrator.call_resolve_source", boom)
+        assert resolve_source_post_requirements(base, pfile, progress, options) == []
+
+    def test_idempotent_when_stamp_exists(self, tmp_path, monkeypatch):
+        options = {}
+        base, pfile, progress = self._setup(tmp_path, options)
+        stamp = os.path.join(base, "requirements", ".source-resolved")
+        open(stamp, "w").close()
+
+        def boom(*a, **k):
+            raise AssertionError("call_resolve_source must not be called")
+
+        monkeypatch.setattr("docs_orchestrator.call_resolve_source", boom)
+        assert resolve_source_post_requirements(base, pfile, progress, options) == []

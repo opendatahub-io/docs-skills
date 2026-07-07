@@ -17,7 +17,7 @@ Step skill for the docs-orchestrator pipeline. Performs a single review pass; th
 python3 ${CLAUDE_SKILL_DIR}/scripts/prepare_review.py <args>
 ```
 
-Pass args **unquoted**. The script emits JSON on stdout. Key fields used below: `ticket`, `output_dir`, `output_file`, `claims_file`, `code_analysis_dir`, `repo_path`, `additional_repo_paths`, `additional_code_analysis_dirs`, `has_repo`, `has_code_analysis`, `source_files_block`. Stop on non-zero exit.
+Pass args **unquoted**. The script emits JSON on stdout. Key fields used below: `ticket`, `output_dir`, `output_file`, `claims_file`, `code_analysis_dir`, `repo_path`, `additional_repo_paths`, `additional_code_analysis_dirs`, `has_repo`, `has_code_analysis`, `source_files_block`, `prior_findings_file`. Stop on non-zero exit.
 
 ### 2. Claim validation (conditional)
 
@@ -133,7 +133,11 @@ rm -f <output_file>
 
 **[if iteration >= 2]** Prepend this paragraph to the prompt, before "Perform a technical review":
 
-> **This is a re-review (iteration 2+).** A prior review found issues and fixes have been applied to the source files. Review the documentation **fresh** — read the current file content, not any prior review output. If the output file already exists at the path below, do NOT read it. Evaluate the documentation as it currently stands and produce an independent assessment.
+> **This is a re-review (iteration 2+).** A prior review found issues and fixes have been applied to the source files. Base your assessment on the current file content. If a `review.md` already exists at the output path below, do NOT read it — it will be overwritten.
+
+**[if iteration >= 2 AND `prior_findings_file` is not null]** Also prepend, immediately after the re-review paragraph:
+
+> **Prior findings:** Read `<prior_findings_file>` for a summary of what the previous iteration found, grouped by severity. For each prior finding, determine whether it is now **FIXED** or still **PERSISTS**, and state that status in your report. You may also report NEW findings, but prioritize verifying the prior findings over hunting for new minor issues.
 
 **[if `has_prior_validation` is true]** Also prepend, after the re-review paragraph (or as the first prepended paragraph if iteration == 1):
 
