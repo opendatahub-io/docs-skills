@@ -63,18 +63,18 @@ SCANNER_EXIT=$?
 ```
 
 Check the exit code. The scanner uses these exit codes:
-- **0** — clean scan, no findings
-- **1** — warnings only (non-RFC IPs, URLs, emails — proceed normally)
-- **2** — critical findings (credentials, private keys — proceed but flag in report)
+- **0** — no critical findings (warnings such as URL patterns may still exist in the JSON output)
+- **1** — critical findings detected (credentials, private keys — proceed but flag in report)
+- **2** — script error (bad paths, unreadable files, invalid arguments)
 
 ```bash
-if [ $SCANNER_EXIT -gt 2 ]; then
+if [ $SCANNER_EXIT -gt 1 ]; then
   echo "ERROR: PII scanner failed (exit $SCANNER_EXIT). See output above." >&2
   exit 1
 fi
 ```
 
-Do NOT treat exit codes 0, 1, or 2 as script failures — all three produce valid JSON output. Exit 1 means warnings were detected. Exit 2 means critical findings were detected, which the report will surface.
+Do NOT treat exit codes 0 or 1 as script failures — both produce valid JSON output. Exit 0 means no critical findings (but warnings may exist). Exit 1 means critical findings were detected.
 
 Validate the JSON output is well-formed before parsing:
 
@@ -86,7 +86,7 @@ if [ $? -ne 0 ]; then
 fi
 ```
 
-Read and parse the JSON output. Note the total findings count and whether any are `critical`.
+**Always parse the JSON** to get finding counts — do NOT infer counts from the exit code. Read `summary.total_findings`, `summary.by_severity.critical` (default 0), and `summary.by_severity.warning` (default 0) from `$SCANNER_FILE`. These are the values to use in the report header.
 
 ### 4. Build report header
 

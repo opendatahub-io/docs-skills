@@ -117,9 +117,12 @@ if [ ! -f "$OUTPUT_DIR/discovered_repos.json" ]; then
   python3 "$JIRA_READER" --graph <TICKET> | \
     python3 ${CLAUDE_SKILL_DIR}/scripts/extract_discovered_repos.py \
       --output-dir "$OUTPUT_DIR" \
-      --traverse-links "$JIRA_READER"
+      --traverse-links "$JIRA_READER" \
+      --repo-discovery "$DISCOVERY_FILE"
 fi
 ```
+
+The `--repo-discovery` flag reads PR/repo URLs from `discovery.json` (the `sources_consulted.pull_requests` array and per-requirement `sources` with `type: "pr"`), ensuring repos referenced in JIRA descriptions and comments — but not formally attached as JIRA remote links — are included in `discovered_repos.json`.
 
 This produces `discovered_repos.json` in the output directory, which `resolve_source.py` reads at Priority 4 for automatic repo discovery. If the script fails, log a warning and continue — repo discovery is optional.
 

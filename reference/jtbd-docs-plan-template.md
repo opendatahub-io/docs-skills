@@ -27,6 +27,7 @@ Copy these five sections verbatim from the completed full plan. Do not add secti
 **Critical rules for template population:**
 - **Replace ALL `[REPLACE: ...]` text** with real content derived from your research — never output the bracket instructions themselves
 - **Personas**: Select 1-3 personas from the persona reference list below. Output ONLY the selected personas with a brief relevance note. Do NOT include the full persona reference list in the output
+- **Module Specifications**: List ALL modules (new and updated) using the exact `- Module: filename.adoc (TYPE, Create|Update)` bullet format. This section is machine-parsed — do not change the format
 - **New Docs / Updated Docs**: Replace the example entries with actual module names, types, and content outlines from your planning. The entries shown (e.g., "Actual Module Title (Concept)") are structural examples, not headings to keep
 - **JTBD statement**: Replace `[actual circumstance]`, `[actual motivation]`, etc. with the real job statement from your analysis
 
@@ -86,6 +87,15 @@ Draft release note: [REPLACE: Draft a release note based on the user-facing chan
 
 [REPLACE: Add actual links discovered during research as bullets]
 
+## Module Specifications
+
+[REPLACE: List ALL modules (new and updated) using this exact bullet format. This section is machine-parsed — do not change the format:]
+
+- Module: filename.adoc (TYPE, Create)
+- Module: existing-filename.adoc (TYPE, Update)
+
+[Where TYPE is CONCEPT, PROCEDURE, REFERENCE, or ASSEMBLY]
+
 ## New Docs
 
 [REPLACE: List actual new modules to create based on your gap analysis and module planning. Follow this structure for each:]
@@ -133,4 +143,5 @@ Select 1-3 personas from this list when populating the "Who is the target person
 - **Contacts**: Extract PM, SME, and UX contacts from the parent JIRA ticket fields (assignee, reporter, watchers, or custom fields).
 - **Release note**: Check the JIRA ticket for release note fields or labels. Draft a release note based on the user-facing change.
 - **Links to existing content**: Include links to existing documentation, upstream docs, and related JIRA tickets discovered during research.
+- **Module Specifications**: List ALL planned modules (new and updated) using the exact `- Module: filename.adoc (TYPE, Create|Update)` bullet format. This is machine-parsed by the orchestrator to count modules — omitting it or using a different format causes a pipeline failure.
 - **New Docs / Updated Docs**: Map directly from your recommended modules and gap analysis sections. Use actual module names and real content outlines — not the example entries from the template.
