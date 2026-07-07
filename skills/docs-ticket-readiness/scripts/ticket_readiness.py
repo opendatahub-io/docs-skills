@@ -19,7 +19,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
-DEFAULT_READY_STATUSES = ["Done", "Closed", "Resolved", "In Review", "Code Review", "Release Pending"]
+DEFAULT_READY_STATUSES = [
+    "Done",
+    "Closed",
+    "Resolved",
+    "In Review",
+    "Code Review",
+    "Release Pending",
+]
 WARN_STATUSES = ["In Progress", "In Development", "In QE Review", "QE Review"]
 PR_URL_PATTERN = re.compile(
     r"https?://(?:github\.com/.+/pull/\d+|gitlab\.com/.+/-/merge_requests/\d+)"
@@ -311,7 +318,8 @@ def check_relationships(issue_data: dict, graph_data: dict) -> dict:
     # Grandchildren PRs — check children's git links
     if children:
         with_prs = sum(
-            1 for c in children
+            1
+            for c in children
             if c.get("git_links") or (c.get("auto_discovered_urls") or {}).get("pull_requests")
         )
         without_prs = len(children) - with_prs
@@ -342,10 +350,7 @@ def check_relationships(issue_data: dict, graph_data: dict) -> dict:
 
     # "Is documented by" issue links
     issue_links = (graph_data.get("issue_links") or {}).get("links", [])
-    doc_links = [
-        lnk for lnk in issue_links
-        if "documented" in lnk.get("direction", "").lower()
-    ]
+    doc_links = [lnk for lnk in issue_links if "documented" in lnk.get("direction", "").lower()]
     if doc_links:
         keys = [f"{lnk['key']} ({lnk.get('issuetype', 'Unknown')})" for lnk in doc_links]
         checks["documented_by"] = {
@@ -436,10 +441,7 @@ def build_relationship_map(graph_data: dict) -> dict:
         ]
 
     issue_links = (graph_data.get("issue_links") or {}).get("links", [])
-    doc_links = [
-        lnk for lnk in issue_links
-        if "documented" in lnk.get("direction", "").lower()
-    ]
+    doc_links = [lnk for lnk in issue_links if "documented" in lnk.get("direction", "").lower()]
     if doc_links:
         rel_map["documented_by"] = []
         for lnk in doc_links:
@@ -586,43 +588,47 @@ def format_comment(result: dict) -> dict:
         "not_ready": "NOT READY",
     }
     heading_text = f"Docs readiness: {status_labels.get(status, status.upper())}"
-    content.append({
-        "type": "heading",
-        "attrs": {"level": 3},
-        "content": [{"type": "text", "text": heading_text}],
-    })
+    content.append(
+        {
+            "type": "heading",
+            "attrs": {"level": 3},
+            "content": [{"type": "text", "text": heading_text}],
+        }
+    )
 
     if status == "ready":
-        content.append(_adf_paragraph(
-            "This ticket has sufficient information to begin the documentation workflow."
-        ))
+        content.append(
+            _adf_paragraph(
+                "This ticket has sufficient information to begin the documentation workflow."
+            )
+        )
     elif status == "ready_with_warnings":
-        content.append(_adf_paragraph(
-            "This ticket can proceed but has minor gaps:"
-        ))
+        content.append(_adf_paragraph("This ticket can proceed but has minor gaps:"))
         gap_items = _format_dimension_gaps(dims, warns_only=True)
         if gap_items:
             content.append({"type": "bulletList", "content": gap_items})
     else:
-        content.append(_adf_paragraph(
-            "This ticket needs the following before documentation work can begin:"
-        ))
+        content.append(
+            _adf_paragraph("This ticket needs the following before documentation work can begin:")
+        )
         gap_items = _format_dimension_gaps(dims, warns_only=False)
         if gap_items:
             content.append({"type": "bulletList", "content": gap_items})
 
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    content.append({
-        "type": "paragraph",
-        "content": [
-            {"type": "emoji", "attrs": {"shortName": ":robot:", "text": "\U0001f916"}},
-            {
-                "type": "text",
-                "text": f" Assessed by /docs-ticket-readiness skill on {date_str}",
-                "marks": [{"type": "em"}],
-            },
-        ],
-    })
+    content.append(
+        {
+            "type": "paragraph",
+            "content": [
+                {"type": "emoji", "attrs": {"shortName": ":robot:", "text": "\U0001f916"}},
+                {
+                    "type": "text",
+                    "text": f" Assessed by /docs-ticket-readiness skill on {date_str}",
+                    "marks": [{"type": "em"}],
+                },
+            ],
+        }
+    )
 
     return {"version": 1, "type": "doc", "content": content}
 
@@ -688,21 +694,27 @@ def _format_dimension_gaps(dims: dict, warns_only: bool) -> list[dict]:
         if not detail_text.strip():
             continue
 
-        items.append({
-            "type": "listItem",
-            "content": [{
-                "type": "paragraph",
+        items.append(
+            {
+                "type": "listItem",
                 "content": [
-                    {"type": "text", "text": f"{label}:", "marks": [{"type": "strong"}]},
-                    {"type": "text", "text": detail_text},
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {"type": "text", "text": f"{label}:", "marks": [{"type": "strong"}]},
+                            {"type": "text", "text": detail_text},
+                        ],
+                    }
                 ],
-            }],
-        })
+            }
+        )
 
     return items
 
 
-def post_jira_comment(issue_key: str, comment_adf: dict, jira_url: str, email: str, token: str) -> dict:
+def post_jira_comment(
+    issue_key: str, comment_adf: dict, jira_url: str, email: str, token: str
+) -> dict:
     """Post a comment to a JIRA ticket via REST API v3.
 
     comment_adf is an ADF document body dict (with version, type, content keys).

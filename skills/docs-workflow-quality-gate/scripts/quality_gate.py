@@ -1,10 +1,12 @@
 """Quality gate support for docs-orchestrator pipeline.
 
 Subcommands:
-    prepare  — Read pipeline outputs, write judge prompt files
-    verify   — AC coverage check (--prepare writes one combined prompt,
-               --classify validates quotes from the single results file)
-    classify — Read agent judge results, classify gaps, write step-result.json
+    prepare      — Read pipeline outputs, write judge prompt files
+    verify       — AC coverage check (--prepare writes one combined prompt,
+                   --classify validates quotes from the single results file)
+    classify     — Read agent judge results, classify gaps, write step-result.json
+    extract-json — Pull a JSON object from a judge/coverage agent's free-text
+                   reply, validate it against a schema, and write it out
 """
 
 import argparse
@@ -20,6 +22,106 @@ _SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 def _safe_artifact_id(value):
     """Sanitize a string for use as a filename component."""
     return _SAFE_ID_RE.sub("_", value).strip("._") or "item"
+
+
+def extract_json_value(text):
+    """Extract the first JSON object/array from an agent's free-text reply.
+
+    The Agent tool has no schema-enforced output, so judge and coverage agents
+    return prose that wraps the JSON — typically in a ```json fence. Prefer the
+    last fenced block (agents sometimes echo the schema first), then fall back
+    to the first balanced ``{...}`` or ``[...]`` span. Raises ValueError if no
+    parseable JSON is found.
+    """
+    fences = re.findall(r"```(?:json)?\s*(.+?)```", text, re.DOTALL)
+    for block in reversed(fences):
+        try:
+            return json.loads(block.strip())
+        except json.JSONDecodeError:
+            continue
+
+    closer_for = {"{": "}", "[": "]"}
+    pos = 0
+    while pos < len(text):
+        # Start from whichever opener ('{' or '[') appears first from here.
+        candidates = [text.find(c, pos) for c in closer_for]
+        candidates = [c for c in candidates if c != -1]
+        if not candidates:
+            break
+        start = min(candidates)
+        opener = text[start]
+        closer = closer_for[opener]
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == opener:
+                depth += 1
+            elif text[i] == closer:
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(text[start : i + 1])
+                    except json.JSONDecodeError:
+                        break
+        pos = start + 1
+
+    raise ValueError("no parseable JSON object or array found in agent reply")
+
+
+def validate_against_schema(data, schema):
+    """Validate ``data`` against a JSON Schema, returning a list of error strings.
+
+    Uses ``jsonschema`` for full validation when available (CI, dev). Falls
+    back to a shallow required-key/top-level-type check so the script stays
+    usable in runtimes without the dependency installed.
+    """
+    try:
+        import jsonschema
+    except ImportError:
+        errors = []
+        expected = schema.get("type")
+        type_map = {"object": dict, "array": list, "string": str, "integer": int}
+        if expected in type_map and not isinstance(data, type_map[expected]):
+            errors.append(f"top-level value is not a JSON {expected}")
+            return errors
+        if expected == "object":
+            for key in schema.get("required", []):
+                if key not in data:
+                    errors.append(f"missing required key: {key}")
+        return errors
+
+    validator = jsonschema.Draft7Validator(schema)
+    return [e.message for e in validator.iter_errors(data)]
+
+
+def cmd_extract_json(args):
+    raw_text = Path(args.raw).read_text()
+    schema = json.loads(Path(args.schema).read_text())
+
+    try:
+        data = extract_json_value(raw_text)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    errors = validate_against_schema(data, schema)
+    if errors:
+        print("ERROR: agent output does not conform to schema:", file=sys.stderr)
+        for e in errors:
+            print(f"  - {e}", file=sys.stderr)
+        return 1
+
+    if args.key:
+        if not isinstance(data, dict) or args.key not in data:
+            print(f"ERROR: extracted JSON has no '{args.key}' key", file=sys.stderr)
+            return 1
+        out = data[args.key]
+    else:
+        out = data
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(out, indent=2))
+    print(f"Written {out_path}")
+    return 0
 
 
 PASS_THRESHOLD_INTENT = 4
@@ -42,10 +144,15 @@ Determine whether this documentation addresses each of the following acceptance 
 3. If it is addressed, quote the single most relevant supporting sentence from the \
 documentation VERBATIM — copy it exactly as written, including punctuation.
 4. If it is not addressed, set covered to false and quote to null.
-5. Return a JSON array with one object per criterion, in the same order, each shaped exactly:
+5. Output a single JSON object inside a ```json fenced code block, with an "items"
+   array holding one object per criterion, in the same order, each shaped exactly:
    {{"id": "<the ID shown in brackets>", "covered": true, "quote": "verbatim sentence"}}
    or {{"id": "<the ID shown in brackets>", "covered": false, "quote": null}}
-6. Return JSON only — no prose before or after the array.
+6. The full reply must be:
+   ```json
+   {{"items": [ ... ]}}
+   ```
+   Output only that fenced JSON object — no prose before or after it.
 """
 
 DOC_QUALITY_PROMPT = """\
@@ -65,6 +172,16 @@ and absence of fabricated commands, flags, or API details.
 ## Documentation to evaluate
 
 {doc_content}
+
+## Output
+
+Output only a single JSON object inside a ```json fenced code block, shaped exactly:
+
+```json
+{{"score": <integer 1-5>, "rationale": "<detailed rationale for the score>"}}
+```
+
+No prose before or after the fenced block.
 """
 
 INTENT_ALIGNMENT_PROMPT = """\
@@ -102,6 +219,24 @@ section where the fix should be applied. Name the AsciiDoc filename (from the he
 and the section heading or location where content should be added or expanded. If a new \
 section is needed, name the file it belongs in and where it should be inserted relative to \
 existing sections.
+
+## Output
+
+Output only a single JSON object inside a ```json fenced code block, shaped exactly:
+
+```json
+{{
+  "score": <integer 1-5>,
+  "rationale": "<detailed rationale>",
+  "missed_items": [
+    {{"ac_item": "<text>", "severity": "missing|incomplete",
+      "file": "<filename>", "section": "<heading or location>"}}
+  ]
+}}
+```
+
+Use an empty array for "missed_items" if nothing is missed. No prose before or after \
+the fenced block.
 """
 
 
@@ -194,8 +329,8 @@ def read_doc_content(base_path):
     for fpath in files:
         p = Path(fpath).resolve()
         if not p.is_relative_to(root):
-            print(f"ERROR: path outside workspace: {p}", file=sys.stderr)
-            sys.exit(1)
+            print(f"WARNING: skipping {p} (outside workspace root {root})", file=sys.stderr)
+            continue
         if not p.exists() or p.suffix not in (".adoc", ".md"):
             print(f"WARNING: skipping {p} (missing or unsupported suffix)", file=sys.stderr)
             continue
@@ -359,8 +494,15 @@ def classify_coverage(manifest, results_by_id, doc_content, evidence_status):
 
 
 def write_results(
-    output_dir, ticket, doc_quality_result, intent_result, gaps, iteration,
-    coverage_check=None, evidence_expected=False, evidence_warning=None,
+    output_dir,
+    ticket,
+    doc_quality_result,
+    intent_result,
+    gaps,
+    iteration,
+    coverage_check=None,
+    evidence_expected=False,
+    evidence_warning=None,
 ):
     """Write step-result.json and judge-results.md."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -691,7 +833,13 @@ def cmd_classify(args):
     base_path = Path(args.base_path)
     output_dir = base_path / "quality-gate"
 
-    judge_results = json.loads(Path(args.judge_results).read_text())
+    if args.judge_results:
+        judge_results = json.loads(Path(args.judge_results).read_text())
+    else:
+        judge_results = {
+            "doc_quality": json.loads(Path(args.doc_quality).read_text()),
+            "intent_alignment": json.loads(Path(args.intent_alignment).read_text()),
+        }
     evidence_status = read_evidence_status(base_path)
 
     dq_result = judge_results["doc_quality"]
@@ -770,8 +918,11 @@ def main():
     classify.add_argument("--base-path", required=True)
     classify.add_argument(
         "--judge-results",
-        required=True,
-        help="Path to JSON file with doc_quality and intent_alignment results",
+        help="Combined JSON file with doc_quality and intent_alignment results",
+    )
+    classify.add_argument("--doc-quality", help="doc_quality result file (with --intent-alignment)")
+    classify.add_argument(
+        "--intent-alignment", help="intent_alignment result file (with --doc-quality)"
     )
     classify.add_argument("--iteration", type=int, default=1)
     classify.add_argument("--evidence-expected", action="store_true", default=False)
@@ -797,15 +948,33 @@ def main():
     brief.add_argument("--base-path", required=True)
     brief.add_argument("--iteration", type=int, default=1)
 
+    extract = subparsers.add_parser(
+        "extract-json", help="Extract + validate a JSON object from an agent reply"
+    )
+    extract.add_argument("--raw", required=True, help="File holding the agent's raw reply")
+    extract.add_argument("--schema", required=True, help="JSON Schema path to validate against")
+    extract.add_argument("--out", required=True, help="Path to write the extracted JSON")
+    extract.add_argument(
+        "--key",
+        default=None,
+        help="Write only this top-level key's value (e.g. 'items' for coverage)",
+    )
+
     args = parser.parse_args()
     if args.command == "prepare":
         cmd_prepare(args)
     elif args.command == "classify":
+        if not args.judge_results and not (args.doc_quality and args.intent_alignment):
+            parser.error(
+                "classify requires --judge-results, or both --doc-quality and --intent-alignment"
+            )
         cmd_classify(args)
     elif args.command == "verify":
         cmd_verify(args)
     elif args.command == "brief":
         cmd_brief(args)
+    elif args.command == "extract-json":
+        sys.exit(cmd_extract_json(args))
 
 
 if __name__ == "__main__":

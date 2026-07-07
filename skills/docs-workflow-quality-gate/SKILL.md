@@ -7,7 +7,7 @@ allowed-tools: Read, Write, Bash, Glob, Grep, Agent
 
 # Quality Gate
 
-Score the pipeline's documentation output before creating a merge request. This skill dispatches two judge agents in parallel — one for doc_quality, one for intent_alignment — using the same model as the eval harness (Opus). The agents return structured JSON via schema validation.
+Score the pipeline's documentation output before creating a merge request. This skill dispatches two judge agents in parallel — one for doc_quality, one for intent_alignment — using the same model as the eval harness (Opus). Each agent returns a JSON object in a fenced code block, which the `extract-json` script pulls out and validates against the step's schema.
 
 The quality gate produces a pass/fail verdict and, when intent alignment is below threshold, a structured list of gaps with recommended actions and a feedback brief (`feedback-brief.md`) ready for the orchestrator to dispatch the writer in fix mode.
 
@@ -66,18 +66,19 @@ If the summary reports `0 AC items`, skip steps 3b and 3c.
 Dispatch **one** agent (a single Agent-tool call). Because there is one prompt and one result, there is no per-item mapping problem and nothing to fan out — the script maps results back to AC items by id.
 
 - **Model**: opus — match the judges. The cheap model produced literal-minded false negatives (e.g. reading "subsection" or "automatically detect" too narrowly), and with a single combined prompt the docs are read once, so the cost argument for a cheaper model no longer applies
-- **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/coverage-prompt.md` and follow the instructions
-- **Schema**: Read `${CLAUDE_SKILL_DIR}/schema/coverage.json` and pass the parsed JSON object as the `schema` parameter to the Agent tool. **Do NOT omit** — without it, the agent returns free-text that requires manual parsing and loses the retry-on-mismatch safety net
+- **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/coverage-prompt.md` and follow the instructions. The prompt requires the agent to output a JSON object matching `schema/coverage.json` inside a single ` ```json ` fenced code block.
 
-The agent returns a structured JSON object. Extract the `items` array and write it to `${BASE_PATH}/quality-gate/coverage-results.json`:
+The Agent tool has no schema-enforced output, so the agent returns prose wrapping the JSON. Write the agent's reply **verbatim** to `${BASE_PATH}/quality-gate/coverage-raw.md`, then extract and validate the `items` array with the script:
 
 ```bash
-cat > "${BASE_PATH}/quality-gate/coverage-results.json" <<'EOF'
-<the items array from the agent's structured output>
-EOF
+python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py extract-json \
+  --raw "${BASE_PATH}/quality-gate/coverage-raw.md" \
+  --schema "${CLAUDE_SKILL_DIR}/schema/coverage.json" \
+  --out "${BASE_PATH}/quality-gate/coverage-results.json" \
+  --key items
 ```
 
-The classify step (3c) reports any AC ids missing from the array; you do not need to count files by hand.
+If the script exits non-zero (no JSON found, or schema mismatch), **re-dispatch the coverage agent once** with a reminder to output only a valid JSON object in a ` ```json ` fence, then re-run the script. The classify step (3c) reports any AC ids missing from the array; you do not need to count files by hand.
 
 #### 3c. Classify coverage results
 
@@ -104,32 +105,37 @@ Classifications:
 
 Dispatch **both agents in a single message** so they run in parallel. These are independent reads of the same docs — there is no dependency between them. **Do NOT dispatch them in separate messages** — sequential dispatch adds unnecessary latency and has caused ~65s delays in observed runs.
 
-For each agent, pass the `schema` JSON object as the Agent tool's `schema` parameter. This forces the agent to return structured output via the StructuredOutput tool with automatic retry on schema mismatch. **Do NOT omit the schema parameter** — without it, agents return free-text that requires manual parsing and loses the retry-on-mismatch safety net.
+Each judge prompt requires the agent to output a JSON object matching its schema inside a single ` ```json ` fenced code block. The Agent tool has no schema-enforced output, so extract and validate each reply with the `extract-json` script (step 5) rather than trusting the raw text.
 
 #### doc_quality agent
 
 - **Model**: opus
 - **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/dq-prompt.md` and follow the instructions exactly.
-- **Schema**: Read `${CLAUDE_SKILL_DIR}/schema/doc-quality.json` and pass the parsed JSON object as the `schema` parameter to the Agent tool
+- **Output schema**: `${CLAUDE_SKILL_DIR}/schema/doc-quality.json`
 
 #### intent_alignment agent
 
 - **Model**: opus
 - **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/ia-prompt.md` and follow the instructions exactly.
-- **Schema**: Read `${CLAUDE_SKILL_DIR}/schema/intent-alignment.json` and pass the parsed JSON object as the `schema` parameter to the Agent tool
+- **Output schema**: `${CLAUDE_SKILL_DIR}/schema/intent-alignment.json`
 
-### 5. Write judge results
+### 5. Extract and validate judge results
 
-After both agents return, each agent's result is a structured JSON object (enforced by the `schema` parameter). Write the objects directly to `${BASE_PATH}/quality-gate/judge-results.json` — no manual parsing or score extraction needed:
+Write each agent's reply **verbatim** to a raw file, then extract + validate it against its schema:
 
-```json
-{
-  "doc_quality": { "score": <N>, "rationale": "<text>" },
-  "intent_alignment": { "score": <N>, "rationale": "<text>", "missed_items": [...] }
-}
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py extract-json \
+  --raw "${BASE_PATH}/quality-gate/dq-raw.md" \
+  --schema "${CLAUDE_SKILL_DIR}/schema/doc-quality.json" \
+  --out "${BASE_PATH}/quality-gate/dq-result.json"
+
+python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py extract-json \
+  --raw "${BASE_PATH}/quality-gate/ia-raw.md" \
+  --schema "${CLAUDE_SKILL_DIR}/schema/intent-alignment.json" \
+  --out "${BASE_PATH}/quality-gate/ia-result.json"
 ```
 
-If an agent returns `null` (skipped or died), mark the quality gate as `failed` — do not substitute default scores.
+If either script call exits non-zero (no JSON found, or schema mismatch), **re-dispatch that judge agent once** with a reminder to output only a valid JSON object in a ` ```json ` fence, then re-run the script. If an agent produces no usable result after the retry, mark the quality gate as `failed` — do not substitute default scores.
 
 ### 6. Classify gaps and write step-result.json
 
@@ -141,13 +147,14 @@ Determine whether code evidence was expected: check if `${BASE_PATH}/scope-req-a
 python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py classify \
   --ticket "${TICKET}" \
   --base-path "${BASE_PATH}" \
-  --judge-results "${BASE_PATH}/quality-gate/judge-results.json" \
+  --doc-quality "${BASE_PATH}/quality-gate/dq-result.json" \
+  --intent-alignment "${BASE_PATH}/quality-gate/ia-result.json" \
   --iteration <N> \
   [--evidence-expected]
 ```
 
 The script:
-1. Reads the judge results from the JSON file
+1. Reads the two judge result files (or a combined `--judge-results` file)
 2. Reads `coverage-check.json` if it exists (from step 3c) and merges coverage defects into the gaps array, deduplicating by AC text (coverage check classification takes precedence)
 3. Cross-references `missed_items` against evidence status to classify each gap:
    - `absent` → `document_as_unsupported` (add "not supported in this release" note)

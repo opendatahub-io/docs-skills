@@ -20,9 +20,12 @@ def count_modules(path):
     """Count module specifications in the plan markdown.
 
     Counts:
-    - Level-3 headings (###) whose text begins with 'Module:'
+    - Level-3 headings (###) whose text begins with 'Module:' or 'Update:'
     - Numbered or bulleted list items within the 'Module Specifications'
-      section that start with 'Module:'
+      section that start with 'Module:' or 'Update:'
+
+    'Update' headings appear in in-place-update plans, where each entry
+    describes an edit to an existing doc rather than a new module.
 
     Skips items inside code blocks or blockquotes.
     """
@@ -48,12 +51,13 @@ def count_modules(path):
                 )
                 continue
 
-            if re.match(r"^###\s+Module[\s:\d]", stripped):
+            if re.match(r"^###\s+(?:Module|Update)[\s:\d]", stripped):
                 count += 1
                 continue
 
             if in_module_specs_section and re.match(
-                r"^[\d]+[\.\)]\s+Module[\s:\d]|^[-*]\s+Module[\s:\d]", stripped
+                r"^[\d]+[\.\)]\s+(?:Module|Update)[\s:\d]|^[-*]\s+(?:Module|Update)[\s:\d]",
+                stripped,
             ):
                 count += 1
 

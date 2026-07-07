@@ -113,6 +113,16 @@ To get the next action without recording a step-done:
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py next <TICKET>
 ```
 
+## Recovery
+
+If a step is marked `failed` (halting the workflow) but the underlying cause has been fixed — or a step is stuck in a non-runnable state — reset and retry it without hand-editing the progress JSON:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py retry-step <TICKET> <step>
+```
+
+This resets the step to `in_progress`, un-fails the workflow, restores the active marker, and emits that step's action so the loop re-runs it. Handle the emitted action exactly as in the action loop above.
+
 ## Guardrails
 
 Rules the script cannot enforce — Claude must follow these during execution:

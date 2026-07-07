@@ -28,7 +28,9 @@ def main() -> int:
     parser.add_argument("ticket", help="JIRA ticket ID")
     parser.add_argument("--base-path", required=True, help="Base output path")
     parser.add_argument("--repo", action="append", default=[], help="Source repo path (repeatable)")
-    parser.add_argument("--iteration", type=int, default=1, help="Review iteration number (1-based)")
+    parser.add_argument(
+        "--iteration", type=int, default=1, help="Review iteration number (1-based)"
+    )
     args = parser.parse_args()
 
     base_path = os.path.abspath(args.base_path)

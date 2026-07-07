@@ -372,6 +372,33 @@ class TestPostProcessTechReview:
         assert progress.get("_tech_review_fix_from") is not None
         assert progress.get("_tech_review_iteration") == 2
 
+    def test_low_with_only_sme_items_proceeds(self, tmp_path):
+        # LOW confidence but zero critical/significant — only SME-required items
+        # remain. No fix cycle can resolve these, so proceed with a warning.
+        base = self._make_sidecar(
+            tmp_path, "LOW", {"critical": 0, "significant": 0, "minor": 1, "sme": 3}
+        )
+        progress = {
+            "ticket": "T-1",
+            "steps": {"technical-review": {"status": "completed", "output": None, "result": None}},
+        }
+        result = post_process("technical-review", progress, base, {})
+        assert "action_override" not in result
+        assert any("SME verification" in w for w in result["warnings"])
+        assert progress.get("_tech_review_fix_from") is None
+
+    def test_low_with_only_minor_items_proceeds_without_sme_warning(self, tmp_path):
+        base = self._make_sidecar(
+            tmp_path, "LOW", {"critical": 0, "significant": 0, "minor": 2, "sme": 0}
+        )
+        progress = {
+            "ticket": "T-1",
+            "steps": {"technical-review": {"status": "completed", "output": None, "result": None}},
+        }
+        result = post_process("technical-review", progress, base, {})
+        assert "action_override" not in result
+        assert not any("SME verification" in w for w in result["warnings"])
+
     def test_low_after_max_iterations_fails(self, tmp_path):
         base = self._make_sidecar(
             tmp_path, "LOW", {"critical": 1, "significant": 0, "minor": 0, "sme": 0}, iteration=3
@@ -466,7 +493,10 @@ class TestHasManyRequirementsPhase1:
         progress = {"steps": {"quality-gate": _qg_step()}}
         messages, warnings = [], []
         _eval_has_many_requirements_phase1(
-            sidecar, progress, messages, warnings,
+            sidecar,
+            progress,
+            messages,
+            warnings,
         )
         assert progress["steps"]["quality-gate"]["status"] == "skipped"
         assert any("Skipping" in m for m in messages)
@@ -476,7 +506,10 @@ class TestHasManyRequirementsPhase1:
         progress = {"steps": {"quality-gate": _qg_step()}}
         messages, warnings = [], []
         _eval_has_many_requirements_phase1(
-            sidecar, progress, messages, warnings,
+            sidecar,
+            progress,
+            messages,
+            warnings,
         )
         assert progress["steps"]["quality-gate"]["status"] == "deferred"
 
@@ -485,7 +518,10 @@ class TestHasManyRequirementsPhase1:
         progress = {"steps": {"quality-gate": _qg_step()}}
         messages, warnings = [], []
         _eval_has_many_requirements_phase1(
-            sidecar, progress, messages, warnings,
+            sidecar,
+            progress,
+            messages,
+            warnings,
         )
         assert progress["steps"]["quality-gate"]["status"] == "deferred"
         assert any("missing" in w for w in warnings)
@@ -495,7 +531,10 @@ class TestHasManyRequirementsPhase1:
         progress = {"steps": {"writing": {"status": "pending"}}}
         messages, warnings = [], []
         _eval_has_many_requirements_phase1(
-            sidecar, progress, messages, warnings,
+            sidecar,
+            progress,
+            messages,
+            warnings,
         )
         assert warnings == []
 
@@ -565,8 +604,13 @@ class TestPostProcessSecurityReview:
 
 class TestPostProcessQualityGate:
     def _make_sidecar(
-        self, tmp_path, doc_quality=4, intent_alignment=4,
-        passed=True, iteration=1, gaps=None,
+        self,
+        tmp_path,
+        doc_quality=4,
+        intent_alignment=4,
+        passed=True,
+        iteration=1,
+        gaps=None,
     ):
         base = str(tmp_path)
         qg_dir = tmp_path / "quality-gate"
@@ -709,7 +753,10 @@ class TestBuildStepArgsNewSteps:
     def test_pipeline_diagnostics_with_ci_log(self):
         opts = {"ci_log": "/tmp/ci.log"}
         args = build_step_args(
-            "pipeline-diagnostics", "PROJ-123", "/base", opts,
+            "pipeline-diagnostics",
+            "PROJ-123",
+            "/base",
+            opts,
         )
         assert "--ci-log /tmp/ci.log" in args
 
@@ -864,7 +911,12 @@ class TestMakeRunSkill:
 
     def test_with_warnings_and_messages(self):
         result = make_run_skill(
-            "s", "a", "st", "msg", warnings=["w1"], messages=["m1"],
+            "s",
+            "a",
+            "st",
+            "msg",
+            warnings=["w1"],
+            messages=["m1"],
         )
         assert result["warnings"] == ["w1"]
         assert result["messages"] == ["m1"]
@@ -1108,22 +1160,26 @@ class TestPostProcessPrAnalysis:
 class TestCountModulesFallback:
     def test_counts_module_headings(self, tmp_path):
         plan = tmp_path / "plan.md"
-        plan.write_text(
-            "# Plan\n\n### Module One\nContent\n\n### Module Two\nContent\n"
-        )
+        plan.write_text("# Plan\n\n### Module One\nContent\n\n### Module Two\nContent\n")
         assert _count_modules_fallback(str(plan)) == 2
 
     def test_ignores_code_blocks(self, tmp_path):
         plan = tmp_path / "plan.md"
-        plan.write_text(
-            "### Module Real\n\n```\n### Module Fake\n```\n\n### Module Also Real\n"
-        )
+        plan.write_text("### Module Real\n\n```\n### Module Fake\n```\n\n### Module Also Real\n")
         assert _count_modules_fallback(str(plan)) == 2
 
     def test_empty_file(self, tmp_path):
         plan = tmp_path / "plan.md"
         plan.write_text("")
         assert _count_modules_fallback(str(plan)) == 0
+
+    def test_counts_update_headings(self, tmp_path):
+        # In-place-update plans use '### Update N:' instead of '### Module:'
+        plan = tmp_path / "plan.md"
+        plan.write_text(
+            "### Update 1: Fix install doc\n\n### Update 2: Add note\n\n### Module: New concept\n"
+        )
+        assert _count_modules_fallback(str(plan)) == 3
 
 
 class TestParseReviewFallback:
@@ -1323,14 +1379,18 @@ class TestDeleteStopCounter:
 class TestBuildStepArgsPrAnalysisBlocking:
     def test_returns_none_without_repo(self):
         result = build_step_args(
-            "pr-analysis", "T-1", "/base",
+            "pr-analysis",
+            "T-1",
+            "/base",
             {"pr_urls": ["http://pr1"]},
         )
         assert result is None
 
     def test_returns_args_with_repo(self):
         result = build_step_args(
-            "pr-analysis", "T-1", "/base",
+            "pr-analysis",
+            "T-1",
+            "/base",
             {"pr_urls": ["http://pr1"], "source": {"repo_path": "/repo"}},
         )
         assert result is not None
@@ -1340,7 +1400,9 @@ class TestBuildStepArgsPrAnalysisBlocking:
 class TestBuildStepArgsCreateJira:
     def test_includes_project(self):
         args = build_step_args(
-            "create-jira", "T-1", "/base",
+            "create-jira",
+            "T-1",
+            "/base",
             {"create_jira": "DOCS"},
         )
         assert "--project DOCS" in args
@@ -1873,6 +1935,63 @@ steps:
         out = json.loads(capsys.readouterr().out)
         assert out["action"] == "fail"
         assert out["step"] == "style-review"
+
+    def test_retry_step_recovers_failed_step(self, tmp_path, monkeypatch, capsys):
+        from docs_orchestrator import (
+            cmd_init,
+            cmd_retry_step,
+            cmd_step_done,
+            read_progress,
+            resolve_progress_file,
+        )
+
+        root = tmp_path
+        ws = root / ".agent_workspace"
+        ws.mkdir()
+        (ws / "docs-workflow.yaml").write_text(self.WORKFLOW_YAML)
+        monkeypatch.chdir(root)
+        monkeypatch.setattr("docs_orchestrator.git_root", lambda: str(root))
+
+        base = ws / "test-1"
+
+        cmd_init(self._init_args())
+        capsys.readouterr()
+
+        # Fail the first step -> workflow status failed, marker deleted
+        cmd_step_done(
+            argparse.Namespace(ticket="TEST-1", step_name="style-review", failed=True, force=False)
+        )
+        capsys.readouterr()
+
+        # retry-step re-emits the step action and un-fails the workflow
+        cmd_retry_step(argparse.Namespace(ticket="TEST-1", step_name="style-review"))
+        out = json.loads(capsys.readouterr().out)
+        assert out["action"] == "run_skill"
+        assert out["step"] == "style-review"
+
+        pfile = resolve_progress_file(str(base), str(root))
+        saved = read_progress(pfile)
+        assert saved["status"] == "in_progress"
+        assert saved["steps"]["style-review"]["status"] == "in_progress"
+
+    def test_retry_step_unknown_step_fails(self, tmp_path, monkeypatch, capsys):
+        from docs_orchestrator import cmd_init, cmd_retry_step
+
+        root = tmp_path
+        ws = root / ".agent_workspace"
+        ws.mkdir()
+        (ws / "docs-workflow.yaml").write_text(self.WORKFLOW_YAML)
+        monkeypatch.chdir(root)
+        monkeypatch.setattr("docs_orchestrator.git_root", lambda: str(root))
+
+        cmd_init(self._init_args())
+        capsys.readouterr()
+
+        with pytest.raises(SystemExit):
+            cmd_retry_step(argparse.Namespace(ticket="TEST-1", step_name="nonexistent"))
+        out = json.loads(capsys.readouterr().out)
+        assert out["action"] == "fail"
+        assert "Unknown step" in out["message"]
 
 
 class TestBuildStepArgsScopeReqAudit:

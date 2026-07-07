@@ -591,13 +591,9 @@ def _eval_has_many_requirements_phase1(sidecar, progress, messages, warnings):
     if req_count < 6:
         qg["status"] = "skipped"
         qg["result"] = {"skip_reason": "few_requirements"}
-        messages.append(
-            f"Skipping quality-gate: {req_count} requirements (threshold: 6)"
-        )
+        messages.append(f"Skipping quality-gate: {req_count} requirements (threshold: 6)")
     else:
-        messages.append(
-            f"Requirements: {req_count} requirements discovered"
-        )
+        messages.append(f"Requirements: {req_count} requirements discovered")
 
 
 def _pp_scope_req_audit(sidecar, progress, base_path, options):
@@ -613,11 +609,8 @@ def _pp_scope_req_audit(sidecar, progress, base_path, options):
             f"Scope audit: {g} grounded, {p} partial, {a} absent (total {t}), recommendation: {rec}"
         )
         if sidecar.get("discovered_repos_count", 0) > 0:
-            count = sidecar['discovered_repos_count']
-            warnings.append(
-                f"Scope audit discovered {count} additional repo(s)"
-                " in README/docs"
-            )
+            count = sidecar["discovered_repos_count"]
+            warnings.append(f"Scope audit discovered {count} additional repo(s) in README/docs")
     return {"warnings": warnings, "messages": messages}
 
 
@@ -627,10 +620,9 @@ def _pp_code_analysis(sidecar, progress, base_path, options):
         mc = sidecar.get("module_count", 0)
         rc = sidecar.get("relationship_count", 0)
         langs = sidecar.get("languages_detected", [])
-        lang_str = ', '.join(langs)
+        lang_str = ", ".join(langs)
         messages.append(
-            f"Code analysis completed: {mc} modules,"
-            f" {rc} relationships, languages: {lang_str}"
+            f"Code analysis completed: {mc} modules, {rc} relationships, languages: {lang_str}"
         )
     return {"messages": messages}
 
@@ -682,7 +674,7 @@ def _count_modules_fallback(plan_file):
             if line.strip().startswith("```"):
                 in_code_block = not in_code_block
                 continue
-            if not in_code_block and re.match(r"^###\s+Module\b", line):
+            if not in_code_block and re.match(r"^###\s+(?:Module|Update)\b", line):
                 count += 1
     return count
 
@@ -810,20 +802,33 @@ def _pp_technical_review(sidecar, progress, base_path, options):
         _eval_has_many_requirements_phase2(confidence, progress, messages)
         return {"warnings": warnings, "messages": messages}
 
-    if confidence == "MEDIUM":
-        crit = severity.get("critical", 0)
-        sig = severity.get("significant", 0)
-        if isinstance(crit, str):
-            crit = int(crit)
-        if isinstance(sig, str):
-            sig = int(sig)
+    # No agent-fixable work remains: only minor and/or SME-verification items
+    # are left. A fix cycle re-runs the writer, which cannot resolve items that
+    # need an SME (default values, version-specific behavior, upstream links).
+    # Proceed regardless of confidence rather than burning iterations — and,
+    # for LOW confidence, avoid failing the workflow over SME-only remainders.
+    crit = severity.get("critical", 0)
+    sig = severity.get("significant", 0)
+    if isinstance(crit, str):
+        crit = int(crit)
+    if isinstance(sig, str):
+        sig = int(sig)
 
-        if crit == 0 and sig == 0:
-            progress.pop("_tech_review_fix_from", None)
-            progress.pop("_tech_review_iteration", None)
-            messages.append("MEDIUM confidence with zero critical/significant issues — proceeding")
-            _eval_has_many_requirements_phase2(confidence, progress, messages)
-            return {"warnings": warnings, "messages": messages}
+    if crit == 0 and sig == 0:
+        progress.pop("_tech_review_fix_from", None)
+        progress.pop("_tech_review_iteration", None)
+        sme = severity.get("sme", 0)
+        if isinstance(sme, str):
+            sme = int(sme)
+        messages.append(
+            f"{confidence} confidence with zero critical/significant issues — proceeding"
+        )
+        if sme:
+            warnings.append(
+                f"{sme} item(s) require SME verification — see technical-review/review.md"
+            )
+        _eval_has_many_requirements_phase2(confidence, progress, messages)
+        return {"warnings": warnings, "messages": messages}
 
     max_iterations = 3
     if iteration >= max_iterations:
@@ -844,8 +849,7 @@ def _pp_technical_review(sidecar, progress, base_path, options):
                     "step": "technical-review",
                     "reason": f"LOW confidence after {max_iterations} iterations",
                     "message": (
-                        f"Workflow failed: LOW confidence after"
-                        f" {max_iterations} review iterations"
+                        f"Workflow failed: LOW confidence after {max_iterations} review iterations"
                     ),
                 },
             }
@@ -933,8 +937,7 @@ def _pp_security_review(sidecar, progress, base_path, options):
         )
         if critical > 0:
             warnings.append(
-                f"Security review found {critical} critical finding(s)"
-                " — review before merging"
+                f"Security review found {critical} critical finding(s) — review before merging"
             )
     return {"warnings": warnings, "messages": messages}
 
@@ -963,8 +966,7 @@ def _pp_quality_gate(sidecar, progress, base_path, options):
         progress.pop("_quality_gate_iteration", None)
         if doc_quality < 4:
             warnings.append(
-                f"Quality gate passed but doc_quality is {doc_quality}/5"
-                " — consider improvements"
+                f"Quality gate passed but doc_quality is {doc_quality}/5 — consider improvements"
             )
         return {"warnings": warnings, "messages": messages}
 
@@ -986,8 +988,7 @@ def _pp_quality_gate(sidecar, progress, base_path, options):
                     "action": "fail",
                     "step": "quality-gate",
                     "reason": (
-                        f"intent_alignment={intent_alignment}/5"
-                        f" after {max_iterations} iterations"
+                        f"intent_alignment={intent_alignment}/5 after {max_iterations} iterations"
                     ),
                     "message": (
                         f"Workflow failed: intent_alignment={intent_alignment}/5"
@@ -996,9 +997,7 @@ def _pp_quality_gate(sidecar, progress, base_path, options):
                 },
             }
 
-    feedback_file = os.path.join(
-        base_path, "quality-gate", f"feedback-brief-{iteration}.md"
-    )
+    feedback_file = os.path.join(base_path, "quality-gate", f"feedback-brief-{iteration}.md")
     progress["_quality_gate_fix_from"] = feedback_file
     progress["_quality_gate_iteration"] = iteration + 1
 
@@ -1011,10 +1010,7 @@ def _pp_quality_gate(sidecar, progress, base_path, options):
         "messages": messages,
         "action_override": make_step_action(
             step="writing",
-            message=(
-                f"Quality gate iteration {iteration + 1}:"
-                " applying fixes from feedback brief"
-            ),
+            message=(f"Quality gate iteration {iteration + 1}: applying fixes from feedback brief"),
             ticket=ticket,
             skill=_get_step_skill(progress, "writing"),
             args=build_step_args("writing", ticket, base_path, options, progress),
@@ -1036,13 +1032,11 @@ def _pp_pipeline_diagnostics(sidecar, progress, base_path, options):
         high_sev = sidecar.get("high_severity_failure_count", 0)
         if high_sev > 0:
             warnings.append(
-                f"Pipeline had {high_sev} high-severity failure(s)."
-                " Review the diagnostic report"
+                f"Pipeline had {high_sev} high-severity failure(s). Review the diagnostic report"
             )
         if pressure in ("high", "critical"):
             warnings.append(
-                f"Context pressure is {pressure}."
-                " Consider workflow splitting for future runs"
+                f"Context pressure is {pressure}. Consider workflow splitting for future runs"
             )
     return {"warnings": warnings, "messages": messages}
 
@@ -1676,6 +1670,90 @@ def cmd_step_done(args):
 
 
 # ---------------------------------------------------------------------------
+# Subcommand: retry-step
+# ---------------------------------------------------------------------------
+
+
+def cmd_retry_step(args):
+    """Reset a failed or stuck step and re-emit its action so the loop retries it.
+
+    Recovery path for steps left in a non-runnable state (e.g. a step marked
+    ``failed`` by post-processing, or a workflow halted after a failure).
+    Avoids hand-editing the progress JSON.
+    """
+    ticket = args.ticket
+    _validate_ticket(ticket)
+    ticket_lower = ticket.lower()
+    root = git_root()
+    base_path = os.path.join(root, ".agent_workspace", ticket_lower)
+
+    pfile = resolve_progress_file(base_path, root)
+    if not pfile:
+        emit({"action": "fail", "error": True, "message": "No progress file found"})
+        sys.exit(1)
+
+    progress = read_progress(pfile)
+    if not progress:
+        emit({"action": "fail", "error": True, "message": f"Cannot read progress file: {pfile}"})
+        sys.exit(1)
+
+    step_name = args.step_name
+    if step_name not in progress.get("steps", {}):
+        emit(
+            {
+                "action": "fail",
+                "error": True,
+                "message": f"Unknown step '{step_name}' — not in progress file",
+            }
+        )
+        sys.exit(1)
+
+    options = progress.get("options", {})
+
+    # Reset the target step so it re-runs from scratch.
+    step = progress["steps"][step_name]
+    step["status"] = "in_progress"
+    step["output"] = None
+    step["result"] = None
+
+    # Un-fail the workflow so the loop continues.
+    if progress.get("status") == "failed":
+        progress["status"] = "in_progress"
+
+    write_progress(pfile, progress)
+
+    # The active marker and stop counter are removed when a step fails; restore
+    # the marker so subsequent commands resolve this workflow, and reset the
+    # stop counter for a fresh retry.
+    rel_pfile = os.path.relpath(pfile, root)
+    write_active_marker(base_path, ticket, progress.get("workflow", "docs-workflow"), rel_pfile)
+    delete_stop_counter(pfile)
+
+    skill = _get_step_skill(progress, step_name)
+    step_args = build_step_args(step_name, ticket, base_path, options, progress)
+    if step_args is None:
+        emit(
+            {
+                "action": "fail",
+                "error": True,
+                "message": f"Cannot retry '{step_name}': missing required arguments",
+            }
+        )
+        sys.exit(1)
+
+    emit(
+        make_step_action(
+            step=step_name,
+            message=f"Retrying step: {step_name}",
+            ticket=ticket,
+            skill=skill,
+            args=step_args,
+            progress_file=rel_pfile,
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
 # Subcommand: next
 # ---------------------------------------------------------------------------
 
@@ -2008,6 +2086,11 @@ def main():
         "--phase", type=int, default=None, help="Phase number for multi-phase steps"
     )
 
+    # retry-step
+    p_retry = sub.add_parser("retry-step", help="Reset a failed/stuck step and retry it")
+    p_retry.add_argument("ticket", help="JIRA ticket ID")
+    p_retry.add_argument("step_name", help="Name of the step to retry")
+
     # next
     p_next = sub.add_parser("next", help="Query next action (read-only)")
     p_next.add_argument("ticket", help="JIRA ticket ID")
@@ -2026,6 +2109,7 @@ def main():
         "init": cmd_init,
         "step-done": cmd_step_done,
         "prepare-step": cmd_prepare_step,
+        "retry-step": cmd_retry_step,
         "next": cmd_next,
         "status": cmd_status,
     }

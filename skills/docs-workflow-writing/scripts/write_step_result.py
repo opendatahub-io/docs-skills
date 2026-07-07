@@ -18,12 +18,26 @@ from pathlib import Path
 
 
 def extract_files(manifest_path):
-    """Extract absolute file paths from the manifest's markdown table rows."""
+    """Extract file paths from the manifest's markdown table rows.
+
+    Only paths that resolve to a real file on disk are kept. The extraction
+    regex matches from any interior ``/``, so a relative path like
+    ``deploying-llmd/master.adoc`` would otherwise yield a bogus
+    ``/master.adoc``. Validating existence drops those phantom entries before
+    they reach the sidecar (and downstream tech-review / quality-gate).
+    """
     files = []
+    dropped = []
     with open(manifest_path, encoding="utf-8") as f:
         for line in f:
             matches = re.findall(r"(/\S+\.(?:adoc|md|dita|ditamap))", line)
-            files.extend(matches)
+            for m in matches:
+                if Path(m).is_file():
+                    files.append(m)
+                else:
+                    dropped.append(m)
+    for m in dropped:
+        print(f"WARNING: dropping non-existent manifest path: {m}", file=sys.stderr)
     return files
 
 

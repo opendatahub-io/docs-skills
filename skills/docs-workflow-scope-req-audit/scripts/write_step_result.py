@@ -18,9 +18,7 @@ from pathlib import Path
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ticket", required=True)
-    parser.add_argument(
-        "--evidence-status", required=True, help="Path to evidence-status.json"
-    )
+    parser.add_argument("--evidence-status", required=True, help="Path to evidence-status.json")
     parser.add_argument("--sidecar", required=True, help="Path to write step-result.json")
     args = parser.parse_args()
 

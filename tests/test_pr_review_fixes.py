@@ -52,13 +52,19 @@ class TestMergeVerdictsStaleFiles:
 
         result = subprocess.run(
             [
-                sys.executable, str(MERGE),
-                "--claims-list", str(tmp_path / "claims-list.json"),
-                "--output-dir", str(output_dir),
-                "--claims-file", str(claims_out),
-                "--summary-file", str(summary_out),
+                sys.executable,
+                str(MERGE),
+                "--claims-list",
+                str(tmp_path / "claims-list.json"),
+                "--output-dir",
+                str(output_dir),
+                "--claims-file",
+                str(claims_out),
+                "--summary-file",
+                str(summary_out),
             ],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, result.stderr
         assert "Skipping stale verdict file" in result.stderr
@@ -86,13 +92,19 @@ class TestMergeVerdictsStaleFiles:
 
         result = subprocess.run(
             [
-                sys.executable, str(MERGE),
-                "--claims-list", str(tmp_path / "claims-list.json"),
-                "--output-dir", str(output_dir),
-                "--claims-file", str(claims_out),
-                "--summary-file", str(summary_out),
+                sys.executable,
+                str(MERGE),
+                "--claims-list",
+                str(tmp_path / "claims-list.json"),
+                "--output-dir",
+                str(output_dir),
+                "--claims-file",
+                str(claims_out),
+                "--summary-file",
+                str(summary_out),
             ],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, result.stderr
         assert "Skipping stale" not in result.stderr
@@ -123,13 +135,19 @@ class TestMergeVerdictsStaleFiles:
 
         result = subprocess.run(
             [
-                sys.executable, str(MERGE),
-                "--claims-list", str(tmp_path / "claims-list.json"),
-                "--output-dir", str(output_dir),
-                "--claims-file", str(claims_out),
-                "--summary-file", str(summary_out),
+                sys.executable,
+                str(MERGE),
+                "--claims-list",
+                str(tmp_path / "claims-list.json"),
+                "--output-dir",
+                str(output_dir),
+                "--claims-file",
+                str(claims_out),
+                "--summary-file",
+                str(summary_out),
             ],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, result.stderr
         assert "Missing verdict files" in result.stderr
@@ -148,23 +166,30 @@ class TestMergeVerdictsStaleFiles:
 class TestIncrementalClaimsNonDict:
     def test_non_dict_in_prior_claims_skipped(self, tmp_path):
         claims = [{"id": "c1", "text": "hello", "file": "doc.adoc"}]
-        prior = {"claims": [
-            {"file": "doc.adoc", "text": "hello", "verdict": "supported", "evidence": "ok"},
-            "not-a-dict",
-            42,
-        ]}
+        prior = {
+            "claims": [
+                {"file": "doc.adoc", "text": "hello", "verdict": "supported", "evidence": "ok"},
+                "not-a-dict",
+                42,
+            ]
+        }
         (tmp_path / "claims-list.json").write_text(json.dumps(claims))
         (tmp_path / "prior.json").write_text(json.dumps(prior))
 
         output_dir = tmp_path / "output"
         result = subprocess.run(
             [
-                sys.executable, str(INCR),
-                "--claims-list", str(tmp_path / "claims-list.json"),
-                "--prior-validation", str(tmp_path / "prior.json"),
-                "--output-dir", str(output_dir),
+                sys.executable,
+                str(INCR),
+                "--claims-list",
+                str(tmp_path / "claims-list.json"),
+                "--prior-validation",
+                str(tmp_path / "prior.json"),
+                "--output-dir",
+                str(output_dir),
             ],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, result.stderr
         counts = json.loads(result.stdout)
@@ -179,12 +204,17 @@ class TestIncrementalClaimsNonDict:
         output_dir = tmp_path / "output"
         result = subprocess.run(
             [
-                sys.executable, str(INCR),
-                "--claims-list", str(tmp_path / "claims-list.json"),
-                "--prior-validation", str(tmp_path / "prior.json"),
-                "--output-dir", str(output_dir),
+                sys.executable,
+                str(INCR),
+                "--claims-list",
+                str(tmp_path / "claims-list.json"),
+                "--prior-validation",
+                str(tmp_path / "prior.json"),
+                "--output-dir",
+                str(output_dir),
             ],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, result.stderr
         counts = json.loads(result.stdout)
@@ -202,11 +232,15 @@ class TestSplitClaimsNonDict:
 
         result = subprocess.run(
             [
-                sys.executable, str(SPLIT),
-                "--claims-list", str(tmp_path / "claims.json"),
-                "--output-dir", str(output_dir),
+                sys.executable,
+                str(SPLIT),
+                "--claims-list",
+                str(tmp_path / "claims.json"),
+                "--output-dir",
+                str(output_dir),
             ],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 1
         assert "must be JSON objects" in result.stderr
@@ -218,11 +252,15 @@ class TestSplitClaimsNonDict:
 
         result = subprocess.run(
             [
-                sys.executable, str(SPLIT),
-                "--claims-list", str(tmp_path / "claims.json"),
-                "--output-dir", str(output_dir),
+                sys.executable,
+                str(SPLIT),
+                "--claims-list",
+                str(tmp_path / "claims.json"),
+                "--output-dir",
+                str(output_dir),
             ],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0
 
@@ -235,6 +273,7 @@ class TestClassifyGapsNonDict:
         sys.path.insert(0, str(QG.parent))
         try:
             import importlib.util
+
             spec = importlib.util.spec_from_file_location("quality_gate", QG)
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
@@ -260,6 +299,7 @@ class TestRegexAnchoring:
         sys.path.insert(0, str(WRITE_SR.parent))
         try:
             import importlib.util
+
             spec = importlib.util.spec_from_file_location("write_step_result", WRITE_SR)
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)

@@ -126,3 +126,5 @@ Assign overall technical confidence at the end:
 - **HIGH**: Code examples are valid, prerequisites are complete, commands are accurate, failure paths are covered
 - **MEDIUM**: Minor gaps in prerequisites or verification steps, no critical accuracy issues
 - **LOW**: Code examples are broken or untestable, commands are incorrect, or architectural claims are inconsistent with described configuration
+
+Do **not** lower confidence to LOW solely because items need SME verification. SME-required items (unconfirmable defaults, version-specific behavior, upstream link accuracy) are tracked in the `sme` count and cannot be resolved by editing the document. Reserve LOW for problems you have identified in the content itself; base confidence on the critical/significant issues, not on open SME questions.
