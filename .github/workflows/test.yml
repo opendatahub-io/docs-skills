@@ -22,7 +22,7 @@ jobs:
         python-version: '3.13'
 
     - name: Install test dependencies
-      run: pip install pytest
+      run: pip install pytest jsonschema
 
     - name: Run tests
       run: python3 -m pytest tests/ -v

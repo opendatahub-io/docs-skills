@@ -36,7 +36,7 @@
     "skipped": { "type": "boolean", "description": "Whether the step was skipped" },
     "skip_reason": {
       "type": ["string", "null"],
-      "enum": ["draft", "no_changes", "no_files", "user_declined", "on_default_branch", "push_failed", "commit_failed", "create_failed", "unknown_platform"],
+      "enum": [null, "draft", "no_changes", "no_files", "user_declined", "on_default_branch", "push_failed", "commit_failed", "create_failed", "unknown_platform"],
       "description": "Reason when skipped, null otherwise"
     }
   },

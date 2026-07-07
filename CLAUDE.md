@@ -146,6 +146,12 @@ Every function in `scripts/docs_orchestrator.py` must have test coverage in `tes
 
 When adding or modifying an orchestrator function, add or update corresponding tests. Tests gate in CI via `.github/workflows/test.yml` — PRs with failing tests will not merge. Run `make test` locally before pushing.
 
+## Schema conformance tests
+
+`tests/test_schema_conformance.py` validates that all step JSON Schemas are well-formed and that sidecars conform to them. It auto-discovers schemas from `skills/docs-workflow-*/schema/` and validates golden examples against them. When adding or modifying a step schema, update the corresponding golden example in the test file. See `skills/docs-orchestrator/schema/step-result-schema.md` for full details.
+
+The `validate_sidecar()` helper in `tests/schema_helpers.py` can be imported by other test files to validate sidecar dicts against their schemas.
+
 ## Authoring skills, agents, and plugins
 
 When creating or modifying skills, agents, hooks, or plugin components, follow the official Anthropic documentation. Do NOT rely on training data for schemas, frontmatter fields, or best practices — use WebFetch to consult the canonical docs.

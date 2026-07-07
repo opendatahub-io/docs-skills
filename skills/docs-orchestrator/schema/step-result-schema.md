@@ -70,6 +70,35 @@ Each step's input JSON Schema defines what `build_step_args()` in the orchestrat
 | start | `skills/docs-workflow-start/schema/start-input.json` |
 | jira-ready | `skills/docs-workflow-jira-ready/schema/jira-ready-input.json` |
 
+## Schema conformance tests
+
+`tests/test_schema_conformance.py` validates that all schemas and sidecars stay in sync. It uses `tests/schema_helpers.py` for schema discovery and validation. Tests run in CI via `make test`.
+
+### What the tests cover
+
+| Layer | What it checks |
+|---|---|
+| **Schema validity** | Every `.json` schema file parses as valid JSON Schema 2020-12. Output schemas require the four common fields (`schema_version`, `step`, `ticket`, `completed_at`). All schemas set `additionalProperties: false`. |
+| **Golden examples** | A minimal valid sidecar dict per output schema and a minimal valid args dict per input schema are validated against their schemas. Catches regressions when a required field is added to a schema but producers aren't updated. |
+| **Required-field rejection** | For each required field in every output schema, removes that field from the golden example and asserts validation fails. Proves schemas enforce their contracts. |
+| **Extra-field rejection** | Adds an unexpected field to each golden example and asserts validation fails. Proves `additionalProperties: false` is working. |
+
+### When to update the tests
+
+- **Adding a new step**: add a golden output example to `GOLDEN_EXAMPLES` and a golden input example to `GOLDEN_INPUT_EXAMPLES` in `test_schema_conformance.py`. The discovery is automatic — the test will fail if a schema exists without a golden example.
+- **Adding a required field to a schema**: update the step's golden example to include the new field. The required-field rejection test auto-discovers it.
+- **Removing a field from a schema**: remove it from the golden example.
+
+### Reusing validation in other tests
+
+Import `validate_sidecar` from `schema_helpers` to validate sidecar dicts constructed in orchestrator tests:
+
+```python
+from schema_helpers import validate_sidecar
+
+validate_sidecar("requirements", my_sidecar_dict)
+```
+
 ## Backward compatibility
 
 Downstream consumers use a sidecar-first pattern: read from `step-result.json` when present, fall back to parsing the markdown output when absent. This ensures in-flight workflows from before sidecar adoption continue to work.
