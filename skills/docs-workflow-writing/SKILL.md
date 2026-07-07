@@ -77,21 +77,19 @@ If `verify_output` is `false` (fix mode), no verification is needed — files ar
 
 Skip this step if `mode` is `"fix"` (fixes edit files in place — no new manifest to parse).
 
-Read the manifest at `<OUTPUT_FILE>` (`_index.md`). Extract every absolute file path from the table rows. These become the `files` array.
+Do **not** hand-author the sidecar — a hand-written sidecar drifts from the schema and uses an
+orchestrator-delayed timestamp instead of a real wall-clock one. Run the script, passing `mode`
+and `format` from the build script's JSON output:
 
-Write the sidecar to `<OUTPUT_DIR>/step-result.json` using the `mode` and `format` values from the script's JSON output:
-
-```json
-{
-  "schema_version": 1,
-  "step": "writing",
-  "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>",
-  "files": [
-    "/absolute/path/to/file1.adoc",
-    "/absolute/path/to/file2.adoc"
-  ],
-  "mode": "<mode from script JSON>",
-  "format": "<format from script JSON>"
-}
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+  --ticket "<TICKET>" \
+  --manifest "<OUTPUT_FILE>" \
+  --mode "<mode from script JSON>" \
+  --format "<format from script JSON>" \
+  --sidecar "<OUTPUT_DIR>/step-result.json"
 ```
+
+The script parses absolute file paths from the manifest's table rows and writes the conformant
+`step-result.json` with a real wall-clock `completed_at`. If the script exits non-zero, fix the
+arguments and re-run; do not substitute a stub.

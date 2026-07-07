@@ -753,7 +753,7 @@ def orchestrator_health(
                     }
                 )
 
-        if status == "in_progress":
+        if status == "in_progress" and name != "pipeline-diagnostics":
             issues.append(
                 {
                     "step": name,

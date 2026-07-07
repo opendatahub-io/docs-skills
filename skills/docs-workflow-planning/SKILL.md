@@ -98,22 +98,17 @@ If no output file is found, report an error.
 
 ### 4. Write step-result.json
 
-Read `<OUTPUT_FILE>` and count the number of module specifications. Count each occurrence of:
+Do **not** hand-author the sidecar — a hand-written sidecar drifts from the schema and uses an
+orchestrator-delayed timestamp instead of a real wall-clock one. Run the script:
 
-- Level-3 headings (`###`) whose text begins with `Module:`
-- Numbered or bulleted list items within the "Module Specifications" section that start with `Module:`
-
-Ignore headings or list items outside the "Module Specifications" section, and skip items inside code blocks or blockquotes. Treat duplicate module titles as separate modules (no deduplication). This count becomes the `module_count` field.
-
-
-Write the sidecar to `<OUTPUT_DIR>/step-result.json`:
-
-```json
-{
-  "schema_version": 1,
-  "step": "planning",
-  "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>",
-  "module_count": <number of modules in the plan>
-}
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+  --ticket "<TICKET>" \
+  --plan-file "<OUTPUT_FILE>" \
+  --sidecar "<OUTPUT_DIR>/step-result.json"
 ```
+
+The script counts module specifications in the plan (level-3 `### Module:` headings and list items
+starting with `Module:` in the Module Specifications section, ignoring code blocks and blockquotes)
+and writes the conformant `step-result.json` with a real wall-clock `completed_at`. If the script
+exits non-zero, fix the arguments and re-run; do not substitute a stub.

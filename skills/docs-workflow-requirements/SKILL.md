@@ -328,26 +328,21 @@ Agent:
 
 ### 8. Write step-result.json
 
-Run the title-extraction script:
+Do **not** hand-author the sidecar — a hand-written sidecar drifts from the schema and uses an
+orchestrator-delayed timestamp instead of a real wall-clock one. Run the script, passing the
+`requirement_count` from the discovery output parsed in step 4:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/parse_title.py "<OUTPUT_FILE>"
+python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+  --ticket "<TICKET>" \
+  --output-file "<OUTPUT_FILE>" \
+  --requirement-count <count from step 4> \
+  --sidecar "<OUTPUT_DIR>/step-result.json"
 ```
 
-The script prints `{"title": "..."}` to stdout. If it exits non-zero, report the stderr message as an error.
-
-Use the `title` value from the script's JSON output to write the sidecar to `<OUTPUT_DIR>/step-result.json`. Include `requirement_count` from the discovery output parsed in step 4:
-
-```json
-{
-  "schema_version": 1,
-  "step": "requirements",
-  "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>",
-  "title": "<first heading, max 80 chars>",
-  "requirement_count": 8
-}
-```
+The script extracts the title from `<OUTPUT_FILE>`, writes the conformant `step-result.json` with a
+real wall-clock `completed_at`. If the script exits non-zero, fix the arguments and re-run; do not
+substitute a stub.
 
 ### 9. Verify output
 

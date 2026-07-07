@@ -34,7 +34,10 @@ Agent:
     <source_files_block>
 
     Read all .adoc and .md files from the source location above.
-    For each file, extract factual claims verifiable against code: function names, signatures, parameters, behavior descriptions, config options, defaults, API endpoints, CRD kinds, class names, return types, CLI flags, subcommands.
+    Skip files whose names match release-notes patterns: `new-features-and-enhancements*`,
+    `release-notes*`, `known-issues*`, `fixed-issues*`, `deprecated-removed*`. These contain
+    announcement-level statements not verifiable against source code.
+    For each remaining file, extract factual claims verifiable against code: function names, signatures, parameters, behavior descriptions, config options, defaults, API endpoints, CRD kinds, class names, return types, CLI flags, subcommands.
 
     Write the claims list to: <output_dir>/claims-list.json
 

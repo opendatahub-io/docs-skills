@@ -194,24 +194,7 @@ test -f "$EVIDENCE_STATUS_FILE" && test -f "$SUMMARY_FILE" && echo "OK" || echo 
 
 If either file is missing, treat it as a step failure.
 
-Extract summary counts from evidence-status.json for the sidecar using a compact bash command (do not read the full file into context):
-
-```bash
-python3 -c "
-import json
-d = json.load(open('$EVIDENCE_STATUS_FILE'))
-s = d.get('summary', {})
-print(json.dumps({
-    'recommendation': d.get('recommendation', 'unknown'),
-    'grounded': s.get('grounded', 0),
-    'partial': s.get('partial', 0),
-    'absent': s.get('absent', 0),
-    'total': s.get('total', 0)
-}))
-"
-```
-
-Use these values for the sidecar in step 10.
+The sidecar script in step 10 reads evidence-status.json directly, so no inline extraction is needed.
 
 ### 9. Extract secondary repo references
 
@@ -256,28 +239,20 @@ Also update `summary.md` to include a "Secondary Repos (from gap analysis)" sect
 
 ### 10. Write step-result.json
 
-Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
+Do **not** hand-author the sidecar — a hand-written sidecar drifts from the schema and uses an
+orchestrator-delayed timestamp instead of a real wall-clock one. Run the script:
 
-```json
-{
-  "schema_version": 1,
-  "step": "scope-req-audit",
-  "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>",
-  "recommendation": "<recommendation from evidence-status.json>",
-  "grounded": <grounded count>,
-  "partial": <partial count>,
-  "absent": <absent count>,
-  "total": <total count>,
-  "discovered_repos_count": <length of discovered_repos list>,
-  "secondary_repos_count": <length of secondary_repos list>
-}
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+  --ticket "<TICKET>" \
+  --evidence-status "$EVIDENCE_STATUS_FILE" \
+  --sidecar "${OUTPUT_DIR}/step-result.json"
 ```
 
-- `recommendation`: the `recommendation` field from `evidence-status.json`
-- `grounded`, `partial`, `absent`, `total`: the counts from `evidence-status.json`'s `summary` object
-- `discovered_repos_count`: length of the `discovered_repos` array
-- `secondary_repos_count`: length of the `secondary_repos` array
+The script reads evidence-status.json to extract recommendation, summary counts,
+discovered_repos length, and secondary_repos length. It writes the conformant `step-result.json`
+with a real wall-clock `completed_at`. If the script exits non-zero, fix the arguments and re-run;
+do not substitute a stub.
 
 ### 11. Verify output
 

@@ -1497,6 +1497,14 @@ def cmd_step_done(args):
         sys.exit(1)
 
     current_status = progress["steps"][step_name].get("status")
+    if getattr(args, "force", False) and current_status == "pending":
+        progress["steps"][step_name]["status"] = "in_progress"
+        write_progress(pfile, progress)
+        current_status = "in_progress"
+        print(
+            f"WARNING: --force promoted '{step_name}' from pending to in_progress",
+            file=sys.stderr,
+        )
     if current_status != "in_progress":
         emit(
             {
@@ -1741,6 +1749,11 @@ def main():
     p_done.add_argument("ticket", help="JIRA ticket ID")
     p_done.add_argument("step_name", help="Name of the completed step")
     p_done.add_argument("--failed", action="store_true", help="Mark step as failed")
+    p_done.add_argument(
+        "--force",
+        action="store_true",
+        help="Auto-promote pending to in_progress before completing",
+    )
 
     # next
     p_next = sub.add_parser("next", help="Query next action (read-only)")
