@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "start-input.json",
+  "title": "docs-workflow-start input",
+  "description": "Input arguments for the docs-workflow-start skill.",
+  "type": "object",
+  "required": ["ticket"],
+  "properties": {
+    "ticket": {
+      "type": "string",
+      "description": "Jira ticket key (e.g. PROJ-123)."
+    },
+    "workflow": {
+      "type": "string",
+      "enum": ["full", "fast", "create-jira"],
+      "default": "full",
+      "description": "Named workflow type to run."
+    },
+    "pr": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "PR or MR URLs associated with the ticket."
+    },
+    "source_code_repo": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Source code repository URLs or local paths."
+    },
+    "no_source_repo": {
+      "type": "boolean",
+      "description": "Skip source repository resolution."
+    },
+    "auto_discover_repos": {
+      "type": "boolean",
+      "description": "Auto-discover secondary repositories without confirmation."
+    },
+    "max_secondary_repos": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum number of secondary repositories to discover."
+    },
+    "mkdocs": {
+      "type": "boolean",
+      "description": "Use Material for MkDocs format instead of AsciiDoc."
+    },
+    "draft": {
+      "type": "boolean",
+      "description": "Write to staging area only without modifying any repository."
+    },
+    "docs_repo_path": {
+      "type": "string",
+      "description": "Path to the target docs repository for update-in-place."
+    },
+    "create_jira": {
+      "type": "string",
+      "description": "Jira project key in which to create a linked ticket."
+    },
+    "create_merge_request": {
+      "type": "boolean",
+      "description": "Open a merge request or pull request after reviews."
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "technical-review step result",
+  "description": "Sidecar schema for the technical-review workflow step.",
+  "type": "object",
+  "required": ["schema_version", "step", "ticket", "completed_at", "confidence", "severity_counts", "iteration", "code_grounded"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "step": { "const": "technical-review" },
+    "ticket": { "type": "string", "description": "JIRA ticket ID as provided by the user (preserves original case)" },
+    "completed_at": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`" },
+    "confidence": {
+      "type": "string",
+      "enum": ["HIGH", "MEDIUM", "LOW"],
+      "description": "Consumed by orchestrator for iteration logic"
+    },
+    "severity_counts": {
+      "type": "object",
+      "required": ["critical", "significant", "minor", "sme"],
+      "properties": {
+        "critical": { "type": "integer", "minimum": 0, "description": "Critical issues found" },
+        "significant": { "type": "integer", "minimum": 0, "description": "Significant issues found" },
+        "minor": { "type": "integer", "minimum": 0, "description": "Minor issues found" },
+        "sme": { "type": "integer", "minimum": 0, "description": "Issues requiring SME verification" }
+      },
+      "additionalProperties": false,
+      "description": "Issue counts by severity level. Consumed by orchestrator for iteration logic."
+    },
+    "iteration": { "type": "integer", "minimum": 1, "description": "Which iteration of review this represents (1-based)" },
+    "code_grounded": {
+      "type": "boolean",
+      "description": "Whether code-learner analysis was available for claim validation (code-analysis step completed)"
+    },
+    "missing_batches": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Verdict files expected by merge_verdicts.py but not found on disk (agent failures). Absent when all expected batches were present. Claims from missing batches get no_evidence_found fallback verdicts."
+    }
+  },
+  "additionalProperties": false
+}

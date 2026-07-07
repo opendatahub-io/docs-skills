@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "scope-req-audit step input",
+  "description": "CLI args contract for the scope-req-audit workflow step.",
+  "type": "object",
+  "required": ["ticket", "base_path"],
+  "properties": {
+    "ticket": {
+      "type": "string",
+      "description": "Jira ticket key (e.g. PROJ-123)."
+    },
+    "base_path": {
+      "type": "string",
+      "description": "Base path for the documentation repository."
+    },
+    "repo": {
+      "type": "string",
+      "description": "Source code repo path."
+    }
+  },
+  "additionalProperties": false
+}

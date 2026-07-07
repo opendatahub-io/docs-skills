@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "writing step input",
+  "description": "CLI args contract for the writing workflow step.",
+  "type": "object",
+  "required": [
+    "ticket",
+    "base_path",
+    "format"
+  ],
+  "properties": {
+    "ticket": {
+      "type": "string",
+      "description": "Jira ticket ID (e.g. PROJ-123)."
+    },
+    "base_path": {
+      "type": "string",
+      "description": "Base path for the workflow workspace."
+    },
+    "format": {
+      "type": "string",
+      "enum": ["adoc", "md"],
+      "description": "Output format for the written content."
+    },
+    "draft": {
+      "type": "boolean",
+      "description": "Flag indicating draft mode (passed as a bare flag, no value)."
+    },
+    "repo": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Source code repo paths (can be multiple)."
+    },
+    "repo_path": {
+      "type": "string",
+      "description": "Docs repo path."
+    },
+    "fix_from": {
+      "type": "string",
+      "description": "Step name to fix from (e.g. 'technical-review' or 'quality-gate')."
+    }
+  },
+  "additionalProperties": false
+}

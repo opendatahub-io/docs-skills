@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "style-review step input",
+  "description": "CLI args contract for the style-review workflow step.",
+  "type": "object",
+  "required": [
+    "ticket",
+    "base_path",
+    "format"
+  ],
+  "properties": {
+    "ticket": {
+      "type": "string",
+      "description": "Jira ticket ID (e.g. PROJ-123)."
+    },
+    "base_path": {
+      "type": "string",
+      "description": "Base path for the workflow workspace."
+    },
+    "format": {
+      "type": "string",
+      "enum": ["adoc", "md"],
+      "description": "Output format for the reviewed content."
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pr-analysis step input",
+  "description": "CLI args contract for the pr-analysis workflow step.",
+  "type": "object",
+  "required": ["pr", "ticket", "output_dir", "repo"],
+  "properties": {
+    "pr": {
+      "type": "string",
+      "description": "PR URL to analyze."
+    },
+    "ticket": {
+      "type": "string",
+      "description": "Jira ticket key (e.g. PROJ-123)."
+    },
+    "output_dir": {
+      "type": "string",
+      "description": "Output directory path."
+    },
+    "repo": {
+      "type": "string",
+      "description": "Source code repo path."
+    }
+  },
+  "additionalProperties": false
+}

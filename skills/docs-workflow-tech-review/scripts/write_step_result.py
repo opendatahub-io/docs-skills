@@ -61,6 +61,17 @@ def main() -> int:
         choices=["true", "false"],
         help="Whether the reviewer received claim-validation evidence",
     )
+    parser.add_argument(
+        "--missing-batches",
+        default="",
+        help="Comma-separated list of missing batch names (empty if none)",
+    )
+    parser.add_argument(
+        "--iteration",
+        type=int,
+        default=None,
+        help="Iteration number (auto-detected from prior sidecar if not provided)",
+    )
     args = parser.parse_args()
 
     review_path = Path(args.review_file)
@@ -85,7 +96,7 @@ def main() -> int:
         critical = significant = minor = sme = 0
 
     sidecar_path = Path(args.sidecar)
-    iteration = detect_iteration(sidecar_path)
+    iteration = args.iteration if args.iteration is not None else detect_iteration(sidecar_path)
 
     sidecar = {
         "schema_version": 1,
@@ -99,6 +110,7 @@ def main() -> int:
             "minor": minor,
             "sme": sme,
         },
+        "missing_batches": [b for b in args.missing_batches.split(",") if b],
         "iteration": iteration,
         "code_grounded": args.code_grounded == "true",
     }

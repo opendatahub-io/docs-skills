@@ -1,7 +1,7 @@
 ---
 name: docs-workflow-tech-review
 description: Technical accuracy review with optional code-learner claim validation. Iteration logic owned by the orchestrator.
-argument-hint: "<ticket> --base-path <path> [--repo <path>]..."
+argument-hint: "<ticket> --base-path <path> [--repo <path>]... [--iteration <N>]"
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, WebSearch, WebFetch
 ---
 
@@ -17,7 +17,7 @@ Step skill for the docs-orchestrator pipeline. Performs a single review pass; th
 python3 ${CLAUDE_SKILL_DIR}/scripts/prepare_review.py <args>
 ```
 
-Pass args **unquoted**. The script emits JSON on stdout. Key fields used below: `ticket`, `output_dir`, `output_file`, `claims_file`, `code_analysis_dir`, `repo_path`, `additional_repo_paths`, `additional_code_analysis_dirs`, `has_repo`, `has_code_analysis`, `source_files_block`. Stop on non-zero exit.
+Pass args **unquoted**. The script emits JSON on stdout. Key fields used below: `ticket`, `output_dir`, `output_file`, `claims_file`, `code_analysis_dir`, `repo_path`, `additional_repo_paths`, `additional_code_analysis_dirs`, `has_repo`, `has_code_analysis`, `source_files_block`, `prior_findings_file`. Stop on non-zero exit.
 
 ### 2. Claim validation (conditional)
 
@@ -34,7 +34,10 @@ Agent:
     <source_files_block>
 
     Read all .adoc and .md files from the source location above.
-    For each file, extract factual claims verifiable against code: function names, signatures, parameters, behavior descriptions, config options, defaults, API endpoints, CRD kinds, class names, return types, CLI flags, subcommands.
+    Skip files whose names match release-notes patterns: `new-features-and-enhancements*`,
+    `release-notes*`, `known-issues*`, `fixed-issues*`, `deprecated-removed*`. These contain
+    announcement-level statements not verifiable against source code.
+    For each remaining file, extract factual claims verifiable against code: function names, signatures, parameters, behavior descriptions, config options, defaults, API endpoints, CRD kinds, class names, return types, CLI flags, subcommands.
 
     Write the claims list to: <output_dir>/claims-list.json
 
@@ -128,9 +131,17 @@ rm -f <output_file>
 > Overall technical confidence: HIGH|MEDIUM|LOW
 > Severity counts: critical=N significant=N minor=N sme=N
 
-**[if `has_prior_validation` is true — iteration 2+]** Prepend this paragraph to the prompt, before "Perform a technical review":
+**[if iteration >= 2]** Prepend this paragraph to the prompt, before "Perform a technical review":
 
-> **This is a re-review (iteration 2+).** A prior review found issues and fixes have been applied to the source files. Review the documentation **fresh** — read the current file content, not any prior review output. If the output file already exists at the path below, do NOT read it. Evaluate the documentation as it currently stands and produce an independent assessment.
+> **This is a re-review (iteration 2+).** A prior review found issues and fixes have been applied to the source files. Base your assessment on the current file content. If a `review.md` already exists at the output path below, do NOT read it — it will be overwritten.
+
+**[if iteration >= 2 AND `prior_findings_file` is not null]** Also prepend, immediately after the re-review paragraph:
+
+> **Prior findings:** Read `<prior_findings_file>` for a summary of what the previous iteration found, grouped by severity. For each prior finding, determine whether it is now **FIXED** or still **PERSISTS**, and state that status in your report. You may also report NEW findings, but prioritize verifying the prior findings over hunting for new minor issues.
+
+**[if `has_prior_validation` is true]** Also prepend, after the re-review paragraph (or as the first prepended paragraph if iteration == 1):
+
+> A prior claim-validation pass produced verdicts in `<claims_file>`. Use those verdicts to calibrate your review — claims marked `unsupported` deserve extra scrutiny, while `supported` claims are lower risk.
 
 **[if `has_repo`]** Append: `Source code repository is available at <repo_path>.`
 
@@ -152,5 +163,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
   --ticket "<ticket>" \
   --review-file "<output_file>" \
   --sidecar "<output_dir>/step-result.json" \
-  --code-grounded <true if HAS_CLAIMS, else false>
+  --code-grounded <true if HAS_CLAIMS, else false> \
+  --missing-batches "<comma-separated missing batch names from 2b-verify, or empty string if none>" \
+  --iteration <iteration number from prepare_review.py output>
 ```

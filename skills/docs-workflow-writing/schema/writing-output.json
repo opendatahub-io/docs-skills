@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "writing step result",
+  "description": "Sidecar schema for the writing workflow step.",
+  "type": "object",
+  "required": ["schema_version", "step", "ticket", "completed_at", "files", "mode", "format"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "step": { "const": "writing" },
+    "ticket": { "type": "string", "description": "JIRA ticket ID as provided by the user (preserves original case)" },
+    "completed_at": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`" },
+    "files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Absolute paths of all files written or modified. Consumed by create_merge_request.sh for file staging."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["update-in-place", "draft"],
+      "description": "Writing mode used"
+    },
+    "format": {
+      "type": "string",
+      "enum": ["adoc", "mkdocs"],
+      "description": "Documentation format"
+    }
+  },
+  "additionalProperties": false
+}

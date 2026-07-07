@@ -88,11 +88,16 @@ def derive_pipeline_status(steps: dict, step_order: list[str], raw_status: str) 
     When diagnostics runs before that update, the file still says 'in_progress'
     even though all steps are done. This function derives the effective status
     from step states so the sidecar reflects reality.
+
+    The pipeline-diagnostics step itself is excluded from the check because it
+    is inherently pending/in_progress when this script runs — including it
+    would always prevent derivation of 'completed'.
     """
     if raw_status not in ("in_progress", "unknown"):
         return raw_status
 
-    statuses = [steps.get(s, {}).get("status", "pending") for s in step_order]
+    non_self_steps = [s for s in step_order if s != "pipeline-diagnostics"]
+    statuses = [steps.get(s, {}).get("status", "pending") for s in non_self_steps]
     if not statuses:
         return raw_status
 
@@ -114,7 +119,6 @@ CONTEXT_HEAVY_STEPS = {
     "technical-review": 1.8,
     "style-review": 0.8,
     "quality-gate": 1.0,
-    "resolve-feedback": 1.5,
 }
 
 
@@ -290,6 +294,13 @@ def build_timeline(
             delta = round((step_mtime - prev_end).total_seconds())
             if delta >= 0:
                 duration_s = delta
+            else:
+                # Negative delta means this step completed before the previous
+                # step — concurrent/parallel execution. Fall back to the step's
+                # own file span (earliest to latest file mtime in its directory).
+                if stats.earliest_mtime and stats.latest_mtime:
+                    span = round((stats.latest_mtime - stats.earliest_mtime).total_seconds())
+                    duration_s = max(span, 0)
 
         entry = {
             "step": name,
@@ -317,7 +328,7 @@ def build_timeline(
             prev_end = step_mtime
 
     # Detect iteration loops and compute combined durations.
-    # When steps run in a loop (quality-gate → resolve-feedback → quality-gate),
+    # When steps run in a loop (e.g. quality-gate iterating),
     # individual mtimes interleave and per-step durations are misleading.
     # We group them and compute the span from the preceding step's end to the
     # latest file mtime across all directories in the loop.
@@ -341,8 +352,8 @@ KNOWN_LOOPS = [
     {
         "name": "quality-gate-loop",
         "trigger": "quality-gate",
-        "members": ["quality-gate", "resolve-feedback"],
-        "label": "Quality gate + resolve-feedback loop",
+        "members": ["quality-gate"],
+        "label": "Quality gate loop",
     },
 ]
 
@@ -616,7 +627,6 @@ EXPECTED_DURATION_S = {
     "technical-review": 600,
     "style-review": 180,
     "quality-gate": 300,
-    "resolve-feedback": 300,
 }
 
 
@@ -743,7 +753,7 @@ def orchestrator_health(
                     }
                 )
 
-        if status == "in_progress":
+        if status == "in_progress" and name != "pipeline-diagnostics":
             issues.append(
                 {
                     "step": name,

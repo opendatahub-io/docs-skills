@@ -119,7 +119,9 @@ RESOLVE_ARGS=(
   --skip-deferred-on-no-source
 )
 
-python3 "$RESOLVE_SCRIPT" "${RESOLVE_ARGS[@]}" > "$RESULT_FILE" 2>&2
+# Keep stdout (JSON) clean for jq; let stderr flow to the hook's own stderr so
+# warnings are visible in logs without corrupting $RESULT_FILE.
+python3 "$RESOLVE_SCRIPT" "${RESOLVE_ARGS[@]}" > "$RESULT_FILE"
 RESOLVE_EXIT=$?
 
 if [ "$RESOLVE_EXIT" -eq 0 ]; then

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "create-merge-request step input",
+  "description": "CLI args contract for the create-merge-request workflow step.",
+  "type": "object",
+  "required": ["ticket", "base_path"],
+  "properties": {
+    "ticket": {
+      "type": "string"
+    },
+    "base_path": {
+      "type": "string"
+    },
+    "draft": {
+      "type": "boolean"
+    },
+    "repo_path": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

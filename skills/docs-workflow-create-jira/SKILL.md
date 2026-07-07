@@ -82,7 +82,7 @@ If the script found an existing linked ticket (output contains "already exists")
   "step": "create-jira",
   "ticket": "<TICKET>",
   "completed_at": "<current ISO 8601 timestamp>",
-  "jira_url": null,
+  "jira_url": "https://redhat.atlassian.net/browse/<linked-key from output>",
   "jira_key": "<linked-key from output>",
   "action": "found_existing",
   "skipped": false,

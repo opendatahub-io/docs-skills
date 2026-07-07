@@ -63,6 +63,19 @@ mkdir -p "$OUTPUT_DIR"
 > 4. Assembly structure (how modules group together)
 > 5. Content sources from JIRA and PR/MR analysis
 >
+> ## REQUIRED: Module Specifications format
+>
+> Your plan MUST include a `## Module Specifications` section that lists every module (new or updated) using this exact bullet format:
+>
+> ```markdown
+> ## Module Specifications
+>
+> - Module: filename.adoc (TYPE, Create|Update)
+> - Module: other-filename.adoc (TYPE, Create|Update)
+> ```
+>
+> Where TYPE is CONCEPT, PROCEDURE, REFERENCE, or ASSEMBLY. This section is machine-parsed to count modules — the pipeline will fail if it is missing or uses a different format. Place it before the detailed module descriptions. You may organize detailed descriptions however you like (implementation groups, priority sections, etc.) — only this summary list has a format requirement.
+>
 > Save the complete plan to: `<OUTPUT_FILE>`
 
 **[Include only if `<BASE_PATH>/code-analysis/ONBOARDING.md` exists]** Append the following paragraph to the prompt:
@@ -98,22 +111,18 @@ If no output file is found, report an error.
 
 ### 4. Write step-result.json
 
-Read `<OUTPUT_FILE>` and count the number of module specifications. Count each occurrence of:
+Do **not** hand-author the sidecar — a hand-written sidecar drifts from the schema and uses an
+orchestrator-delayed timestamp instead of a real wall-clock one. Run the script:
 
-- Level-3 headings (`###`) whose text begins with `Module:`
-- Numbered or bulleted list items within the "Module Specifications" section that start with `Module:`
-
-Ignore headings or list items outside the "Module Specifications" section, and skip items inside code blocks or blockquotes. Treat duplicate module titles as separate modules (no deduplication). This count becomes the `module_count` field.
-
-
-Write the sidecar to `<OUTPUT_DIR>/step-result.json`:
-
-```json
-{
-  "schema_version": 1,
-  "step": "planning",
-  "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>",
-  "module_count": <number of modules in the plan>
-}
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+  --ticket "<TICKET>" \
+  --plan-file "<OUTPUT_FILE>" \
+  --sidecar "<OUTPUT_DIR>/step-result.json"
 ```
+
+The script counts module specifications in the plan (list items starting with `- Module:` or
+`- Update:` within the `## Module Specifications` section, and level-3 `### Module:` or
+`### Update:` headings anywhere, ignoring code blocks and blockquotes) and writes the conformant
+`step-result.json` with a real wall-clock `completed_at`. If the script exits non-zero, fix the
+arguments and re-run; do not substitute a stub.

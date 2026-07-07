@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "scope-req-audit step result",
+  "description": "Sidecar schema for the scope-req-audit workflow step.",
+  "type": "object",
+  "required": ["schema_version", "step", "ticket", "completed_at", "recommendation", "grounded", "partial", "absent", "total", "discovered_repos_count", "secondary_repos_count"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "step": { "const": "scope-req-audit" },
+    "ticket": { "type": "string", "description": "JIRA ticket ID as provided by the user (preserves original case)" },
+    "completed_at": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`" },
+    "recommendation": {
+      "type": "string",
+      "enum": ["proceed", "gather-more", "review-needed"],
+      "description": "Audit recommendation. Consumed by orchestrator for post-step logging."
+    },
+    "grounded": { "type": "integer", "minimum": 0, "description": "Count of grounded requirements" },
+    "partial": { "type": "integer", "minimum": 0, "description": "Count of partial requirements" },
+    "absent": { "type": "integer", "minimum": 0, "description": "Count of absent requirements" },
+    "total": { "type": "integer", "minimum": 0, "description": "Total requirements classified" },
+    "discovered_repos_count": { "type": "integer", "minimum": 0, "description": "Count of repos found in README/docs" },
+    "secondary_repos_count": { "type": "integer", "minimum": 0, "description": "Count of repos from gap classification actions" }
+  },
+  "additionalProperties": false
+}

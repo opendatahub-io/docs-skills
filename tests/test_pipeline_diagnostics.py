@@ -762,21 +762,17 @@ class TestDetectLoopGroups:
         steps = {
             "style-review": _completed_step(),
             "quality-gate": _completed_step(result={"iteration": 3}),
-            "resolve-feedback": _completed_step(),
         }
         _make_step_dir(str(tmp_path), "quality-gate", files={"gate.md": "x"})
-        _make_step_dir(str(tmp_path), "resolve-feedback", files={"fix.md": "x"})
 
         timeline = [
             {"step": "style-review", "completed_at": "2026-06-01T11:00:00"},
             {"step": "quality-gate", "completed_at": "2026-06-01T11:30:00"},
-            {"step": "resolve-feedback", "completed_at": "2026-06-01T11:45:00"},
         ]
         groups = detect_loop_groups(STEP_ORDER, steps, str(tmp_path), timeline)
         assert len(groups) == 1
         assert groups[0]["name"] == "quality-gate-loop"
         assert "quality-gate" in groups[0]["steps"]
-        assert "resolve-feedback" in groups[0]["steps"]
 
     def test_loop_has_step_breakdown(self, tmp_path):
         steps = {

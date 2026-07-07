@@ -117,9 +117,12 @@ if [ ! -f "$OUTPUT_DIR/discovered_repos.json" ]; then
   python3 "$JIRA_READER" --graph <TICKET> | \
     python3 ${CLAUDE_SKILL_DIR}/scripts/extract_discovered_repos.py \
       --output-dir "$OUTPUT_DIR" \
-      --traverse-links "$JIRA_READER"
+      --traverse-links "$JIRA_READER" \
+      --repo-discovery "$DISCOVERY_FILE"
 fi
 ```
+
+The `--repo-discovery` flag reads PR/repo URLs from `discovery.json` (the `sources_consulted.pull_requests` array and per-requirement `sources` with `type: "pr"`), ensuring repos referenced in JIRA descriptions and comments — but not formally attached as JIRA remote links — are included in `discovered_repos.json`.
 
 This produces `discovered_repos.json` in the output directory, which `resolve_source.py` reads at Priority 4 for automatic repo discovery. If the script fails, log a warning and continue — repo discovery is optional.
 
@@ -328,26 +331,21 @@ Agent:
 
 ### 8. Write step-result.json
 
-Run the title-extraction script:
+Do **not** hand-author the sidecar — a hand-written sidecar drifts from the schema and uses an
+orchestrator-delayed timestamp instead of a real wall-clock one. Run the script, passing the
+`requirement_count` from the discovery output parsed in step 4:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/parse_title.py "<OUTPUT_FILE>"
+python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+  --ticket "<TICKET>" \
+  --output-file "<OUTPUT_FILE>" \
+  --requirement-count <count from step 4> \
+  --sidecar "<OUTPUT_DIR>/step-result.json"
 ```
 
-The script prints `{"title": "..."}` to stdout. If it exits non-zero, report the stderr message as an error.
-
-Use the `title` value from the script's JSON output to write the sidecar to `<OUTPUT_DIR>/step-result.json`. Include `requirement_count` from the discovery output parsed in step 4:
-
-```json
-{
-  "schema_version": 1,
-  "step": "requirements",
-  "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>",
-  "title": "<first heading, max 80 chars>",
-  "requirement_count": 8
-}
-```
+The script extracts the title from `<OUTPUT_FILE>`, writes the conformant `step-result.json` with a
+real wall-clock `completed_at`. If the script exits non-zero, fix the arguments and re-run; do not
+substitute a stub.
 
 ### 9. Verify output
 
@@ -355,12 +353,7 @@ Verify that `<OUTPUT_FILE>` and `<OUTPUT_DIR>/step-result.json` exist.
 
 ## Notes
 
-- **Two-pass architecture:** Pass 1 (discovery) is lightweight — JIRA traversal, PR listing, spec identification. Pass 2 (deep analysis) is thorough — each requirement gets a dedicated agent with a clean context window
-- **Disk-based data flow:** Agents write their JSON results to per-requirement files (`req-NNN.json`) on disk instead of returning them to the orchestrator context. The merge agent reads from disk to assemble `requirements.md`. This prevents 15+ agent results (~170KB) from accumulating in the orchestrator's context window
-- **Compact prompts:** Agent prompts reference `discovery.json` by path instead of embedding the full requirement skeleton. Each agent reads its own skeleton from disk. This reduces per-agent prompt size from ~2.5KB to ~0.3KB
-- **Context isolation:** Each deep-analysis agent sees only one requirement's sources. This prevents context degradation when analyzing tickets with 10+ requirements
-- **Parallel execution:** All pass-2 agents are dispatched in a single message for parallel execution
-- **Error isolation:** A failed deep-analysis agent does not block other requirements — the merge agent uses skeleton data from `discovery.json` as a fallback for missing `req-NNN.json` files
-- **Output contract:** The assembled `requirements.md` is identical in format to the previous single-pass output. Downstream consumers (code-analysis, planning, orchestrator) see no change
-- **Repo discovery:** After discovery, the repo extraction script produces `discovered_repos.json` from the JIRA graph. This enables `resolve_source.py` Priority 4 to auto-discover and clone repos without user flags
-- **Discovery JSON:** The `discovery.json` file is retained in the output directory. It is read by analyst agents (for requirement skeletons and persisted sources) and by the merge agent (for metadata and fallback data)
+- **Two-pass architecture:** Pass 1 (discovery) enumerates requirements; pass 2 fans out one agent per requirement for isolated deep analysis
+- **Disk-based data flow:** Agents write per-requirement JSON to disk; the merge agent reads from disk to assemble `requirements.md`, keeping the orchestrator context lean
+- **Error isolation:** A failed analyst agent does not block others — the merge agent falls back to skeleton data from `discovery.json`
+- **Repo discovery:** The extraction script produces `discovered_repos.json` from the JIRA graph for `resolve_source.py` Priority 4 auto-discovery

@@ -54,5 +54,6 @@ python3 skills/learn-code/scripts/detect_language.py --repo /path/to/repo
 - New Python scripts with external dependencies must use PEP 723 inline metadata
 - New stdlib-only scripts use plain `python3` invocation
 - Run `make lint` before committing (skillsaw + ruff + shellcheck)
+- Install test dependencies with `pip install -r requirements.txt` before running `make test`
 - Use `feat:`, `fix:`, `docs:`, `chore:` commit prefixes
 - When referencing Python in install steps, always use `python3`

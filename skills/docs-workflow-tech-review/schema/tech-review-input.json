@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "technical-review step input",
+  "description": "CLI args contract for the technical-review workflow step.",
+  "type": "object",
+  "required": [
+    "ticket",
+    "base_path"
+  ],
+  "properties": {
+    "ticket": {
+      "type": "string",
+      "description": "Jira ticket ID (e.g. PROJ-123)."
+    },
+    "base_path": {
+      "type": "string",
+      "description": "Base path for the workflow workspace."
+    },
+    "repo": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Source code repo paths (can be multiple)."
+    },
+    "iteration": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Review iteration number."
+    }
+  },
+  "additionalProperties": false
+}

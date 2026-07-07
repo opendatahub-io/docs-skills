@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "quality-gate step result",
+  "description": "Sidecar schema for the quality-gate workflow step.",
+  "type": "object",
+  "required": ["schema_version", "step", "ticket", "completed_at", "doc_quality", "intent_alignment", "passed", "iteration", "evidence_expected", "evidence_warning", "coverage_check", "gaps", "rationales"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "step": { "const": "quality-gate" },
+    "ticket": { "type": "string", "description": "JIRA ticket ID as provided by the user (preserves original case)" },
+    "completed_at": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`" },
+    "doc_quality": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Doc quality score (1-5) from Opus judge agent"
+    },
+    "intent_alignment": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Intent alignment score (1-5) from Opus judge agent. Consumed by orchestrator for iteration logic."
+    },
+    "passed": {
+      "type": "boolean",
+      "description": "Whether intent_alignment >= 4 (doc_quality is informational only). Consumed by orchestrator for iteration logic."
+    },
+    "iteration": { "type": "integer", "minimum": 1, "description": "Which iteration of the quality gate loop (1-based)" },
+    "evidence_expected": {
+      "type": "boolean",
+      "description": "Whether scope-req-audit ran and evidence-status.json was expected"
+    },
+    "evidence_warning": {
+      "type": ["string", "null"],
+      "description": "Warning message when evidence was expected but not found; null otherwise"
+    },
+    "coverage_check": {
+      "description": "Per-AC quote-based coverage verification summary (null if no AC items found)",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["total", "covered", "uncovered"],
+          "properties": {
+            "total": { "type": "integer", "minimum": 0, "description": "Total acceptance criteria checked" },
+            "covered": { "type": "integer", "minimum": 0, "description": "AC items with verified quotes in the documentation" },
+            "uncovered": { "type": "integer", "minimum": 0, "description": "AC items not covered or with unverified quotes" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ac_item", "judge", "evidence_status", "action"],
+        "properties": {
+          "ac_item": { "type": "string", "description": "The acceptance criteria item that was missed" },
+          "judge": {
+            "type": "string",
+            "enum": ["intent_alignment", "coverage_check"],
+            "description": "Which judge flagged the gap"
+          },
+          "evidence_status": {
+            "type": "string",
+            "enum": ["grounded", "partial", "absent", "unknown"],
+            "description": "Cross-referenced against scope-req-audit"
+          },
+          "action": {
+            "type": "string",
+            "enum": ["document_as_unsupported", "expand_with_evidence", "add_missing_section", "investigate"],
+            "description": "Recommended action"
+          },
+          "file": { "type": ["string", "null"], "description": "AsciiDoc filename where the fix should be applied" },
+          "section": { "type": ["string", "null"], "description": "Section heading or insertion point within the file" },
+          "classification": {
+            "type": "string",
+            "enum": ["covered", "real_defect", "correctly_absent", "unverified", "investigate"],
+            "description": "Classification of the gap. Present only when judge is coverage_check; absent for intent_alignment-sourced gaps. Consumers must guard with .get()."
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Identified gaps with evidence status and recommended action. Consumed by quality gate iteration for inline fix dispatch."
+    },
+    "rationales": {
+      "type": "object",
+      "required": ["doc_quality", "intent_alignment"],
+      "properties": {
+        "doc_quality": { "type": "string", "description": "Complete doc_quality judge rationale. Included verbatim in feedback brief." },
+        "intent_alignment": { "type": "string", "description": "Complete intent_alignment judge rationale with per-AC coverage assessments, missing artifacts, scope analysis. Included verbatim in feedback brief." }
+      },
+      "additionalProperties": false,
+      "description": "Full judge rationale texts for the feedback brief"
+    }
+  },
+  "additionalProperties": false
+}

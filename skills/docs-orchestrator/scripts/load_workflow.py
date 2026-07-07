@@ -14,7 +14,7 @@ and emits a validated step list as JSON for `progress.py init` to consume.
 
 Usage:
   load_workflow.py --workflow <name> --plugin-root <root> --options <options.json> \
-      [--base-path <path>]
+      [--base-path <path>] [--output <path>]
 """
 
 import argparse
@@ -143,6 +143,7 @@ def main() -> int:
     parser.add_argument("--plugin-root", required=True)
     parser.add_argument("--options", required=True, help="Path to a JSON options file")
     parser.add_argument("--base-path")
+    parser.add_argument("--output", help="Write JSON to file instead of stdout")
     args = parser.parse_args()
 
     try:
@@ -158,7 +159,13 @@ def main() -> int:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
 
-    print(json.dumps(result, indent=2))
+    payload = json.dumps(result, indent=2)
+    if args.output:
+        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+        with open(args.output, "w") as f:
+            f.write(payload + "\n")
+    else:
+        print(payload)
     return 0
 
 

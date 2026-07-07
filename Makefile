@@ -41,4 +41,8 @@ lint: ## Run skillsaw, ruff syntax checker and formatter, and shellcheck
 		exit 1; \
 	fi
 
+.PHONY: test
+test: ## Run pytest test suite
+	python3 -m pytest tests/ -v
+
 .DEFAULT_GOAL := help

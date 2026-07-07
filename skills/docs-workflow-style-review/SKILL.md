@@ -144,21 +144,19 @@ test -f "$OUTPUT_FILE" && test -s "$OUTPUT_FILE" && echo "OK" || echo "MISSING_O
 
 ### 5. Write step-result.json
 
-Read the `Fixes applied: N`, `Warnings: N`, and `Suggestions: N` lines the docs-reviewer agent
-printed (do not re-read the full report to recount). Write the sidecar to
-`<OUTPUT_DIR>/step-result.json`:
+Do **not** hand-author the sidecar — a hand-written sidecar drifts from the schema and uses an
+orchestrator-delayed timestamp instead of a real wall-clock one. Run the script, passing the
+`Fixes applied: N`, `Warnings: N`, and `Suggestions: N` counts the docs-reviewer agent printed
+(do not re-read the full report to recount). Default any missing count to `0`.
 
-```json
-{
-  "schema_version": 1,
-  "step": "style-review",
-  "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>",
-  "fixes_applied": <N>,
-  "warnings": <N>,
-  "suggestions": <N>
-}
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+  --ticket "<TICKET>" \
+  --fixes <N> \
+  --warnings <N> \
+  --suggestions <N> \
+  --sidecar "${OUTPUT_DIR}/step-result.json"
 ```
 
-Use `date -u +%Y-%m-%dT%H:%M:%SZ` for `completed_at`. All count fields must be integers; if the
-agent did not print a count line, default that field to `0`.
+The script writes the conformant `step-result.json` with a real wall-clock `completed_at`. If the
+script exits non-zero, fix the arguments and re-run; do not substitute a stub.

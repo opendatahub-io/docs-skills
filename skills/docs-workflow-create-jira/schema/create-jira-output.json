@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "create-jira step result",
+  "description": "Sidecar schema for the create-jira workflow step.",
+  "type": "object",
+  "required": ["schema_version", "step", "ticket", "completed_at", "jira_url", "jira_key", "action", "skipped", "skip_reason"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "step": { "const": "create-jira" },
+    "ticket": { "type": "string", "description": "JIRA ticket ID as provided by the user (preserves original case)" },
+    "completed_at": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`" },
+    "jira_url": {
+      "type": ["string", "null"],
+      "format": "uri",
+      "description": "URL of the created or found JIRA ticket (null on failure). Consumed by orchestrator for final summary."
+    },
+    "jira_key": {
+      "type": ["string", "null"],
+      "description": "JIRA issue key (e.g., DOCS-456)"
+    },
+    "action": {
+      "type": "string",
+      "enum": ["created", "found_existing", "skipped"],
+      "description": "Action taken"
+    },
+    "skipped": { "type": "boolean", "description": "Whether JIRA creation was skipped" },
+    "skip_reason": {
+      "type": ["string", "null"],
+      "description": "Reason when skipped (e.g., existing_link)"
+    }
+  },
+  "additionalProperties": false
+}

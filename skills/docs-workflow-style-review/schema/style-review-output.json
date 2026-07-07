@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "style-review step result",
+  "description": "Sidecar schema for the style-review workflow step.",
+  "type": "object",
+  "required": ["schema_version", "step", "ticket", "completed_at", "fixes_applied", "warnings", "suggestions"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "step": { "const": "style-review" },
+    "ticket": { "type": "string", "description": "JIRA ticket ID as provided by the user (preserves original case)" },
+    "completed_at": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`" },
+    "fixes_applied": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of in-place edits the docs-reviewer agent applied. Parsed from the agent's `Fixes applied: N` output line."
+    },
+    "warnings": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of style warnings the agent reported. Parsed from the agent's `Warnings: N` output line."
+    },
+    "suggestions": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of style suggestions the agent reported. Parsed from the agent's `Suggestions: N` output line."
+    }
+  },
+  "additionalProperties": false
+}

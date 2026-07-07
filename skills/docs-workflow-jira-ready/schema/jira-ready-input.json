@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jira-ready-input.json",
+  "title": "docs-workflow-jira-ready input",
+  "description": "Input arguments for the docs-workflow-jira-ready skill.",
+  "type": "object",
+  "required": ["jql"],
+  "properties": {
+    "jql": {
+      "type": "string",
+      "description": "JQL query string used to find candidate tickets."
+    },
+    "base_path": {
+      "type": "string",
+      "description": "Workspace base path to check for existing progress files."
+    },
+    "label": {
+      "type": "string",
+      "description": "Jira label that marks a ticket as already started."
+    },
+    "dry_run": {
+      "type": "boolean",
+      "description": "Preview results without adding labels or side effects."
+    },
+    "add_label": {
+      "type": "boolean",
+      "description": "Add the tracking label to each returned ticket in Jira."
+    },
+    "max_results": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of Jira results to fetch."
+    }
+  },
+  "additionalProperties": false
+}

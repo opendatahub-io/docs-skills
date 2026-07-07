@@ -17,7 +17,7 @@ Usage:
     python3 jira_reader.py --graph PROJ-123 | \
         python3 extract_discovered_repos.py \
         --output-dir .agent_workspace/proj-123/requirements \
-        --merge-discovery .agent_workspace/proj-123/requirements/discovery.json
+        --repo-discovery .agent_workspace/proj-123/requirements/discovery.json
 """
 
 import argparse
@@ -269,7 +269,7 @@ def main():
         "--output-dir", required=True, help="Directory to write discovered_repos.json"
     )
     parser.add_argument(
-        "--merge-discovery",
+        "--repo-discovery",
         help="Path to discovery.json to merge text-discovered PRs",
     )
     parser.add_argument(
@@ -309,9 +309,9 @@ def main():
                 file=sys.stderr,
             )
 
-    if args.merge_discovery:
+    if args.repo_discovery:
         repo_groups = _rebuild_repo_groups(result)
-        merge_discovery_prs(repo_groups, args.merge_discovery)
+        merge_discovery_prs(repo_groups, args.repo_discovery)
         result = _serialize_repo_groups(repo_groups)
 
     output_dir = Path(args.output_dir)
