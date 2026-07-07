@@ -77,6 +77,12 @@ from gitlab import Gitlab
 # Utilities
 # =============================================================================
 
+# Signoff appended to replies posted by the action-comments skill in CI mode.
+# Surfaced back through `has_bot_reply` so a re-run can skip already-actioned
+# threads (idempotency for cron jobs). Keep in sync with the --signoff value
+# passed by skills/action-comments.
+ACTION_COMMENTS_CI_SIGNOFF = "Claude Code action-comments (CI)"
+
 
 def load_env_file() -> None:
     """Load environment variables from .env files.
@@ -1034,9 +1040,17 @@ class GitHubReviewAPI(GitReviewAPI):
         """
         bot_patterns = ["bot", "gemini", "mergify", "github-actions", "dependabot"]
         resolved_ids = self._fetch_resolved_thread_comment_ids()
-        comments: List[Dict] = []
+        all_comments = list(self._pr.get_review_comments())
 
-        for c in self._pr.get_review_comments():
+        # Root comment ids that already have an action-comments CI reply.
+        replied_roots: set = {
+            c.in_reply_to_id
+            for c in all_comments
+            if c.in_reply_to_id and c.body and ACTION_COMMENTS_CI_SIGNOFF in c.body
+        }
+
+        comments: List[Dict] = []
+        for c in all_comments:
             # Skip replies
             if c.in_reply_to_id:
                 continue
@@ -1054,10 +1068,15 @@ class GitHubReviewAPI(GitReviewAPI):
                 {
                     "id": c.id,
                     "path": c.path or "",
-                    "line": c.line or c.original_line,
+                    "line": c.line if c.line is not None else c.original_line,
                     "body": c.body or "",
                     "author": author,
                     "resolved": is_resolved,
+                    "has_bot_reply": c.id in replied_roots,
+                    # GitHub nulls `line` when the diff hunk no longer maps the
+                    # comment (the thread is outdated); `original_line` still
+                    # gives a display anchor.
+                    "position_outdated": c.line is None,
                     "created_at": c.created_at.isoformat() if c.created_at else "",
                     "url": c.html_url or "",
                 }
@@ -1415,10 +1434,13 @@ class GitLabReviewAPI(GitReviewAPI):
                 path = position.get("new_path", "")
                 line = position.get("new_line")
 
+            has_bot_reply = any(ACTION_COMMENTS_CI_SIGNOFF in n.get("body", "") for n in notes[1:])
+
             comments.append(
                 {
                     "id": note.get("id"),
                     "discussion_id": discussion.id,
+                    "has_bot_reply": has_bot_reply,
                     "path": path,
                     "line": line,
                     "body": note.get("body", ""),
