@@ -63,6 +63,10 @@ VALID_WHEN_CONDITIONS = {
 
 TICKET_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]+-\d+$")
 
+# Workflow name comes from the --workflow CLI arg and is interpolated into a
+# filename (docs-<name>.yaml). Restrict it to prevent path traversal.
+WORKFLOW_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
 
 def _validate_ticket(ticket):
     if not TICKET_RE.fullmatch(ticket):
@@ -302,9 +306,9 @@ def resolve_progress_file(base_path, root):
     workflow_dir = os.path.join(base_path, "workflow")
     if not os.path.isdir(workflow_dir):
         return None
-    pfiles = [
+    pfiles = sorted(
         f for f in os.listdir(workflow_dir) if f.endswith(".json") and not f.endswith(".stop_count")
-    ]
+    )
     return os.path.join(workflow_dir, pfiles[0]) if pfiles else None
 
 
@@ -1245,6 +1249,8 @@ def resolve_yaml_path(workflow_name=None):
     workspace = ".agent_workspace"
 
     if workflow_name:
+        if not WORKFLOW_NAME_RE.fullmatch(workflow_name):
+            return None
         project_file = os.path.join(workspace, f"docs-{workflow_name}.yaml")
         if os.path.isfile(project_file):
             return project_file

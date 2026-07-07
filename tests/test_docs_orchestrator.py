@@ -42,6 +42,7 @@ from docs_orchestrator import (
     progress_path,
     read_progress,
     read_sidecar,
+    resolve_yaml_path,
     validate_steps,
     write_active_marker,
     write_progress,
@@ -1744,6 +1745,134 @@ class TestCmdPrepareStep:
         out = json.loads(capsys.readouterr().out)
         assert out["action"] == "fail"
         assert "No prepare function" in out["message"]
+
+
+class TestResolveYamlPath:
+    def test_rejects_path_traversal_workflow_name(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        assert resolve_yaml_path("../../etc/passwd") is None
+
+    def test_rejects_slash_in_workflow_name(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        assert resolve_yaml_path("foo/bar") is None
+
+    def test_valid_named_workflow_resolves(self, monkeypatch, tmp_path):
+        ws = tmp_path / ".agent_workspace"
+        ws.mkdir()
+        (ws / "docs-custom.yaml").write_text("name: docs-custom\nsteps: []\n")
+        monkeypatch.chdir(tmp_path)
+        assert resolve_yaml_path("custom") == os.path.join(".agent_workspace", "docs-custom.yaml")
+
+
+class TestInitStepDoneLoop:
+    """End-to-end: cmd_init -> cmd_step_done -> ... drives the state machine.
+
+    Uses two post-processor-free steps so the loop exercises pure progression
+    without step-specific side effects.
+    """
+
+    WORKFLOW_YAML = """\
+name: docs-workflow
+description: Integration test workflow
+steps:
+  - name: style-review
+    skill: docs-tools:docs-workflow-style-review
+    description: Style review
+  - name: security-review
+    skill: docs-tools:docs-workflow-security-review
+    description: Security review
+    inputs: [style-review]
+"""
+
+    def _init_args(self, ticket="TEST-1"):
+        return argparse.Namespace(
+            ticket=ticket,
+            workflow=None,
+            pr=None,
+            source_code_repo=None,
+            mkdocs=False,
+            draft=False,
+            docs_repo_path=None,
+            create_merge_request=False,
+            create_jira=None,
+            no_source_repo=True,
+            auto_discover_repos=False,
+            max_secondary_repos=3,
+            plugin_root=None,
+        )
+
+    def _complete_step(self, base, step):
+        step_dir = base / step
+        step_dir.mkdir(parents=True, exist_ok=True)
+        (step_dir / "step-result.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "step": step,
+                    "ticket": "TEST-1",
+                    "completed_at": iso_now(),
+                }
+            )
+        )
+
+    def test_full_progression(self, tmp_path, monkeypatch, capsys):
+        from docs_orchestrator import cmd_init, cmd_step_done
+
+        root = tmp_path
+        ws = root / ".agent_workspace"
+        ws.mkdir()
+        (ws / "docs-workflow.yaml").write_text(self.WORKFLOW_YAML)
+        monkeypatch.chdir(root)
+        monkeypatch.setattr("docs_orchestrator.git_root", lambda: str(root))
+
+        base = ws / "test-1"
+
+        # init -> first step (style-review) dispatched via run_skill
+        cmd_init(self._init_args())
+        out = json.loads(capsys.readouterr().out)
+        assert out["action"] == "run_skill"
+        assert out["step"] == "style-review"
+
+        # style-review completed -> progresses to security-review
+        self._complete_step(base, "style-review")
+        cmd_step_done(
+            argparse.Namespace(ticket="TEST-1", step_name="style-review", failed=False, force=False)
+        )
+        out = json.loads(capsys.readouterr().out)
+        assert out["action"] == "run_skill"
+        assert out["step"] == "security-review"
+
+        # security-review completed -> workflow complete
+        self._complete_step(base, "security-review")
+        cmd_step_done(
+            argparse.Namespace(
+                ticket="TEST-1", step_name="security-review", failed=False, force=False
+            )
+        )
+        out = json.loads(capsys.readouterr().out)
+        assert out["action"] == "complete"
+        assert "style-review" in out["summary"]["steps_completed"]
+        assert "security-review" in out["summary"]["steps_completed"]
+
+    def test_step_done_failed_marks_workflow_failed(self, tmp_path, monkeypatch, capsys):
+        from docs_orchestrator import cmd_init, cmd_step_done
+
+        root = tmp_path
+        ws = root / ".agent_workspace"
+        ws.mkdir()
+        (ws / "docs-workflow.yaml").write_text(self.WORKFLOW_YAML)
+        monkeypatch.chdir(root)
+        monkeypatch.setattr("docs_orchestrator.git_root", lambda: str(root))
+
+        cmd_init(self._init_args())
+        capsys.readouterr()  # drain init output
+
+        cmd_step_done(
+            argparse.Namespace(ticket="TEST-1", step_name="style-review", failed=True, force=False)
+        )
+        out = json.loads(capsys.readouterr().out)
+        assert out["action"] == "fail"
+        assert out["step"] == "style-review"
 
 
 class TestBuildStepArgsScopeReqAudit:

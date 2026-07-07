@@ -17,12 +17,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+def _nonneg_int(value):
+    """argparse type: a non-negative integer (counts cannot be negative)."""
+    n = int(value)
+    if n < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0, got {n}")
+    return n
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ticket", required=True)
-    parser.add_argument("--fixes", type=int, default=0, help="Number of fixes applied")
-    parser.add_argument("--warnings", type=int, default=0, help="Number of warnings")
-    parser.add_argument("--suggestions", type=int, default=0, help="Number of suggestions")
+    parser.add_argument("--fixes", type=_nonneg_int, default=0, help="Number of fixes applied")
+    parser.add_argument("--warnings", type=_nonneg_int, default=0, help="Number of warnings")
+    parser.add_argument("--suggestions", type=_nonneg_int, default=0, help="Number of suggestions")
     parser.add_argument("--sidecar", required=True, help="Path to write step-result.json")
     args = parser.parse_args()
 
