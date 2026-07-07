@@ -131,9 +131,13 @@ rm -f <output_file>
 > Overall technical confidence: HIGH|MEDIUM|LOW
 > Severity counts: critical=N significant=N minor=N sme=N
 
-**[if `has_prior_validation` is true — iteration 2+]** Prepend this paragraph to the prompt, before "Perform a technical review":
+**[if iteration >= 2]** Prepend this paragraph to the prompt, before "Perform a technical review":
 
 > **This is a re-review (iteration 2+).** A prior review found issues and fixes have been applied to the source files. Review the documentation **fresh** — read the current file content, not any prior review output. If the output file already exists at the path below, do NOT read it. Evaluate the documentation as it currently stands and produce an independent assessment.
+
+**[if `has_prior_validation` is true]** Also prepend, after the re-review paragraph (or as the first prepended paragraph if iteration == 1):
+
+> A prior claim-validation pass produced verdicts in `<claims_file>`. Use those verdicts to calibrate your review — claims marked `unsupported` deserve extra scrutiny, while `supported` claims are lower risk.
 
 **[if `has_repo`]** Append: `Source code repository is available at <repo_path>.`
 
