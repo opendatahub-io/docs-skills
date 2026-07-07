@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -44,6 +45,13 @@ RESOLVE_SOURCE_SCRIPT = str(
 DEFAULT_WORKFLOW_DIR = str(
     Path(__file__).resolve().parent.parent / "skills" / "docs-orchestrator" / "defaults"
 )
+
+PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
+
+# Steps whose SKILL.md is heavy enough to warrant main-loop agent dispatch via
+# `prepare-step` instead of the Skill tool. A step is listed here only once its
+# per-step prepare function exists in the PREPARE_STEPS dispatch table.
+DISPATCH_STEPS = {"writing"}
 
 VALID_WHEN_CONDITIONS = {
     "has_source_repo",
@@ -850,13 +858,13 @@ def _pp_technical_review(sidecar, progress, base_path, options):
     return {
         "warnings": warnings,
         "messages": messages,
-        "action_override": {
-            "action": "run_skill",
-            "skill": _get_step_skill(progress, "writing"),
-            "args": build_step_args("writing", ticket, base_path, options, progress),
-            "step": "writing",
-            "message": f"Iteration {iteration + 1}: applying fixes from technical review",
-        },
+        "action_override": make_step_action(
+            step="writing",
+            message=f"Iteration {iteration + 1}: applying fixes from technical review",
+            ticket=ticket,
+            skill=_get_step_skill(progress, "writing"),
+            args=build_step_args("writing", ticket, base_path, options, progress),
+        ),
     }
 
 
@@ -997,16 +1005,16 @@ def _pp_quality_gate(sidecar, progress, base_path, options):
     return {
         "warnings": warnings,
         "messages": messages,
-        "action_override": {
-            "action": "run_skill",
-            "skill": _get_step_skill(progress, "writing"),
-            "args": build_step_args("writing", ticket, base_path, options, progress),
-            "step": "writing",
-            "message": (
+        "action_override": make_step_action(
+            step="writing",
+            message=(
                 f"Quality gate iteration {iteration + 1}:"
                 " applying fixes from feedback brief"
             ),
-        },
+            ticket=ticket,
+            skill=_get_step_skill(progress, "writing"),
+            args=build_step_args("writing", ticket, base_path, options, progress),
+        ),
     }
 
 
@@ -1102,6 +1110,42 @@ def make_run_skill(skill, args, step, message, warnings=None, messages=None, **e
         action["messages"] = messages
     action.update(extra)
     return action
+
+
+def is_dispatch_eligible(step_name):
+    """Return True if a step should be dispatched via prepare-step, not run_skill."""
+    return step_name in DISPATCH_STEPS
+
+
+def make_dispatch(step, message, ticket, warnings=None, messages=None, **extra):
+    script = os.path.join(PLUGIN_ROOT, "scripts", "docs_orchestrator.py")
+    action = {
+        "action": "dispatch",
+        "step": step,
+        "message": message,
+        "prepare": f"python3 {script} prepare-step {ticket} {step}",
+    }
+    if warnings:
+        action["warnings"] = warnings
+    if messages:
+        action["messages"] = messages
+    action.update(extra)
+    return action
+
+
+def make_step_action(step, message, ticket, skill, args, warnings=None, messages=None, **extra):
+    """Emit a dispatch action for dispatch-eligible steps, else a run_skill action."""
+    if is_dispatch_eligible(step):
+        return make_dispatch(step, message, ticket, warnings=warnings, messages=messages, **extra)
+    return make_run_skill(
+        skill=skill,
+        args=args,
+        step=step,
+        message=message,
+        warnings=warnings,
+        messages=messages,
+        **extra,
+    )
 
 
 def make_complete(progress, warnings=None, messages=None):
@@ -1443,15 +1487,16 @@ def cmd_init(args):
     completed = [n for n, s in progress["steps"].items() if s["status"] == "completed"]
 
     emit(
-        make_run_skill(
-            skill=skill,
-            args=step_args,
+        make_step_action(
             step=next_name,
             message=(
                 f"{'Resuming' if resumed else 'Initialized'}"
                 f" workflow {workflow_name} for {ticket}"
                 + (f" from {next_name}" if resumed else "")
             ),
+            ticket=ticket,
+            skill=skill,
+            args=step_args,
             resumed=resumed,
             completed_steps=completed,
             progress_file=rel_pfile,
@@ -1556,7 +1601,7 @@ def cmd_step_done(args):
             emit(override)
             return
 
-        if override["action"] == "run_skill":
+        if override["action"] in ("run_skill", "dispatch"):
             target_step = override.get("step")
             if target_step and target_step in progress["steps"]:
                 progress["steps"][target_step]["status"] = "in_progress"
@@ -1612,11 +1657,12 @@ def cmd_step_done(args):
         step_args = build_step_args(next_name, ticket, base_path, options, progress)
 
     emit(
-        make_run_skill(
-            skill=skill,
-            args=step_args,
+        make_step_action(
             step=next_name,
             message=f"{step_name} completed. Next: {next_name}",
+            ticket=ticket,
+            skill=skill,
+            args=step_args,
             warnings=all_warnings,
             messages=all_messages,
         )
@@ -1720,6 +1766,197 @@ def cmd_status(args):
 
 
 # ---------------------------------------------------------------------------
+# prepare-step: build agent dispatch instructions for the main loop
+# ---------------------------------------------------------------------------
+
+WRITING_BUILD_SCRIPT = os.path.join(
+    PLUGIN_ROOT, "skills", "docs-workflow-writing", "scripts", "build_writing_args.sh"
+)
+WRITING_PROMPTS_DIR = os.path.join(PLUGIN_ROOT, "skills", "docs-workflow-writing", "prompts")
+WRITE_STEP_RESULT_SCRIPT = os.path.join(
+    PLUGIN_ROOT, "skills", "docs-workflow-writing", "scripts", "write_step_result.py"
+)
+
+_WRITING_DESCRIPTIONS = {
+    "fix": "Fix documentation for {ticket}",
+    "adoc": "Write adoc documentation for {ticket}",
+    "mkdocs": "Write mkdocs documentation for {ticket}",
+}
+
+
+def _run_build_writing_args(ticket, base_path, options, progress):
+    """Run build_writing_args.sh and return its parsed JSON config."""
+    args_str = build_step_args("writing", ticket, base_path, options, progress)
+    cmd = ["bash", WRITING_BUILD_SCRIPT, *shlex.split(args_str)]
+    result = subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603
+    if result.returncode != 0:
+        raise RuntimeError(f"build_writing_args.sh failed: {result.stderr.strip()}")
+    return json.loads(result.stdout)
+
+
+def _render_writing_prompt(template, cfg):
+    """Render a writing prompt template against the build-script config.
+
+    Handles the two marker patterns used in the prompt templates:
+      - ``**[Include only if X]** text`` — keep the paragraph only when X holds
+      - ``[If `docs_repo_path` is not null: "text"]`` — inline conditional
+    then substitutes ``<PLACEHOLDER>`` tokens with resolved values.
+
+    A ``**[Include only if X]**`` marker's condition is *inherited* by any
+    continuation paragraphs that follow it, until the next paragraph that
+    starts a new marker or a ``**bold`` / ``[`` directive (which resets the
+    block back to unconditional). This mirrors how a human reader groups the
+    marker's first paragraph with the un-marked paragraph beneath it.
+    """
+    flags = {
+        "HAS_CODE_ANALYSIS=true": bool(cfg.get("has_code_analysis")),
+        "HAS_PR_ANALYSIS=true": bool(cfg.get("has_pr_analysis")),
+        "SOURCE_REPO is not null": cfg.get("source_repo_path") is not None,
+        "ADDITIONAL_REPO_PATHS is non-empty": bool(cfg.get("additional_repo_paths")),
+    }
+
+    kept = []
+    current_cond = None  # None = unconditional; True/False = inherited marker state
+    for para in re.split(r"\n[ \t]*\n", template):
+        stripped = para.lstrip()
+        marker = re.match(r"^\*\*\[Include only if (.+?)\]\*\*\s?(.*)$", stripped, re.DOTALL)
+        if marker:
+            current_cond = flags.get(marker.group(1).strip(), True)
+            if current_cond:
+                kept.append(marker.group(2))
+            continue
+        # A new **bold or [ directive ends any inherited conditional block.
+        if stripped.startswith("**") or stripped.startswith("["):
+            current_cond = None
+        if current_cond is not False:
+            kept.append(para)
+    text = "\n\n".join(kept)
+
+    docs_repo = cfg.get("docs_repo_path")
+    text = re.sub(
+        r'\[If `docs_repo_path` is not null: "(.*?)"\]',
+        lambda match: match.group(1) if docs_repo else "",
+        text,
+    )
+
+    additional = cfg.get("additional_repo_paths") or []
+    additional_analysis = cfg.get("additional_code_analysis_dirs") or []
+    substitutions = {
+        "<list each path from ADDITIONAL_REPO_PATHS>": ", ".join(additional),
+        "<TICKET>": cfg.get("ticket") or "",
+        "<INPUT_FILE>": cfg.get("input_file") or "",
+        "<CODE_ANALYSIS_DIR>": cfg.get("code_analysis_dir") or "",
+        "<PR_ANALYSIS_DIR>": cfg.get("pr_analysis_dir") or "",
+        "<SOURCE_REPO>": cfg.get("source_repo_path") or "",
+        "<ADDITIONAL_REPO_PATHS>": ", ".join(additional),
+        "<ADDITIONAL_CODE_ANALYSIS_DIRS>": ", ".join(additional_analysis),
+        "<OUTPUT_FILE>": cfg.get("output_file") or "",
+        "<OUTPUT_DIR>": cfg.get("output_dir") or "",
+        "<DOCS_REPO_PATH>": docs_repo or "",
+        "<FIX_FROM>": cfg.get("fix_from") or "",
+    }
+    for token, value in substitutions.items():
+        text = text.replace(token, value)
+    return text
+
+
+def _prepare_writing(ticket, base_path, options, progress, phase=None):
+    cfg = _run_build_writing_args(ticket, base_path, options, progress)
+    mode = cfg["mode"]
+    fmt = cfg["format"]
+
+    if mode == "fix":
+        template_name = "fix.md"
+        description = _WRITING_DESCRIPTIONS["fix"].format(ticket=ticket)
+    else:
+        template_name = f"{mode}-{fmt}.md"
+        description = _WRITING_DESCRIPTIONS[fmt].format(ticket=ticket)
+
+    with open(os.path.join(WRITING_PROMPTS_DIR, template_name), encoding="utf-8") as f:
+        template = f.read()
+    prompt = _render_writing_prompt(template, cfg)
+
+    agent = {
+        "type": "docs-skills:docs-writer",
+        "prompt": prompt,
+        "description": description,
+        "background": False,
+        "model": None,
+        "schema": None,
+    }
+
+    finalize = []
+    verify = None
+    if cfg.get("verify_output"):
+        verify = cfg["output_file"]
+        sidecar = os.path.join(cfg["output_dir"], "step-result.json")
+        finalize.append(
+            "python3 {script} --ticket {ticket} --manifest {manifest} "
+            "--mode {mode} --format {fmt} --sidecar {sidecar}".format(
+                script=shlex.quote(WRITE_STEP_RESULT_SCRIPT),
+                ticket=shlex.quote(ticket),
+                manifest=shlex.quote(cfg["output_file"]),
+                mode=shlex.quote(mode),
+                fmt=shlex.quote(fmt),
+                sidecar=shlex.quote(sidecar),
+            )
+        )
+
+    return {
+        "agents": [agent],
+        "post_commands": [],
+        "finalize": finalize,
+        "verify": verify,
+        "next_phase": None,
+    }
+
+
+PREPARE_STEPS = {
+    "writing": _prepare_writing,
+}
+
+
+def cmd_prepare_step(args):
+    ticket = args.ticket
+    _validate_ticket(ticket)
+    ticket_lower = ticket.lower()
+    root = git_root()
+    base_path = os.path.join(root, ".agent_workspace", ticket_lower)
+
+    pfile = resolve_progress_file(base_path, root)
+    if not pfile:
+        emit({"action": "fail", "error": True, "message": "No progress file found"})
+        sys.exit(1)
+
+    progress = read_progress(pfile)
+    if not progress:
+        emit({"action": "fail", "error": True, "message": "Cannot read progress file"})
+        sys.exit(1)
+
+    step = args.step
+    prepare_fn = PREPARE_STEPS.get(step)
+    if not prepare_fn:
+        emit(
+            {
+                "action": "fail",
+                "error": True,
+                "message": f"No prepare function for step '{step}'",
+            }
+        )
+        sys.exit(1)
+
+    options = progress.get("options", {})
+    phase = getattr(args, "phase", None)
+    try:
+        result = prepare_fn(ticket, base_path, options, progress, phase=phase)
+    except (RuntimeError, OSError, json.JSONDecodeError) as exc:
+        emit({"action": "fail", "error": True, "message": str(exc)})
+        sys.exit(1)
+
+    emit(result)
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -1755,6 +1992,16 @@ def main():
         help="Auto-promote pending to in_progress before completing",
     )
 
+    # prepare-step
+    p_prepare = sub.add_parser(
+        "prepare-step", help="Build agent dispatch instructions for a dispatch-eligible step"
+    )
+    p_prepare.add_argument("ticket", help="JIRA ticket ID")
+    p_prepare.add_argument("step", help="Step name to prepare")
+    p_prepare.add_argument(
+        "--phase", type=int, default=None, help="Phase number for multi-phase steps"
+    )
+
     # next
     p_next = sub.add_parser("next", help="Query next action (read-only)")
     p_next.add_argument("ticket", help="JIRA ticket ID")
@@ -1772,6 +2019,7 @@ def main():
     handlers = {
         "init": cmd_init,
         "step-done": cmd_step_done,
+        "prepare-step": cmd_prepare_step,
         "next": cmd_next,
         "status": cmd_status,
     }

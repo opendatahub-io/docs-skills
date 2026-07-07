@@ -4,7 +4,7 @@ description: Documentation workflow orchestrator. Reads the step list from .agen
 
 argument-hint: <ticket> [--workflow <name>] [--pr <url>...] [--source-code-repo <url-or-path>...] [--no-source-repo] [--auto-discover-repos] [--max-secondary-repos <N>] [--mkdocs] [--draft] [--docs-repo-path <path>] [--create-jira <PROJECT>] [--create-merge-request]
 
-allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, AskUserQuestion
+allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, AskUserQuestion
 ---
 
 # Docs Orchestrator
@@ -68,6 +68,28 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py step-done <TICKET> <s
 ```
 
 4. Parse the new JSON response and loop back to the action check.
+
+### `dispatch`
+
+The response contains `step`, `message`, `prepare` (a shell command), and optional `warnings` and `messages`. This step is dispatched by the main loop via subagents instead of the Skill tool — subagents cannot dispatch other subagents, so only the main conversation can do this.
+
+1. Display `message`. Display any `warnings` (prefix with WARNING) and `messages`.
+2. Run the `prepare` command with Bash and parse the JSON response. It contains `agents`, `post_commands`, `finalize`, `verify`, and `next_phase`.
+3. Repeat while the current response has a non-empty `agents` array:
+   a. Dispatch each agent with the Agent tool: `subagent_type` = agent `type`, `prompt`, `description`, `run_in_background` = agent `background`. Pass `model` and `schema` only when they are non-null. If the array has more than one agent, dispatch them all in a single message so they run in parallel.
+   b. Run each command in the response's `post_commands` array (if any) with Bash.
+   c. If `next_phase` is not null, run it with Bash, parse the new JSON as the current response, and go back to step 3a. Otherwise leave the loop.
+4. Using the most recent response: if `verify` is set, check that file exists. If it is missing, plan to add `--failed` to the step-done call.
+5. Run each command in the most recent response's `finalize` array with Bash.
+6. Report the result:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py step-done <TICKET> <step>
+```
+
+Add `--failed` if verification failed in step 4, or if a dispatched primary agent errored or produced no output.
+
+7. Parse the new JSON response and loop back to the action check.
 
 ### `complete`
 

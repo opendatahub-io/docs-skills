@@ -1,5 +1,6 @@
 """Tests for docs_orchestrator.py."""
 
+import argparse
 import json
 import os
 import sys
@@ -9,6 +10,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from docs_orchestrator import (
+    DISPATCH_STEPS,
     _count_modules_fallback,
     _eval_has_many_requirements_phase1,
     _eval_has_many_requirements_phase2,
@@ -16,6 +18,8 @@ from docs_orchestrator import (
     _find_additional_repo,
     _get_step_skill,
     _parse_review_fallback,
+    _prepare_writing,
+    _render_writing_prompt,
     atomic_write_json,
     build_step_args,
     check_input_deps,
@@ -25,10 +29,13 @@ from docs_orchestrator import (
     delete_stop_counter,
     evaluate_when,
     find_next_step,
+    is_dispatch_eligible,
     iso_now,
     make_complete,
+    make_dispatch,
     make_fail,
     make_run_skill,
+    make_step_action,
     marker_path_for,
     parse_workflow_yaml,
     post_process,
@@ -357,8 +364,10 @@ class TestPostProcessTechReview:
         }
         result = post_process("technical-review", progress, base, {})
         assert "action_override" in result
-        assert result["action_override"]["action"] == "run_skill"
+        # writing is dispatch-eligible, so the fix cycle dispatches instead of run_skill
+        assert result["action_override"]["action"] == "dispatch"
         assert result["action_override"]["step"] == "writing"
+        assert "prepare-step T-1 writing" in result["action_override"]["prepare"]
         assert progress.get("_tech_review_fix_from") is not None
         assert progress.get("_tech_review_iteration") == 2
 
@@ -603,8 +612,10 @@ class TestPostProcessQualityGate:
         }
         result = post_process("quality-gate", progress, base, {})
         assert "action_override" in result
-        assert result["action_override"]["action"] == "run_skill"
+        # writing is dispatch-eligible, so the fix cycle dispatches instead of run_skill
+        assert result["action_override"]["action"] == "dispatch"
         assert result["action_override"]["step"] == "writing"
+        assert "prepare-step T-1 writing" in result["action_override"]["prepare"]
         assert progress.get("_quality_gate_fix_from") is not None
         assert progress.get("_quality_gate_iteration") == 2
 
@@ -1438,7 +1449,8 @@ class TestStepDoneOverrideMarksInProgress:
         pp_result = post_process(step_name, progress, str(base), options)
         assert "action_override" in pp_result
         override = pp_result["action_override"]
-        assert override["action"] == "run_skill"
+        # writing is dispatch-eligible, so the fix cycle dispatches instead of run_skill
+        assert override["action"] == "dispatch"
         assert override["step"] == "writing"
 
         # The fix: mark target step in_progress before writing progress
@@ -1484,6 +1496,254 @@ class TestStepDoneOverrideMarksInProgress:
 
         saved = read_progress(str(pfile))
         assert saved["steps"]["technical-review"]["status"] == "in_progress"
+
+
+class TestIsDispatchEligible:
+    def test_writing_is_eligible(self):
+        assert is_dispatch_eligible("writing") is True
+
+    def test_planning_not_eligible(self):
+        assert is_dispatch_eligible("planning") is False
+
+    def test_dispatch_steps_only_contains_implemented(self):
+        # Every step in DISPATCH_STEPS must have a prepare function registered.
+        from docs_orchestrator import PREPARE_STEPS
+
+        assert DISPATCH_STEPS <= set(PREPARE_STEPS)
+
+
+class TestMakeDispatch:
+    def test_basic_fields(self):
+        result = make_dispatch("writing", "Step 6: Writing", "PROJ-123")
+        assert result["action"] == "dispatch"
+        assert result["step"] == "writing"
+        assert result["message"] == "Step 6: Writing"
+        assert result["prepare"].endswith("prepare-step PROJ-123 writing")
+        assert "docs_orchestrator.py" in result["prepare"]
+
+    def test_with_warnings_and_messages(self):
+        result = make_dispatch("writing", "m", "T-1", warnings=["w1"], messages=["m1"])
+        assert result["warnings"] == ["w1"]
+        assert result["messages"] == ["m1"]
+
+    def test_no_warnings_key_when_empty(self):
+        result = make_dispatch("writing", "m", "T-1")
+        assert "warnings" not in result
+        assert "messages" not in result
+
+    def test_extra_kwargs(self):
+        result = make_dispatch("writing", "m", "T-1", resumed=True)
+        assert result["resumed"] is True
+
+
+class TestMakeStepAction:
+    def test_dispatch_eligible_step_dispatches(self):
+        result = make_step_action(
+            step="writing",
+            message="m",
+            ticket="T-1",
+            skill="docs-workflow-writing",
+            args="T-1 --base-path /x",
+        )
+        assert result["action"] == "dispatch"
+        assert result["step"] == "writing"
+        assert "args" not in result
+
+    def test_non_eligible_step_runs_skill(self):
+        result = make_step_action(
+            step="planning",
+            message="m",
+            ticket="T-1",
+            skill="docs-workflow-planning",
+            args="T-1 --base-path /x",
+        )
+        assert result["action"] == "run_skill"
+        assert result["skill"] == "docs-workflow-planning"
+        assert result["args"] == "T-1 --base-path /x"
+
+    def test_warnings_forwarded_to_run_skill(self):
+        result = make_step_action(
+            step="planning",
+            message="m",
+            ticket="T-1",
+            skill="s",
+            args="a",
+            warnings=["w"],
+        )
+        assert result["warnings"] == ["w"]
+
+    def test_extra_kwargs_forwarded(self):
+        result = make_step_action(
+            step="writing", message="m", ticket="T-1", skill="s", args="a", resumed=True
+        )
+        assert result["resumed"] is True
+
+
+class TestRenderWritingPrompt:
+    ADOC_TPL_PATH = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "skills",
+        "docs-workflow-writing",
+        "prompts",
+        "update-in-place-adoc.md",
+    )
+
+    def _tpl(self):
+        with open(self.ADOC_TPL_PATH, encoding="utf-8") as f:
+            return f.read()
+
+    def _base_cfg(self, **over):
+        cfg = {
+            "ticket": "PROJ-9",
+            "input_file": "/w/plan.md",
+            "output_file": "/w/writing/_index.md",
+            "output_dir": "/w/writing",
+            "code_analysis_dir": "/w/ca",
+            "pr_analysis_dir": "/w/pr",
+            "fix_from": None,
+            "has_code_analysis": False,
+            "has_pr_analysis": False,
+            "source_repo_path": None,
+            "docs_repo_path": None,
+            "additional_repo_paths": [],
+            "additional_code_analysis_dirs": [],
+        }
+        cfg.update(over)
+        return cfg
+
+    def test_minimal_excludes_all_conditionals(self):
+        out = _render_writing_prompt(self._tpl(), self._base_cfg())
+        assert "Code-learner analysis" not in out
+        assert "module registry" not in out  # continuation paragraph also excluded
+        assert "PR analysis is available" not in out
+        assert "Source code repository is available" not in out
+        assert "Additional source code repositories" not in out
+        assert "target repository is at" not in out
+        assert "[Include only if" not in out
+        assert "<TICKET>" not in out
+
+    def test_code_analysis_includes_continuation(self):
+        out = _render_writing_prompt(self._tpl(), self._base_cfg(has_code_analysis=True))
+        assert "Code-learner analysis" in out
+        # The un-marked continuation paragraph must be included with the block.
+        assert "module registry" in out
+        assert "/w/ca" in out
+        assert "PR analysis is available" not in out
+
+    def test_docs_repo_inline_conditional(self):
+        out = _render_writing_prompt(self._tpl(), self._base_cfg(docs_repo_path="/repo/docs"))
+        assert "target repository is at" in out
+        assert "/repo/docs" in out
+
+    def test_placeholder_substitution(self):
+        out = _render_writing_prompt(self._tpl(), self._base_cfg())
+        assert "PROJ-9" in out
+        assert "/w/plan.md" in out
+        assert "/w/writing/_index.md" in out
+
+    def test_additional_repos_listed(self):
+        cfg = self._base_cfg(
+            has_code_analysis=True,
+            source_repo_path="/src",
+            additional_repo_paths=["/a", "/b"],
+            additional_code_analysis_dirs=["/w/ca-a"],
+        )
+        out = _render_writing_prompt(self._tpl(), cfg)
+        assert "Additional source code repositories" in out
+        assert "/a, /b" in out
+        assert "<list each path" not in out
+
+
+class TestPrepareWriting:
+    def _setup(self, tmp_path):
+        base = str(tmp_path)
+        planning = tmp_path / "planning"
+        planning.mkdir()
+        (planning / "plan.md").write_text("# Plan\n\n### Module x\n\nBody.\n")
+        return base
+
+    def test_update_in_place_adoc(self, tmp_path):
+        base = self._setup(tmp_path)
+        result = _prepare_writing("T-1", base, {"format": "adoc"}, {})
+        assert len(result["agents"]) == 1
+        agent = result["agents"][0]
+        assert agent["type"] == "docs-skills:docs-writer"
+        assert agent["background"] is False
+        assert agent["model"] is None
+        assert agent["schema"] is None
+        assert agent["description"] == "Write adoc documentation for T-1"
+        assert "T-1" in agent["prompt"]
+        assert result["next_phase"] is None
+        assert result["verify"].endswith("writing/_index.md")
+        assert len(result["finalize"]) == 1
+        assert "write_step_result.py" in result["finalize"][0]
+        assert "--mode update-in-place" in result["finalize"][0]
+
+    def test_mkdocs_description(self, tmp_path):
+        base = self._setup(tmp_path)
+        result = _prepare_writing("T-1", base, {"format": "mkdocs"}, {})
+        assert result["agents"][0]["description"] == "Write mkdocs documentation for T-1"
+
+    def test_fix_mode_no_finalize_or_verify(self, tmp_path):
+        base = self._setup(tmp_path)
+        review = tmp_path / "review.md"
+        review.write_text("issues to fix")
+        progress = {"_tech_review_fix_from": str(review)}
+        result = _prepare_writing("T-1", base, {"format": "adoc"}, progress)
+        assert result["verify"] is None
+        assert result["finalize"] == []
+        assert result["agents"][0]["description"] == "Fix documentation for T-1"
+        assert str(review) in result["agents"][0]["prompt"]
+
+
+class TestCmdPrepareStep:
+    def _setup_workspace(self, tmp_path, monkeypatch, step="writing"):
+        root = tmp_path
+        base = root / ".agent_workspace" / "test-1"
+        (base / "planning").mkdir(parents=True)
+        (base / "planning" / "plan.md").write_text("# Plan\n\n### Module x\n")
+        workflow_dir = base / "workflow"
+        workflow_dir.mkdir()
+        progress = {
+            "workflow": "docs-workflow",
+            "ticket": "TEST-1",
+            "base_path": str(base),
+            "status": "in_progress",
+            "options": {"format": "adoc"},
+            "step_order": [step],
+            "steps": {step: {"status": "in_progress", "output": None, "result": None}},
+            "_step_skills": {step: f"docs-workflow-{step}"},
+        }
+        pfile = workflow_dir / "docs-workflow_test-1.json"
+        atomic_write_json(str(pfile), progress)
+        atomic_write_json(
+            marker_path_for(str(base)),
+            {"ticket": "TEST-1", "workflow": "docs-workflow", "progress_file": str(pfile)},
+        )
+        monkeypatch.setattr("docs_orchestrator.git_root", lambda: str(root))
+        return root
+
+    def test_writing_emits_agents(self, tmp_path, monkeypatch, capsys):
+        self._setup_workspace(tmp_path, monkeypatch)
+        args = argparse.Namespace(ticket="TEST-1", step="writing", phase=None)
+        from docs_orchestrator import cmd_prepare_step
+
+        cmd_prepare_step(args)
+        out = json.loads(capsys.readouterr().out)
+        assert len(out["agents"]) == 1
+        assert out["agents"][0]["type"] == "docs-skills:docs-writer"
+
+    def test_unknown_step_fails(self, tmp_path, monkeypatch, capsys):
+        self._setup_workspace(tmp_path, monkeypatch, step="planning")
+        args = argparse.Namespace(ticket="TEST-1", step="planning", phase=None)
+        from docs_orchestrator import cmd_prepare_step
+
+        with pytest.raises(SystemExit):
+            cmd_prepare_step(args)
+        out = json.loads(capsys.readouterr().out)
+        assert out["action"] == "fail"
+        assert "No prepare function" in out["message"]
 
 
 class TestBuildStepArgsScopeReqAudit:
