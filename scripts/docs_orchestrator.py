@@ -28,6 +28,14 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Share workflow YAML resolution with the load_workflow skill script so the two
+# entry points cannot drift. resolve_yaml_path is pure stdlib; load_workflow's
+# pyyaml dependency is deferred to its load() path and is not imported here.
+sys.path.insert(
+    0, str(Path(__file__).resolve().parent.parent / "skills" / "docs-orchestrator" / "scripts")
+)
+from load_workflow import resolve_yaml_path  # noqa: E402
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -40,10 +48,6 @@ RESOLVE_SOURCE_SCRIPT = str(
     / "docs-orchestrator"
     / "scripts"
     / "resolve_source.py"
-)
-
-DEFAULT_WORKFLOW_DIR = str(
-    Path(__file__).resolve().parent.parent / "skills" / "docs-orchestrator" / "defaults"
 )
 
 PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
@@ -62,10 +66,6 @@ VALID_WHEN_CONDITIONS = {
 }
 
 TICKET_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]+-\d+$")
-
-# Workflow name comes from the --workflow CLI arg and is interpolated into a
-# filename (docs-<name>.yaml). Restrict it to prevent path traversal.
-WORKFLOW_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _validate_ticket(ticket):
@@ -862,6 +862,7 @@ def _pp_technical_review(sidecar, progress, base_path, options):
     if confidence == "HIGH":
         progress.pop("_tech_review_fix_from", None)
         progress.pop("_tech_review_iteration", None)
+        progress.pop("_tech_review_prior_severity", None)
         _eval_has_many_requirements_phase2(confidence, progress, messages)
         return {"warnings": warnings, "messages": messages}
 
@@ -880,6 +881,7 @@ def _pp_technical_review(sidecar, progress, base_path, options):
     if crit == 0 and sig == 0:
         progress.pop("_tech_review_fix_from", None)
         progress.pop("_tech_review_iteration", None)
+        progress.pop("_tech_review_prior_severity", None)
         sme = severity.get("sme", 0)
         if isinstance(sme, str):
             sme = int(sme)
@@ -897,6 +899,7 @@ def _pp_technical_review(sidecar, progress, base_path, options):
     if iteration >= max_iterations:
         progress.pop("_tech_review_fix_from", None)
         progress.pop("_tech_review_iteration", None)
+        progress.pop("_tech_review_prior_severity", None)
         _eval_has_many_requirements_phase2(confidence, progress, messages)
         if confidence == "MEDIUM":
             warnings.append(
@@ -916,6 +919,46 @@ def _pp_technical_review(sidecar, progress, base_path, options):
                     ),
                 },
             }
+
+    # Convergence detection: if the prior fix cycle produced the exact same
+    # severity counts as this iteration, another cycle re-runs the writer over
+    # the same unresolved issues and will stall identically. Stop early rather
+    # than burning the remaining iteration budget on a redundant review.
+    minor = severity.get("minor", 0)
+    sme = severity.get("sme", 0)
+    if isinstance(minor, str):
+        minor = int(minor)
+    if isinstance(sme, str):
+        sme = int(sme)
+    current_severity = {"critical": crit, "significant": sig, "minor": minor, "sme": sme}
+
+    if progress.get("_tech_review_prior_severity") == current_severity:
+        progress.pop("_tech_review_fix_from", None)
+        progress.pop("_tech_review_iteration", None)
+        progress.pop("_tech_review_prior_severity", None)
+        _eval_has_many_requirements_phase2(confidence, progress, messages)
+        if confidence == "MEDIUM":
+            warnings.append(
+                f"Technical review converged at iteration {iteration} with no "
+                "further progress — manual review recommended"
+            )
+            return {"warnings": warnings, "messages": messages}
+        return {
+            "warnings": warnings,
+            "messages": messages,
+            "action_override": {
+                "action": "fail",
+                "step": "technical-review",
+                "reason": (f"LOW confidence converged at iteration {iteration} with no progress"),
+                "message": (
+                    "Workflow failed: technical review stalled at LOW confidence "
+                    f"with no progress after iteration {iteration}"
+                ),
+            },
+        }
+
+    # Record this iteration's severity so the next cycle can detect a stall.
+    progress["_tech_review_prior_severity"] = current_severity
 
     # Need fix cycle
     review_path = os.path.join(base_path, "technical-review", "review.md")
@@ -1297,35 +1340,6 @@ def check_input_deps(step_name, progress, yaml_steps_map):
 
 
 # ---------------------------------------------------------------------------
-# Resolve workflow YAML path
-# ---------------------------------------------------------------------------
-
-
-def resolve_yaml_path(workflow_name=None):
-    """Resolve the workflow YAML file path with fallback chain."""
-    workspace = ".agent_workspace"
-
-    if workflow_name:
-        if not WORKFLOW_NAME_RE.fullmatch(workflow_name):
-            return None
-        project_file = os.path.join(workspace, f"docs-{workflow_name}.yaml")
-        if os.path.isfile(project_file):
-            return project_file
-        default_file = os.path.join(DEFAULT_WORKFLOW_DIR, f"docs-{workflow_name}.yaml")
-        if os.path.isfile(default_file):
-            return default_file
-        return None
-
-    project_file = os.path.join(workspace, "docs-workflow.yaml")
-    if os.path.isfile(project_file):
-        return project_file
-    default_file = os.path.join(DEFAULT_WORKFLOW_DIR, "docs-workflow.yaml")
-    if os.path.isfile(default_file):
-        return default_file
-    return None
-
-
-# ---------------------------------------------------------------------------
 # Build options dict from CLI args
 # ---------------------------------------------------------------------------
 
@@ -1373,7 +1387,7 @@ def cmd_init(args):
     options = build_options(args)
 
     # Resolve workflow YAML
-    yaml_path = resolve_yaml_path(getattr(args, "workflow", None))
+    yaml_path = resolve_yaml_path(getattr(args, "workflow", None), PLUGIN_ROOT, base_path=base_path)
     if not yaml_path:
         emit({"action": "fail", "error": True, "message": "No workflow YAML found"})
         sys.exit(1)

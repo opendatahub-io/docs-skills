@@ -20,21 +20,33 @@ Usage:
 import argparse
 import json
 import os
+import re
 import sys
+
+WORKFLOW_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class WorkflowError(Exception):
     """A workflow could not be resolved, parsed, or validated."""
 
 
-def resolve_yaml_path(workflow_name: str, plugin_root: str, base_path: str | None) -> str | None:
+def resolve_yaml_path(
+    workflow_name: str | None, plugin_root: str, base_path: str | None = None
+) -> str | None:
     """Resolve the workflow YAML: project override first, then the plugin default.
+
+    ``workflow_name`` falls back to ``"workflow"`` when empty, and is validated
+    against ``WORKFLOW_NAME_RE`` so a caller-supplied name cannot escape the
+    workflow directories via path traversal; an invalid name yields ``None``.
 
     Project override lives next to the workspace (``<base_path>/../docs-<name>.yaml``,
     i.e. ``.agent_workspace/docs-<name>.yaml``); the fallback is the bundled
     ``skills/docs-orchestrator/defaults/docs-<name>.yaml``.
     """
-    filename = f"docs-{workflow_name}.yaml"
+    name = workflow_name or "workflow"
+    if not WORKFLOW_NAME_RE.fullmatch(name):
+        return None
+    filename = f"docs-{name}.yaml"
 
     if base_path:
         project = os.path.join(os.path.dirname(os.path.abspath(base_path)), filename)

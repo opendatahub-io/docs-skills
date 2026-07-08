@@ -35,7 +35,12 @@ Check both locations:
 
 ```bash
 REPO_NAME="$(basename "$REPO")"
-GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# Derive the docs-repo root from OUTPUT_DIR
+# (<docs-root>/.agent_workspace/<ticket>/code-analysis) by stripping from
+# `.agent_workspace` onward. Do NOT use `git rev-parse`, which returns
+# whichever repo the cwd is inside and points at the wrong root if the agent
+# drifted into the source repo.
+GIT_ROOT="${OUTPUT_DIR%%/.agent_workspace/*}"
 
 # Check inside the cloned repo first
 LEARN_CODE_ONBOARDING="$(ls "${REPO}/.agent_workspace/"*/synthesis/ONBOARDING.md 2>/dev/null | head -1)"
@@ -77,7 +82,12 @@ After the agent completes, locate the learn-code output. Check both possible loc
 
 ```bash
 REPO_NAME="$(basename "$REPO")"
-GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# Derive the docs-repo root from OUTPUT_DIR
+# (<docs-root>/.agent_workspace/<ticket>/code-analysis) by stripping from
+# `.agent_workspace` onward. Do NOT use `git rev-parse`, which returns
+# whichever repo the cwd is inside and points at the wrong root if the agent
+# drifted into the source repo.
+GIT_ROOT="${OUTPUT_DIR%%/.agent_workspace/*}"
 
 # Check inside the cloned repo first
 LEARN_CODE_ONBOARDING="$(ls "${REPO}/.agent_workspace/"*/synthesis/ONBOARDING.md 2>/dev/null | head -1)"
@@ -97,27 +107,28 @@ If `ONBOARDING.md` is not found at either location after the agent completes, ma
 
 ### 4. Write step-result.json
 
-Extract metrics from the analysis files at `LEARN_CODE_BASE` (not from `OUTPUT_DIR` — analysis files are not copied):
+Do **not** hand-author the sidecar — a hand-written sidecar drifts from the schema (e.g. string
+counts where the schema requires integers) and uses an orchestrator-delayed timestamp instead of a
+real wall-clock one. Run the script:
 
-- **module_count**: `${LEARN_CODE_BASE}/module-registry/registry.json` is a JSON **array** — the count is its length (e.g. `len(json.load(f))` or `jq length`).
-- **relationship_count**: count of `.json` files in `${LEARN_CODE_BASE}/relationships/`.
-- **languages_detected**: read `${LEARN_CODE_BASE}/detection/detection.json` (a JSON object) — use the keys of `language_counts`, or fall back to `primary_language` as a single-element list.
-
-Write the sidecar:
-
-```json
-{
-  "schema_version": 1,
-  "step": "code-analysis",
-  "ticket": "<TICKET>",
-  "completed_at": "<ISO 8601>",
-  "module_count": "<length of registry.json array>",
-  "relationship_count": "<count of .json files in relationships/>",
-  "languages_detected": ["<keys from detection.json language_counts>"],
-  "repo_path": "<absolute path to repo>",
-  "repo_analysis_path": "<absolute path to LEARN_CODE_BASE>"
-}
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+  --ticket "<TICKET>" \
+  --repo "$REPO" \
+  --analysis-path "$LEARN_CODE_BASE" \
+  --sidecar "${OUTPUT_DIR}/step-result.json"
 ```
+
+The script reads the analysis files at `LEARN_CODE_BASE` (not `OUTPUT_DIR` — the analysis files are
+not copied there) to derive the metrics deterministically:
+
+- **module_count**: length of the `module-registry/registry.json` array.
+- **relationship_count**: count of `.json` files in `relationships/`.
+- **languages_detected**: keys of `language_counts` in `detection/detection.json`, falling back to
+  `primary_language`.
+
+It writes the conformant `step-result.json` with a real wall-clock `completed_at`. If the script
+exits non-zero, fix the arguments and re-run; do not substitute a stub.
 
 ### 5. Report completion
 
