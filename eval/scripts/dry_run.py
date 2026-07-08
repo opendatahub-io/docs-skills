@@ -185,9 +185,7 @@ def _check_module(jc, project_root, errors):
         errors.append(f"Judge '{jc.name}': module '{jc.module}' import failed: {e}")
         return
     if not hasattr(mod, jc.function):
-        errors.append(
-            f"Judge '{jc.name}': function '{jc.function}' not found in {jc.module}"
-        )
+        errors.append(f"Judge '{jc.name}': function '{jc.function}' not found in {jc.module}")
 
 
 def main():

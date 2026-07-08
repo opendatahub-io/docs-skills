@@ -146,8 +146,8 @@ def _fmt_score(value):
         return f'<span class="{cls}">{"✓" if value else "✗"}</span>'
     if isinstance(value, float):
         if value <= 1.0:
-            return f'{value:.0%}'
-        return f'{value:.2f}'
+            return f"{value:.0%}"
+        return f"{value:.2f}"
     return str(value)
 
 
@@ -155,12 +155,13 @@ def _md_to_html(text):
     """Convert basic markdown to HTML — bold, paragraphs, lists."""
     import html
     import re
+
     text = html.escape(text)
-    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
-    text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
-    text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+    text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"__(.+?)__", r"<strong>\1</strong>", text)
+    text = re.sub(r"\*(.+?)\*", r"<em>\1</em>", text)
     # Add line breaks after sentences for scannability
-    text = re.sub(r'(\.) ([A-Z])', r'.\n\2', text)
+    text = re.sub(r"(\.) ([A-Z])", r".\n\2", text)
 
     lines = text.split("\n")
     html_parts = []
@@ -171,7 +172,7 @@ def _md_to_html(text):
         stripped = line.strip()
         if stripped.startswith("- "):
             if paragraph:
-                html_parts.append(f'<p>{"<br>".join(paragraph)}</p>')
+                html_parts.append(f"<p>{'<br>'.join(paragraph)}</p>")
                 paragraph = []
             if not in_list:
                 html_parts.append("<ul>")
@@ -184,13 +185,13 @@ def _md_to_html(text):
             if stripped:
                 paragraph.append(stripped)
             elif paragraph:
-                html_parts.append(f'<p>{"<br>".join(paragraph)}</p>')
+                html_parts.append(f"<p>{'<br>'.join(paragraph)}</p>")
                 paragraph = []
 
     if in_list:
         html_parts.append("</ul>")
     if paragraph:
-        html_parts.append(f'<p>{"<br>".join(paragraph)}</p>')
+        html_parts.append(f"<p>{'<br>'.join(paragraph)}</p>")
 
     return "\n".join(html_parts)
 
@@ -209,7 +210,7 @@ def _read_analysis(run_dir):
     recommendation = ""
     for s in sections:
         if s.startswith("Recommendation"):
-            recommendation = s[len("Recommendation"):].strip()
+            recommendation = s[len("Recommendation") :].strip()
             break
         if s.startswith("Judge Definitions"):
             continue
@@ -295,11 +296,11 @@ def main():
     pairwise_html = ""
     pw = summary.get("pairwise")
     if pw:
-        wins_a = pw.get('wins_a', 0)
-        ties = pw.get('ties', 0)
-        wins_b = pw.get('wins_b', 0)
-        run_a = pw.get('run_a', '')
-        run_b = pw.get('run_b', '')
+        wins_a = pw.get("wins_a", 0)
+        ties = pw.get("ties", 0)
+        wins_b = pw.get("wins_b", 0)
+        run_a = pw.get("run_a", "")
+        run_b = pw.get("run_b", "")
         pairwise_html = f"""
 <div class="card">
 <h2>Pairwise Comparison — {run_a} vs {run_b}</h2>
