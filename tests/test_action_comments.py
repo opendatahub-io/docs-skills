@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from action_comments import (
     build_sidecar,
     classify_outdated,
+    is_editable_path,
     list_artifacts,
     plan_checkout,
     resolve_mode,
@@ -194,7 +195,41 @@ class TestClassifyOutdated:
         assert classify_outdated({"path": rel}, str(tmp_path)) is True
 
 
-class TestBuildSidecar:
+class TestIsEditablePath:
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "docs/guide.adoc",
+            "modules/proc_setup.adoc",
+            "README.md",
+            "assemblies/assembly_install.adoc",
+        ],
+    )
+    def test_allows_doc_paths(self, path, tmp_path):
+        allowed, _ = is_editable_path(path, str(tmp_path))
+        assert allowed is True
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "../../../etc/passwd",  # traversal
+            "/etc/passwd",  # absolute escape
+            ".gitlab-ci.yml",  # CI config (dotfile)
+            ".github/workflows/test.yml",  # CI workflow (dot dir)
+            ".git/config",  # git internals
+            ".env",  # secrets
+            "docs/../.github/workflows/x.yml",  # traversal into CI
+            "Makefile",  # code-exec entrypoint
+            "Dockerfile",
+            "Jenkinsfile",
+            "",  # empty
+        ],
+    )
+    def test_blocks_sensitive_and_escaping_paths(self, path, tmp_path):
+        allowed, reason = is_editable_path(path, str(tmp_path))
+        assert allowed is False
+        assert reason
+
     def test_shape_and_fields(self):
         s = build_sidecar(
             ticket="PROJ-1",

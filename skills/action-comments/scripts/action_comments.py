@@ -9,6 +9,7 @@ Subcommands:
     resolve-mode        Decide CI vs interactive from flags + CI env vars.
     validate-url        Validate a PR/MR URL against the supported forge shapes.
     checkout-plan       Validate the head ref and decide the checkout action.
+    check-edit-path     Guard a comment's edit target (containment + denylist).
     workspace           Resolve the .agent_workspace dir and list artifacts.
     classify-outdated   Annotate reader comments JSON with an `outdated` flag.
     write-result        Write the step-result.json sidecar.
@@ -17,6 +18,7 @@ Usage:
     python3 action_comments.py resolve-mode [--ci] [--no-ci]
     python3 action_comments.py validate-url <url>
     python3 action_comments.py checkout-plan --head-ref <ref> [--current-branch <ref>]
+    python3 action_comments.py check-edit-path --path <p> [--repo-root <dir>]
     python3 action_comments.py workspace --repo-root <dir> [--base-path <dir>] [--pr <url>]
     python3 action_comments.py classify-outdated --repo-root <dir> [--comments-file <f>]
     python3 action_comments.py write-result --base-path <dir> --ticket <id> ...
@@ -29,13 +31,20 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 # Both public and self-hosted GitHub/GitLab.
 PR_URL_RE = re.compile(r"^https://[^/]+/.+/(pull/\d+|merge_requests/\d+)")
 
 # Safe git branch refs: alphanumerics, dot, hyphen, underscore, slash only.
 BRANCH_REF_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+
+# Filenames that execute code (CI/build entrypoints) and must never be edited
+# from an untrusted review comment. Dotfiles/dirs (.github, .gitlab-ci.yml,
+# .env, .git, .circleci ...) are blocked separately by the dot-component rule.
+SENSITIVE_EDIT_NAMES = frozenset(
+    {"Jenkinsfile", "Makefile", "Dockerfile", "Containerfile", "setup.py", "conftest.py"}
+)
 
 # Env vars set to "true" by common CI providers. GitHub Actions and GitLab CI
 # both also set the generic CI var, but we check all three for robustness.
@@ -151,6 +160,38 @@ def _parse_source_repo_path(text: str) -> Optional[str]:
     return None
 
 
+def _resolve_within(path: str, repo_root: Optional[str]) -> Optional[Path]:
+    """Resolve `path` under repo_root; return it only if it stays inside.
+
+    Returns None when the forge-supplied path escapes the repo (traversal or
+    absolute path). Both callers treat that as untrusted.
+    """
+    base = Path(repo_root).resolve() if repo_root else Path.cwd().resolve()
+    fp = (base / path).resolve()
+    return fp if fp.is_relative_to(base) else None
+
+
+def is_editable_path(path: Optional[str], repo_root: Optional[str]) -> Tuple[bool, str]:
+    """Decide whether a review comment may edit `path`. Returns (allowed, reason).
+
+    Bounds the blast radius of a malicious or prompt-injected comment: an edit
+    target may not escape the repo, touch a dotfile/dir (CI config, .git, .env,
+    secrets), or hit a code-execution entrypoint (Makefile, Dockerfile, ...).
+    """
+    if not path:
+        return False, "empty path"
+    fp = _resolve_within(path, repo_root)
+    if fp is None:
+        return False, "path escapes repo root"
+    base = Path(repo_root).resolve() if repo_root else Path.cwd().resolve()
+    rel = fp.relative_to(base)
+    if any(part.startswith(".") for part in rel.parts):
+        return False, "dotfile / CI / secret path"
+    if any(part in SENSITIVE_EDIT_NAMES for part in rel.parts):
+        return False, "code-execution entrypoint"
+    return True, "ok"
+
+
 def classify_outdated(comment: Dict, repo_root: Optional[str]) -> bool:
     """True if the comment is outdated and should be auto-skipped.
 
@@ -163,9 +204,8 @@ def classify_outdated(comment: Dict, repo_root: Optional[str]) -> bool:
     path = comment.get("path")
     if not path:
         return False
-    base = Path(repo_root).resolve() if repo_root else Path.cwd().resolve()
-    fp = (base / path).resolve()
-    if not fp.is_relative_to(base):
+    fp = _resolve_within(path, repo_root)
+    if fp is None:
         return True  # path from the forge escapes repo_root -> untrusted, skip
     return not fp.is_file()
 
@@ -227,6 +267,12 @@ def _cmd_checkout_plan(args) -> int:
     return 0
 
 
+def _cmd_check_edit_path(args) -> int:
+    allowed, reason = is_editable_path(args.path, args.repo_root)
+    print(json.dumps({"path": args.path, "allowed": allowed, "reason": reason}))
+    return 0 if allowed else 1
+
+
 def _cmd_workspace(args) -> int:
     workspace = select_workspace(args.repo_root, args.base_path, args.pr)
     print(json.dumps(list_artifacts(workspace)))
@@ -281,6 +327,11 @@ def main() -> int:
     p_co.add_argument("--head-ref", dest="head_ref", required=True)
     p_co.add_argument("--current-branch", dest="current_branch", default="")
     p_co.set_defaults(func=_cmd_checkout_plan)
+
+    p_ep = sub.add_parser("check-edit-path", help="Guard a comment's edit target")
+    p_ep.add_argument("--path", required=True)
+    p_ep.add_argument("--repo-root", dest="repo_root")
+    p_ep.set_defaults(func=_cmd_check_edit_path)
 
     p_ws = sub.add_parser("workspace", help="Resolve workspace and list artifacts")
     p_ws.add_argument("--repo-root", dest="repo_root")
