@@ -1972,22 +1972,24 @@ def _prepare_writing(ticket, base_path, options, progress, phase=None):
         "schema": None,
     }
 
-    finalize = []
-    verify = None
-    if cfg.get("verify_output"):
-        verify = cfg["output_file"]
-        sidecar = os.path.join(cfg["output_dir"], "step-result.json")
-        finalize.append(
-            "python3 {script} --ticket {ticket} --manifest {manifest} "
-            "--mode {mode} --format {fmt} --sidecar {sidecar}".format(
-                script=shlex.quote(WRITE_STEP_RESULT_SCRIPT),
-                ticket=shlex.quote(ticket),
-                manifest=shlex.quote(cfg["output_file"]),
-                mode=shlex.quote(mode),
-                fmt=shlex.quote(fmt),
-                sidecar=shlex.quote(sidecar),
-            )
+    # The sidecar finalize runs for every writing dispatch — including fix
+    # iterations — so downstream steps always read a current step-result.json.
+    # (write_step_result carries mode/format forward for --mode fix.) The
+    # output-file verify stays gated on verify_output: fix mode skips it by
+    # design because it edits files in place rather than regenerating _index.md.
+    sidecar = os.path.join(cfg["output_dir"], "step-result.json")
+    finalize = [
+        "python3 {script} --ticket {ticket} --manifest {manifest} "
+        "--mode {mode} --format {fmt} --sidecar {sidecar}".format(
+            script=shlex.quote(WRITE_STEP_RESULT_SCRIPT),
+            ticket=shlex.quote(ticket),
+            manifest=shlex.quote(cfg["output_file"]),
+            mode=shlex.quote(mode),
+            fmt=shlex.quote(fmt),
+            sidecar=shlex.quote(sidecar),
         )
+    ]
+    verify = cfg["output_file"] if cfg.get("verify_output") else None
 
     return {
         "agents": [agent],

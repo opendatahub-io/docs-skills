@@ -1827,14 +1827,18 @@ class TestPrepareWriting:
         result = _prepare_writing("T-1", base, {"format": "mkdocs"}, {})
         assert result["agents"][0]["description"] == "Write mkdocs documentation for T-1"
 
-    def test_fix_mode_no_finalize_or_verify(self, tmp_path):
+    def test_fix_mode_finalizes_but_skips_verify(self, tmp_path):
         base = self._setup(tmp_path)
         review = tmp_path / "review.md"
         review.write_text("issues to fix")
         progress = {"_tech_review_fix_from": str(review)}
         result = _prepare_writing("T-1", base, {"format": "adoc"}, progress)
+        # verify stays gated on verify_output (off for fix mode, by design)
         assert result["verify"] is None
-        assert result["finalize"] == []
+        # but the sidecar finalize now runs so completed_at/files stay current
+        assert len(result["finalize"]) == 1
+        assert "write_step_result.py" in result["finalize"][0]
+        assert "--mode fix" in result["finalize"][0]
         assert result["agents"][0]["description"] == "Fix documentation for T-1"
         assert str(review) in result["agents"][0]["prompt"]
 

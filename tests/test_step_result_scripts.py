@@ -123,6 +123,97 @@ class TestWritingExtractFiles:
         assert writing_wsr.extract_files(str(manifest)) == []
 
 
+class TestWritingFixMode:
+    """Fix iterations re-run the finalize with --mode fix.
+
+    The sidecar's ``mode`` enum is ["update-in-place", "draft"] — "fix" is not
+    valid — so fix mode must carry mode/format forward from the prior sidecar
+    while refreshing ``completed_at`` and re-parsing ``files``.
+    """
+
+    def _run(self, tmp_path, mode, fmt):
+        real = tmp_path / "master.adoc"
+        real.write_text("= Doc")
+        manifest = tmp_path / "_index.md"
+        manifest.write_text(f"| File | Status |\n| {real} | updated |\n")
+        sidecar = tmp_path / "step-result.json"
+        argv = [
+            "write_step_result.py",
+            "--ticket",
+            "TEST-1",
+            "--manifest",
+            str(manifest),
+            "--mode",
+            mode,
+            "--format",
+            fmt,
+            "--sidecar",
+            str(sidecar),
+        ]
+        import sys as _sys
+
+        old = _sys.argv
+        _sys.argv = argv
+        try:
+            rc = writing_wsr.main()
+        finally:
+            _sys.argv = old
+        return rc, sidecar, real
+
+    def test_fix_mode_preserves_prior_mode_and_format(self, tmp_path):
+        # Iteration 1 sidecar: update-in-place / mkdocs.
+        sidecar = tmp_path / "step-result.json"
+        sidecar.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "step": "writing",
+                    "ticket": "TEST-1",
+                    "completed_at": "2020-01-01T00:00:00+00:00",
+                    "files": ["/old/gone.adoc"],
+                    "mode": "update-in-place",
+                    "format": "mkdocs",
+                }
+            )
+        )
+        rc, sidecar, real = self._run(tmp_path, mode="fix", fmt="adoc")
+        assert rc == 0
+        data = json.loads(sidecar.read_text())
+        assert data["mode"] == "update-in-place"
+        assert data["format"] == "mkdocs"
+        assert data["files"] == [str(real)]
+        validate_sidecar("writing", data)
+
+    def test_fix_mode_refreshes_completed_at(self, tmp_path):
+        sidecar = tmp_path / "step-result.json"
+        sidecar.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "step": "writing",
+                    "ticket": "TEST-1",
+                    "completed_at": "2020-01-01T00:00:00+00:00",
+                    "files": [],
+                    "mode": "draft",
+                    "format": "adoc",
+                }
+            )
+        )
+        rc, sidecar, _ = self._run(tmp_path, mode="fix", fmt="adoc")
+        assert rc == 0
+        data = json.loads(sidecar.read_text())
+        assert data["completed_at"] != "2020-01-01T00:00:00+00:00"
+
+    def test_fix_mode_without_prior_sidecar_falls_back(self, tmp_path):
+        rc, sidecar, _ = self._run(tmp_path, mode="fix", fmt="adoc")
+        assert rc == 0
+        data = json.loads(sidecar.read_text())
+        # No prior sidecar: fall back to a schema-valid mode + the CLI format.
+        assert data["mode"] == "update-in-place"
+        assert data["format"] == "adoc"
+        validate_sidecar("writing", data)
+
+
 class TestPlanningCountModules:
     def test_counts_module_and_update_headings(self, tmp_path):
         plan = tmp_path / "plan.md"

@@ -59,22 +59,42 @@ def main() -> int:
     if not files:
         print(f"WARNING: no file paths found in manifest: {manifest_path}", file=sys.stderr)
 
+    sidecar_path = Path(args.sidecar)
+
+    # "fix" is not a valid value for the sidecar's ``mode`` enum
+    # (["update-in-place", "draft"]). A fix iteration re-runs the finalize to
+    # refresh ``completed_at`` and re-validate ``files``, but must carry the
+    # original mode/format forward from the iteration-1 sidecar.
+    mode = args.mode
+    fmt = args.fmt
+    if mode == "fix":
+        if sidecar_path.is_file():
+            prior = json.loads(sidecar_path.read_text())
+            mode = prior.get("mode", "update-in-place")
+            fmt = prior.get("format", fmt)
+        else:
+            print(
+                f"WARNING: fix mode with no prior sidecar at {sidecar_path}; "
+                "falling back to mode=update-in-place",
+                file=sys.stderr,
+            )
+            mode = "update-in-place"
+
     sidecar = {
         "schema_version": 1,
         "step": "writing",
         "ticket": args.ticket,
         "completed_at": datetime.now(timezone.utc).isoformat(),
         "files": files,
-        "mode": args.mode,
-        "format": args.fmt,
+        "mode": mode,
+        "format": fmt,
     }
 
-    sidecar_path = Path(args.sidecar)
     sidecar_path.parent.mkdir(parents=True, exist_ok=True)
     sidecar_path.write_text(json.dumps(sidecar, indent=2))
 
     print(f"Written {sidecar_path}")
-    print(f"files={len(files)} mode={args.mode} format={args.fmt}")
+    print(f"files={len(files)} mode={mode} format={fmt}")
     return 0
 
 

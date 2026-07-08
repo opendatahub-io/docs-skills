@@ -68,7 +68,7 @@ Dispatch **one** agent (a single Agent-tool call). Because there is one prompt a
 - **Model**: opus — match the judges. The cheap model produced literal-minded false negatives (e.g. reading "subsection" or "automatically detect" too narrowly), and with a single combined prompt the docs are read once, so the cost argument for a cheaper model no longer applies
 - **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/coverage-prompt.md` and follow the instructions. The prompt requires the agent to output a JSON object matching `schema/coverage.json` inside a single ` ```json ` fenced code block.
 
-The Agent tool has no schema-enforced output, so the agent returns prose wrapping the JSON. Write the agent's reply **verbatim** to `${BASE_PATH}/quality-gate/coverage-raw.md`, then extract and validate the `items` array with the script:
+The coverage prompt instructs the agent to **write its JSON reply itself** to `${BASE_PATH}/quality-gate/coverage-raw.md` (via the Write tool) and reply with only `DONE` — so no heredoc relay is needed. Confirm `coverage-raw.md` exists, then extract and validate the `items` array with the script:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py extract-json \
@@ -78,7 +78,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py extract-json \
   --key items
 ```
 
-If the script exits non-zero (no JSON found, or schema mismatch), **re-dispatch the coverage agent once** with a reminder to output only a valid JSON object in a ` ```json ` fence, then re-run the script. The classify step (3c) reports any AC ids missing from the array; you do not need to count files by hand.
+If `coverage-raw.md` is missing or the script exits non-zero (no JSON found, or schema mismatch), **re-dispatch the coverage agent once** with a reminder to write a valid JSON object in a ` ```json ` fence to `coverage-raw.md`, then re-run the script. The classify step (3c) reports any AC ids missing from the array; you do not need to count files by hand.
 
 #### 3c. Classify coverage results
 
@@ -121,7 +121,7 @@ Each judge prompt requires the agent to output a JSON object matching its schema
 
 ### 5. Extract and validate judge results
 
-Write each agent's reply **verbatim** to a raw file, then extract + validate it against its schema:
+Each judge prompt instructs the agent to **write its JSON reply itself** to its raw file (`dq-raw.md` / `ia-raw.md`) via the Write tool and reply with only `DONE` — no heredoc relay. Confirm both raw files exist, then extract + validate each against its schema:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py extract-json \
@@ -135,7 +135,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py extract-json \
   --out "${BASE_PATH}/quality-gate/ia-result.json"
 ```
 
-If either script call exits non-zero (no JSON found, or schema mismatch), **re-dispatch that judge agent once** with a reminder to output only a valid JSON object in a ` ```json ` fence, then re-run the script. If an agent produces no usable result after the retry, mark the quality gate as `failed` — do not substitute default scores.
+If a raw file is missing or either script call exits non-zero (no JSON found, or schema mismatch), **re-dispatch that judge agent once** with a reminder to write a valid JSON object in a ` ```json ` fence to its raw file, then re-run the script. If an agent produces no usable result after the retry, mark the quality gate as `failed` — do not substitute default scores.
 
 ### 6. Classify gaps and write step-result.json
 

@@ -148,11 +148,13 @@ documentation VERBATIM — copy it exactly as written, including punctuation.
    array holding one object per criterion, in the same order, each shaped exactly:
    {{"id": "<the ID shown in brackets>", "covered": true, "quote": "verbatim sentence"}}
    or {{"id": "<the ID shown in brackets>", "covered": false, "quote": null}}
-6. The full reply must be:
+6. The JSON object must be shaped:
    ```json
    {{"items": [ ... ]}}
    ```
-   Output only that fenced JSON object — no prose before or after it.
+7. Write that JSON object — only the fenced ```json block, nothing else — to
+   `{raw_file}` using the Write tool. After writing the file, reply with only
+   the word DONE. Do NOT paste the JSON into your reply.
 """
 
 DOC_QUALITY_PROMPT = """\
@@ -181,7 +183,9 @@ Output only a single JSON object inside a ```json fenced code block, shaped exac
 {{"score": <integer 1-5>, "rationale": "<detailed rationale for the score>"}}
 ```
 
-No prose before or after the fenced block.
+Write that JSON object — only the fenced ```json block, nothing else — to
+`{raw_file}` using the Write tool. After writing the file, reply with only the
+word DONE. Do NOT paste the JSON into your reply.
 """
 
 INTENT_ALIGNMENT_PROMPT = """\
@@ -235,8 +239,11 @@ Output only a single JSON object inside a ```json fenced code block, shaped exac
 }}
 ```
 
-Use an empty array for "missed_items" if nothing is missed. No prose before or after \
-the fenced block.
+Use an empty array for "missed_items" if nothing is missed.
+
+Write that JSON object — only the fenced ```json block, nothing else — to
+`{raw_file}` using the Write tool. After writing the file, reply with only the
+word DONE. Do NOT paste the JSON into your reply.
 """
 
 
@@ -711,10 +718,14 @@ def cmd_prepare(args):
     doc_content = read_doc_content(base_path)
     ticket_context = read_ticket_context(base_path)
 
-    dq_prompt = DOC_QUALITY_PROMPT.format(doc_content=doc_content)
+    dq_prompt = DOC_QUALITY_PROMPT.format(
+        doc_content=doc_content,
+        raw_file=str(output_dir / "dq-raw.md"),
+    )
     ia_prompt = INTENT_ALIGNMENT_PROMPT.format(
         ticket_context=ticket_context,
         doc_content=doc_content,
+        raw_file=str(output_dir / "ia-raw.md"),
     )
 
     (output_dir / "dq-prompt.md").write_text(dq_prompt)
@@ -767,6 +778,7 @@ def cmd_verify(args):
         prompt = COVERAGE_CHECK_PROMPT.format(
             ac_list="\n".join(ac_lines),
             doc_content=doc_content,
+            raw_file=str(output_dir / "coverage-raw.md"),
         )
         prompt_file = output_dir / "coverage-prompt.md"
         prompt_file.write_text(prompt)
