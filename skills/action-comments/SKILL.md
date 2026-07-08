@@ -1,7 +1,7 @@
 ---
 name: action-comments
 description: Fetch unresolved review comments from GitHub PRs or GitLab MRs and action them on local files. Works standalone (interactive) or in CI mode (autonomous). Optionally reads .agent_workspace artifacts for grounding. MUST BE USED when the user asks to action, address, or process review comments on a PR/MR.
-argument-hint: "[url] [--ci] [--include-resolved] | <ticket> --base-path <path> [--ci] [url]"
+argument-hint: "[url] [--ci] | <ticket> --base-path <path> [--ci] [url]"
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Agent, AskUserQuestion
 ---
 
@@ -17,7 +17,6 @@ Action review comments on local files: interactive by default, autonomous in CI 
 |----------|-------------|
 | `$1` (positional) | PR/MR URL (optional — auto-detects from current branch if omitted) |
 | `--ci` | Force autonomous mode (no interactive prompts): auto-applies fixes, commits+pushes, and posts reply comments explaining rationale. When omitted, CI mode is **auto-detected** from the `CI`/`GITHUB_ACTIONS`/`GITLAB_CI` env vars (pass `--no-ci` to force interactive) |
-| `--include-resolved` | Include resolved comments in addition to unresolved |
 
 ### Workflow step mode
 
@@ -27,7 +26,6 @@ Action review comments on local files: interactive by default, autonomous in CI 
 | `--base-path <path>` | Base output path (required). Used to **read** workspace artifacts from prior workflow steps (code-analysis, requirements, etc.) and to **write** `step-result.json` sidecar to `${BASE_PATH}/action-comments/` |
 | `--pr <url>` | PR/MR URL (optional — auto-detects from current branch if omitted) |
 | `--ci` | Same as standalone mode |
-| `--include-resolved` | Same as standalone mode |
 
 ## Step 0: Resolve run mode (CI vs interactive)
 
@@ -38,8 +36,6 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/action_comments.py resolve-mode ${CI_FLAG}
 ```
 
 Pass `--ci` or `--no-ci` in `${CI_FLAG}` only if the user supplied one; otherwise pass nothing. The script prints `{"ci_mode": <bool>, "reason": "..."}`. Use `ci_mode` for all later branching.
-
-In CI mode, **ignore `--include-resolved`** — re-actioning resolved threads is never wanted autonomously.
 
 ## Step 1: Resolve PR/MR URL
 
@@ -135,9 +131,7 @@ Report: `Checked out {HEAD_REF} for PR: {title}`
 uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py comments "${PR_URL}" --json
 ```
 
-Add `--include-resolved` only in interactive mode if the flag was passed (ignore it in CI mode — see Step 0).
-
-The script filters bot comments and resolved threads (unless `--include-resolved`) and returns top-level comments with: `id`, `path`, `line`, `body`, `author`, `resolved`, `has_bot_reply`, `position_outdated` (GitLab MRs also carry `discussion_id`).
+The script filters bot comments and resolved threads and returns top-level comments with: `id`, `path`, `line`, `body`, `author`, `resolved`, `has_bot_reply`, `position_outdated` (GitLab MRs also carry `discussion_id`).
 
 **Idempotency (CI cron):** in CI mode, **skip any comment where `has_bot_reply` is `true`** — it already got a reply on a prior run, which is what makes repeated cron runs safe. Save the raw JSON to a file (e.g. `comments.json`) for the next step.
 

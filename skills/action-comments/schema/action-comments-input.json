@@ -8,8 +8,7 @@
     "ticket": { "type": "string", "description": "JIRA ticket ID (preserves original case)" },
     "base_path": { "type": "string", "description": "Base output path: reads prior-step artifacts and writes the step-result.json sidecar under <base_path>/action-comments/" },
     "pr": { "type": "string", "description": "PR/MR URL. Optional — auto-detected from the current branch when omitted." },
-    "ci": { "type": "boolean", "description": "Force autonomous CI mode. When unset, CI is auto-detected from the CI/GITHUB_ACTIONS/GITLAB_CI env vars." },
-    "include_resolved": { "type": "boolean", "description": "Include resolved comments in addition to unresolved. Ignored in CI mode." }
+    "ci": { "type": "boolean", "description": "Force autonomous CI mode. When unset, CI is auto-detected from the CI/GITHUB_ACTIONS/GITLAB_CI env vars." }
   },
   "additionalProperties": false
 }
