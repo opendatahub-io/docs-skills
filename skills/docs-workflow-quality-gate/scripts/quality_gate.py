@@ -174,7 +174,7 @@ and absence of fabricated commands, flags, or API details.
 ## Documentation to evaluate
 
 {doc_content}
-
+{verified_claims_section}
 ## Output
 
 Output only a single JSON object inside a ```json fenced code block, shaped exactly:
@@ -709,6 +709,36 @@ def cmd_brief(args):
     print(f"Written {brief_path}")
 
 
+def load_verified_claims(base_path):
+    """Load supported/partially-supported claims from technical-review.
+
+    Returns a formatted string for prompt injection, or empty string if
+    no claim-validation data exists. The claim-validation.json file has
+    the structure ``{"claims": [...], "summary": {...}}``.
+    """
+    cv_path = base_path / "technical-review" / "claim-validation.json"
+    if not cv_path.is_file():
+        return ""
+    try:
+        data = json.loads(cv_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return ""
+
+    claims = data.get("claims", []) if isinstance(data, dict) else []
+    verified = [
+        c for c in claims
+        if isinstance(c, dict) and c.get("verdict") in ("supported", "partially_supported")
+    ]
+    if not verified:
+        return ""
+
+    lines = []
+    for c in verified:
+        verdict = c["verdict"].replace("_", " ")
+        lines.append(f"- [{verdict}] {c.get('text', 'unknown')}")
+    return "\n".join(lines)
+
+
 def cmd_prepare(args):
     """Read pipeline outputs and write judge prompt files."""
     base_path = Path(args.base_path)
@@ -718,9 +748,23 @@ def cmd_prepare(args):
     doc_content = read_doc_content(base_path)
     ticket_context = read_ticket_context(base_path)
 
+    verified_text = load_verified_claims(base_path)
+    if verified_text:
+        verified_claims_section = (
+            "\n## Verified claims (from upstream technical review)\n\n"
+            "The following technical claims in this documentation have been independently\n"
+            "verified against source code by automated claim-validation agents. Do NOT\n"
+            "downgrade the score for fabrication if the documented content aligns with a\n"
+            "verified claim.\n\n"
+            f"{verified_text}\n\n"
+        )
+    else:
+        verified_claims_section = ""
+
     dq_prompt = DOC_QUALITY_PROMPT.format(
         doc_content=doc_content,
         raw_file=str(output_dir / "dq-raw.md"),
+        verified_claims_section=verified_claims_section,
     )
     ia_prompt = INTENT_ALIGNMENT_PROMPT.format(
         ticket_context=ticket_context,
