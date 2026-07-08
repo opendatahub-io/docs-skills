@@ -44,6 +44,10 @@ def _check_dataset(config, project_root: Path, case_filter: list[str]):
         return cases, errors
 
     if case_filter:
+        bad = [c for c in case_filter if ".." in c or "/" in c]
+        if bad:
+            errors.append(f"Invalid case IDs (path traversal): {', '.join(bad)}")
+            return cases, errors
         missing = [c for c in case_filter if c not in cases]
         if missing:
             errors.append(f"Case IDs not found: {', '.join(missing)}")
