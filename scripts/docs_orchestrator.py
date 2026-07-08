@@ -527,6 +527,9 @@ def post_process(step_name, progress, base_path, options):
     sidecar = read_sidecar(base_path, step_name)
     if sidecar:
         progress["steps"][step_name]["result"] = sidecar
+        iteration = sidecar.get("iteration")
+        if iteration is not None:
+            progress["steps"][step_name]["iteration"] = iteration
     else:
         warnings.append(f"No step-result.json sidecar found for {step_name}")
 

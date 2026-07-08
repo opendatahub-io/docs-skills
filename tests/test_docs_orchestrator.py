@@ -2311,3 +2311,52 @@ class TestResolveSourcePostRequirements:
 
         monkeypatch.setattr("docs_orchestrator.call_resolve_source", boom)
         assert resolve_source_post_requirements(base, pfile, progress, options) == []
+
+
+class TestPostProcessPromotesIteration:
+    def test_iteration_promoted_from_sidecar(self, tmp_path):
+        base = str(tmp_path)
+        step_dir = tmp_path / "technical-review"
+        step_dir.mkdir()
+        sidecar = {
+            "schema_version": 1,
+            "step": "technical-review",
+            "ticket": "T-1",
+            "completed_at": "2020-01-01T00:00:00+00:00",
+            "confidence": "HIGH",
+            "severity_counts": {"critical": 0, "significant": 0, "minor": 0, "sme": 0},
+            "iteration": 3,
+            "code_grounded": True,
+        }
+        (step_dir / "step-result.json").write_text(json.dumps(sidecar))
+        progress = {
+            "ticket": "T-1",
+            "steps": {
+                "technical-review": {"status": "completed", "output": None, "result": None},
+            },
+        }
+        post_process("technical-review", progress, base, {})
+        assert progress["steps"]["technical-review"]["iteration"] == 3
+
+    def test_no_iteration_when_sidecar_lacks_field(self, tmp_path):
+        base = str(tmp_path)
+        step_dir = tmp_path / "writing"
+        step_dir.mkdir()
+        sidecar = {
+            "schema_version": 1,
+            "step": "writing",
+            "ticket": "T-1",
+            "completed_at": "2020-01-01T00:00:00+00:00",
+            "files": ["/a.adoc"],
+            "mode": "update-in-place",
+            "format": "adoc",
+        }
+        (step_dir / "step-result.json").write_text(json.dumps(sidecar))
+        progress = {
+            "ticket": "T-1",
+            "steps": {
+                "writing": {"status": "completed", "output": None, "result": None},
+            },
+        }
+        post_process("writing", progress, base, {})
+        assert "iteration" not in progress["steps"]["writing"]
