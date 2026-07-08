@@ -94,7 +94,7 @@ Build the args string for the step skill. The orchestrator maps its user-facing 
    - `technical-review`: `[--repo <repo_path>]...` — pass `--repo` for the primary source repo AND for each entry in `options.additional_sources` (in order)
    - `style-review`: `--format <adoc|mkdocs>`
    - `create-merge-request`: `[--draft] [--repo-path <path>]`
-   - `action-comments`: `[--pr <url>] [--include-resolved]` — pass `--pr` from `options.pr_urls[0]` or from `steps.create-merge-request.result.url` if available
+   - `action-comments`: `[--pr <url>]` — pass `--pr` from `options.pr_urls[0]` or from `steps.create-merge-request.result.url` if available
    - `pipeline-diagnostics`: `[--ci-log <path>]` — pass `--ci-log` if `options.ci_log` is set
 
 Step skills derive their own output folder and input folders from `--base-path` and step name conventions. No per-input flag wiring needed.
