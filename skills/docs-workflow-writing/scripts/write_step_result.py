@@ -48,6 +48,8 @@ def main() -> int:
     parser.add_argument("--mode", required=True, help="Writing mode (update-in-place, draft)")
     parser.add_argument("--format", required=True, dest="fmt", help="Doc format (adoc, mkdocs)")
     parser.add_argument("--sidecar", required=True, help="Path to write step-result.json")
+    parser.add_argument("--iteration", type=int, default=None,
+                        help="Writing iteration (1=initial, 2+=fix). Auto-detected in fix mode.")
     args = parser.parse_args()
 
     manifest_path = Path(args.manifest)
@@ -61,17 +63,17 @@ def main() -> int:
 
     sidecar_path = Path(args.sidecar)
 
-    # "fix" is not a valid value for the sidecar's ``mode`` enum
-    # (["update-in-place", "draft"]). A fix iteration re-runs the finalize to
-    # refresh ``completed_at`` and re-validate ``files``, but must carry the
-    # original mode/format forward from the iteration-1 sidecar.
     mode = args.mode
     fmt = args.fmt
+    iteration = args.iteration
+
     if mode == "fix":
         if sidecar_path.is_file():
             prior = json.loads(sidecar_path.read_text())
             mode = prior.get("mode", "update-in-place")
             fmt = prior.get("format", fmt)
+            if iteration is None:
+                iteration = prior.get("iteration", 1) + 1
         else:
             print(
                 f"WARNING: fix mode with no prior sidecar at {sidecar_path}; "
@@ -79,6 +81,11 @@ def main() -> int:
                 file=sys.stderr,
             )
             mode = "update-in-place"
+            if iteration is None:
+                iteration = 2
+
+    if iteration is None:
+        iteration = 1
 
     sidecar = {
         "schema_version": 1,
@@ -88,6 +95,7 @@ def main() -> int:
         "files": files,
         "mode": mode,
         "format": fmt,
+        "iteration": iteration,
     }
 
     sidecar_path.parent.mkdir(parents=True, exist_ok=True)

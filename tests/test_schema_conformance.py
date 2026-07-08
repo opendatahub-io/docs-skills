@@ -84,6 +84,7 @@ GOLDEN_EXAMPLES: dict[str, dict] = {
         "files": ["/docs/install.adoc"],
         "mode": "update-in-place",
         "format": "adoc",
+        "iteration": 1,
     },
     "tech-review": {
         "schema_version": 1,

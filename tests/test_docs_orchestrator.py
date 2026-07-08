@@ -1831,7 +1831,7 @@ class TestPrepareWriting:
         base = self._setup(tmp_path)
         review = tmp_path / "review.md"
         review.write_text("issues to fix")
-        progress = {"_tech_review_fix_from": str(review)}
+        progress = {"_tech_review_fix_from": str(review), "_tech_review_iteration": 2}
         result = _prepare_writing("T-1", base, {"format": "adoc"}, progress)
         # verify stays gated on verify_output (off for fix mode, by design)
         assert result["verify"] is None
@@ -1839,6 +1839,7 @@ class TestPrepareWriting:
         assert len(result["finalize"]) == 1
         assert "write_step_result.py" in result["finalize"][0]
         assert "--mode fix" in result["finalize"][0]
+        assert "--iteration 2" in result["finalize"][0]
         assert result["agents"][0]["description"] == "Fix documentation for T-1"
         assert str(review) in result["agents"][0]["prompt"]
 

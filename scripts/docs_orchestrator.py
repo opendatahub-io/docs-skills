@@ -1978,15 +1978,21 @@ def _prepare_writing(ticket, base_path, options, progress, phase=None):
     # output-file verify stays gated on verify_output: fix mode skips it by
     # design because it edits files in place rather than regenerating _index.md.
     sidecar = os.path.join(cfg["output_dir"], "step-result.json")
+    iteration = 1
+    if mode == "fix":
+        iteration = (progress or {}).get("_tech_review_iteration") or \
+                    (progress or {}).get("_quality_gate_iteration") or 2
     finalize = [
         "python3 {script} --ticket {ticket} --manifest {manifest} "
-        "--mode {mode} --format {fmt} --sidecar {sidecar}".format(
+        "--mode {mode} --format {fmt} --sidecar {sidecar} "
+        "--iteration {iteration}".format(
             script=shlex.quote(WRITE_STEP_RESULT_SCRIPT),
             ticket=shlex.quote(ticket),
             manifest=shlex.quote(cfg["output_file"]),
             mode=shlex.quote(mode),
             fmt=shlex.quote(fmt),
             sidecar=shlex.quote(sidecar),
+            iteration=iteration,
         )
     ]
     verify = cfg["output_file"] if cfg.get("verify_output") else None
