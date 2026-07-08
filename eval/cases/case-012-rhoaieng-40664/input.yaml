@@ -1,0 +1,15 @@
+ticket: RHOAIENG-40664
+source_repo:
+  url: https://github.com/opendatahub-io/odh-dashboard
+  sha: 646c039717ba
+source_repo_url: https://github.com/opendatahub-io/odh-dashboard
+workflow: docs-workflow
+options:
+  format: adoc
+ground_truth:
+  tier: gold-standard
+  source: GitLab MR 2574, authored by stmccart
+docs_repo:
+  url: https://gitlab.cee.redhat.com/documentation-red-hat-openshift-data-science-documentation/openshift-ai-documentation.git
+  sha: 357fd1027211b2be4a6865d6535db79ef0eabc40
+  branch: main

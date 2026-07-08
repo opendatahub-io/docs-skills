@@ -1,0 +1,15 @@
+ticket: RHOAIENG-45969
+summary: "Workbenches MLFlow SDK Support"
+intent: |
+  Document how the odh-notebook-controller auto-configures MLFlow SDK environment
+  variables (MLFLOW_TRACKING_URI, MLFLOW_K8S_INTEGRATION) in RHOAI workbenches,
+  so data scientists can use MLFlow without manual URL/token configuration.
+acceptance_criteria:
+  - "Document the mlflow.request_header_provider entrypoint and how it enables auto-config"
+  - "Show a working code example: import mlflow, set_experiment, start_run — no manual config needed"
+  - "Document the opendatahub.io/mlflow-instance annotation on the Notebook CR"
+  - "Cover env var injection and ClusterRole binding by the controller"
+audience: "data scientist (primary), admin (MLFlow cluster setup)"
+scope:
+  in: "odh-notebook-controller changes only — env var injection, RBAC binding"
+  out: "MLFlow server setup, Dashboard changes, multi-instance MLFlow, custom S3 artifact storage"

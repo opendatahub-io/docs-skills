@@ -1,12 +1,190 @@
-# docs-skills evaluation configuration
-# Compatible with agent-eval-harness (https://github.com/opendatahub-io/agent-eval-harness)
+# docs-orchestrator pipeline evaluation — agent-eval-harness v1.20.0
+# Requires Red Hat access: glab (gitlab.cee.redhat.com, VPN), JIRA_API_TOKEN, JIRA_EMAIL.
+name: docs-pipeline-eval
+description: "Evaluate the docs-orchestrator pipeline against human-authored gold-standard documentation"
+skill: docs-skills:docs-orchestrator
 
-name: docs-skills
-description: Evaluation suite for docs-skills skills
-cases_dir: eval/cases
+execution:
+  mode: case
+  arguments: "{ticket} --source-code-repo {source_repo_url} --docs-repo-path {docs_repo_path}"
+  timeout: 5400
+  max_budget_usd: 50
+  parallelism: 3
+  env:
+    JIRA_API_TOKEN: $JIRA_API_TOKEN
+    JIRA_EMAIL: $JIRA_EMAIL
 
-# Add test cases as directories under eval/cases/
-# Each case should contain:
-#   input.yaml        - Test input (skill invocation, arguments)
-#   annotations.yaml  - Expected outcomes (verdicts, output checks)
-#   Additional fixture files as needed
+runner:
+  type: claude-code
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+  hook: claude-haiku-4-5
+
+permissions:
+  allow: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "Skill", "Agent", "AskUserQuestion"]
+  deny: ["mcp__*"]
+
+dataset:
+  path: eval/cases
+  schema: |
+    Each case directory contains input.yaml with fields: ticket (JIRA ID),
+    source_repo (url + sha), docs_repo (url + sha + branch, pinned to the
+    pre-merge state of the gold-standard MR), workflow, options (format),
+    ground_truth (tier + source MR), and source_repo_url + docs_repo_path
+    (added by eval/scripts/setup-eval-worktrees.sh at setup time). Optional
+    annotations.yaml carries the ticket intent, acceptance_criteria, audience,
+    and scope. The reference/ subdirectory (extracted on demand, not committed)
+    holds the human-written gold-standard AsciiDoc.
+
+inputs:
+  tools:
+    - match: "Questions asked to the user via AskUserQuestion."
+      prompt: |
+        Answer based on the test case context in input.yaml and annotations.yaml.
+        Pick the first option or answer "yes" for confirmations.
+
+outputs:
+  - path: .output/writing
+    schema: |
+      AsciiDoc modules and assemblies. The skill writes to the external docs
+      repo (--docs-repo-path); eval/scripts/collect-docs-repo-output.sh copies
+      the written .adoc files here after execution for collection.
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: files_exist
+    description: Pipeline produced at least one AsciiDoc file.
+    check: |
+      files = outputs.get('files', {})
+      adoc = [k for k in files if k.endswith('.adoc')]
+      return (len(adoc) >= 1, f"Found {len(adoc)} AsciiDoc files")
+
+  - name: step_results_valid
+    description: requirements, planning, and writing completed with valid step-result.json.
+    check: |
+      import json
+      mods = outputs.get('modified_files', {})
+      missing = []
+      for step in ['requirements', 'planning', 'writing']:
+          matches = [k for k in mods if step + '/step-result.json' in k]
+          if not matches:
+              missing.append(step)
+          else:
+              data = json.loads(mods[matches[0]])
+              if 'schema_version' not in data or 'step' not in data:
+                  missing.append(f"{step} (invalid)")
+      return (len(missing) == 0, f"Missing/invalid: {missing}" if missing else "All step results valid")
+
+  - name: pipeline_complete
+    description: The workflow reached status completed.
+    check: |
+      import json
+      mods = outputs.get('modified_files', {})
+      progress = [k for k in mods if '/workflow/' in k and k.endswith('.json')]
+      if not progress:
+          return (False, "No progress file found")
+      data = json.loads(mods[progress[0]])
+      status = data.get('status', 'unknown')
+      return (status == 'completed', f"Pipeline status: {status}")
+
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 50.0
+
+  - name: pipeline_health
+    module: eval.scripts.diagnostics_judge
+    function: pipeline_health
+  - name: evidence_quality
+    module: eval.scripts.diagnostics_judge
+    function: evidence_quality
+  - name: review_quality
+    module: eval.scripts.diagnostics_judge
+    function: review_quality
+  - name: validation_quality
+    module: eval.scripts.diagnostics_judge
+    function: validation_quality
+  - name: planning_fidelity
+    module: eval.scripts.diagnostics_judge
+    function: planning_fidelity
+  - name: diagnostics_reflection
+    module: eval.scripts.diagnostics_judge
+    function: diagnostics_reflection
+    arguments:
+      model: claude-opus-4-6
+      threshold: 3
+
+  - name: doc_quality
+    description: Is the documentation well-written, accurate, and well-structured (1-5)?
+    prompt: |
+      You are evaluating AI-generated AsciiDoc documentation for a Red Hat product feature.
+
+      Score the documentation on a 1-5 scale:
+      1 - Unusable: major errors, fabricated content, or missing critical sections
+      2 - Poor: significant gaps in coverage or accuracy
+      3 - Acceptable: covers the basics correctly but lacks depth or polish
+      4 - Good: comprehensive, accurate, well-structured, minor issues only
+      5 - Excellent: production-ready quality, matches a senior tech writer
+
+      Consider: technical accuracy, completeness relative to the JIRA ticket scope,
+      modular documentation structure (concept/procedure/reference separation),
+      and absence of fabricated commands, flags, or API details.
+
+      ## Documentation to evaluate
+      {% for path, content in outputs.files.items() if path.startswith('.output/writing/') and path.endswith('.adoc') %}
+      ### {{ path }}
+      {{ content }}
+      {% endfor %}
+
+  - name: reference_comparison
+    description: How closely does the output match the human gold standard (1-5)?
+    module: eval.scripts.reference_judge
+    function: judge
+    arguments:
+      model: claude-opus-4-6
+
+  - name: intent_alignment
+    description: Does the output fulfill the JIRA ticket's intent (1-5)?
+    if: "annotations"
+    prompt: |
+      You are evaluating whether AI-generated documentation fulfills the intent
+      of the original JIRA ticket that requested it.
+
+      ## JIRA ticket intent
+      {{ annotations }}
+
+      ## Documentation produced
+      {% for path, content in outputs.files.items() if path.startswith('.output/writing/') and path.endswith('.adoc') %}
+      ### {{ path }}
+      {{ content }}
+      {% endfor %}
+
+      ## Scoring criteria (1-5)
+      1 - Off-target  2 - Partially relevant  3 - Addresses the intent, misses some AC
+      4 - Strong alignment (most AC, correct audience)  5 - Full alignment (all AC, in scope)
+
+      Consider scope match, acceptance-criteria coverage, audience alignment, and focus.
+
+  - name: pairwise
+    description: Head-to-head comparison against a baseline run (only with --baseline).
+    prompt_file: eval/config/pairwise-judge.md
+
+thresholds:
+  files_exist: { min_pass_rate: 1.0 }
+  step_results_valid: { min_pass_rate: 1.0 }
+  pipeline_complete: { min_pass_rate: 1.0 }
+  budget_check: { min_pass_rate: 1.0 }
+  pipeline_health: { min_mean: 3.0 }
+  evidence_quality: { min_mean: 3.0 }
+  review_quality: { min_mean: 3.0 }
+  validation_quality: { min_mean: 3.0 }
+  planning_fidelity: { min_mean: 3.0 }
+  doc_quality: { min_mean: 3.0 }
+  intent_alignment: { min_mean: 3.0 }

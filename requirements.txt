@@ -3,3 +3,5 @@
 pytest
 jsonschema
 pyyaml
+PyGithub
+python-gitlab

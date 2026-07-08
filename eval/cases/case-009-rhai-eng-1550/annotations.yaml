@@ -1,0 +1,18 @@
+ticket: RHAIENG-1550
+summary: "Document FAISS vector store integration"
+intent: |
+  Document how to configure and use FAISS as a vector database provider for
+  Retrieval-Augmented Generation (RAG) workloads in Llama Stack, giving users a
+  self-contained, local, CPU/GPU-optimized similarity search option that
+  complements the existing inline and remote Milvus integrations.
+acceptance_criteria:
+  - "Add a new module (modules/configuring-faiss-vector-store.adoc) linked from assemblies/working-with-vector-stores.adoc"
+  - "Provide an overview of the FAISS vector store and its configuration parameters for enabling the provider"
+  - "Include an example YAML snippet showing FAISS integration in LlamaStackDistribution"
+  - "Include a verification section with a CLI/API test example, following the structure of the existing Milvus integration docs"
+  - "Include a note clarifying that FAISS operates as a local, in-process vector store rather than a remote service"
+  - "Add references to the Vector Stores API section noting FAISS compatibility"
+audience: "data scientist / ML engineer (using FAISS for RAG workloads), admin (enabling the provider)"
+scope:
+  in: "Enabling FAISS as a Llama Stack provider, Vector Stores API usage, ingestion/query workflows, limitations of the local single-node setup"
+  out: "Remote/distributed vector store providers (for example Milvus), general Vector Stores API documentation beyond FAISS-specific references"

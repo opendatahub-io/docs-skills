@@ -1,0 +1,13 @@
+ticket: RHOAIENG-16840
+summary: "Document the OCI Compliant Storage layer for Model Registry"
+intent: |
+  Document the OCI-compliant storage feature for the RHOAI Model Registry —
+  how models are stored and retrieved using OCI-standard container image registries.
+acceptance_criteria:
+  - "Document what OCI-compliant storage is and why it matters for model registry"
+  - "Cover how to configure OCI storage for the model registry"
+  - "Document model push/pull workflows using OCI registries"
+audience: "admin (configuring OCI storage), data scientist / ML engineer (understanding model storage)"
+scope:
+  in: "OCI-compliant storage layer for Model Registry"
+  out: "General model registry usage, non-OCI storage backends"
