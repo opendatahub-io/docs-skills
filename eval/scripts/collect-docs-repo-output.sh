@@ -34,7 +34,9 @@ for case_dir in "$WORKSPACE"/cases/*/; do
 
     while IFS= read -r filepath; do
         [ -f "$filepath" ] || continue
-        cp "$filepath" "$output_dir/$(basename "$filepath")" 2>/dev/null && count=$((count + 1)) || true
+        if cp "$filepath" "$output_dir/$(basename "$filepath")" 2>/dev/null; then
+            count=$((count + 1))
+        fi
     done < <(python3 -c "
 import json, sys
 with open('$sr') as f:

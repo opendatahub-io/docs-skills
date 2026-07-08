@@ -55,8 +55,7 @@ for case_name in "${!MR_MAP[@]}"; do
     "projects/${PROJECT_ID}/merge_requests/${mr_iid}/changes" \
     > "${tmp_file}" 2>/dev/null
 
-  # Get target branch and merge commit SHA
-  target_branch=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('target_branch','main'))" "${tmp_file}")
+  # Get merge commit SHA
   merge_sha=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('merge_commit_sha',''))" "${tmp_file}")
 
   # Extract adoc file paths

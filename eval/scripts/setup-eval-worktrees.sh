@@ -19,7 +19,7 @@ fi
 echo "Cleaning up old worktrees..."
 git -C "$DOCS_REPO_CACHE" worktree prune 2>/dev/null || true
 
-for case_dir in ${EVAL_DIR}/case-*/; do
+for case_dir in "${EVAL_DIR}"/case-*/; do
   case_name=$(basename "$case_dir")
   input_yaml="${case_dir}/input.yaml"
 

@@ -44,4 +44,4 @@ fi
 git -C "$DOCS_REPO_CACHE" worktree add --detach "$(pwd)/${CASE_DOCS_WORKTREE}" "$DOCS_SHA" 2>/dev/null
 
 # Output the absolute path for the harness
-echo "$(cd "$CASE_DOCS_WORKTREE" && pwd)"
+(cd "$CASE_DOCS_WORKTREE" && pwd)
