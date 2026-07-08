@@ -1,0 +1,13 @@
+ticket: RHOAIENG-40664
+summary: "Document model catalog allow/disallow for governance"
+intent: |
+  Document the model catalog governance feature that lets admins allow or disallow
+  specific models in the RHOAI model catalog.
+acceptance_criteria:
+  - "Document how admins can allow or disallow models in the catalog"
+  - "Cover the governance workflow and policy configuration"
+  - "Explain the impact on end users when models are disallowed"
+audience: "admin (governance/policy), platform engineer"
+scope:
+  in: "Model catalog allow/disallow governance controls"
+  out: "Model catalog general usage, model deployment"

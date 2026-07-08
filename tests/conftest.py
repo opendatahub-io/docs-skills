@@ -19,6 +19,7 @@ _SCRIPT_DIRS = [
     _REPO_ROOT / "skills" / "docs-workflow-scope-req-audit" / "scripts",
     _REPO_ROOT / "skills" / "git-pr-reader" / "scripts",
     _REPO_ROOT / "skills" / "docs-ticket-readiness" / "scripts",
+    _REPO_ROOT / "skills" / "action-comments" / "scripts",
 ]
 
 for d in _SCRIPT_DIRS:

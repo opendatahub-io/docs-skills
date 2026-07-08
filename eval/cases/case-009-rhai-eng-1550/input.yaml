@@ -1,0 +1,15 @@
+ticket: RHAIENG-1550
+source_repo:
+  url: https://github.com/opendatahub-io/llama-stack-distribution
+  sha: ec0b3010428f
+source_repo_url: https://github.com/opendatahub-io/llama-stack-distribution
+workflow: docs-workflow
+options:
+  format: adoc
+ground_truth:
+  tier: gold-standard
+  source: GitLab MR 2104, authored by chtyler
+docs_repo:
+  url: https://gitlab.cee.redhat.com/documentation-red-hat-openshift-data-science-documentation/openshift-ai-documentation.git
+  sha: 5dd20a5d6c6223803b768409724a6d1c1a8b2b9b
+  branch: main

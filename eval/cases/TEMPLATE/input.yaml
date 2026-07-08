@@ -1,0 +1,18 @@
+# Copy this directory to eval/cases/case-NNN-<ticket-lower>/ and fill in.
+# Then: bash eval/scripts/pin-docs-repo.sh <case-dir> && bash eval/scripts/setup-eval-worktrees.sh
+ticket: PROJ-1234
+source_repo:
+  url: https://github.com/org/repo
+  sha: <source sha>
+source_repo_url: https://github.com/org/repo    # flat mirror for {source_repo_url}
+workflow: docs-workflow
+options:
+  format: adoc
+ground_truth:
+  tier: gold-standard          # or regression-baseline
+  source: GitLab MR <iid>, authored by <writer>
+docs_repo:
+  url: https://gitlab.cee.redhat.com/documentation-red-hat-openshift-data-science-documentation/openshift-ai-documentation.git
+  sha: <pre-merge sha>         # pin to the state BEFORE the gold-standard MR merged
+  branch: main
+# docs_repo_path is appended automatically by setup-eval-worktrees.sh

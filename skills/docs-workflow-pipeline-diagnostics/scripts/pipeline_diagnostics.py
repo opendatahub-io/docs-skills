@@ -18,6 +18,10 @@ import os
 import sys
 from datetime import datetime, timezone
 
+BYTES_PER_TOKEN = 4
+DEFAULT_CONTEXT_WINDOW = 200_000
+REQUIRED_PROGRESS_FIELDS = ["ticket", "step_order", "steps", "status"]
+
 
 def parse_iso(ts: str | None) -> datetime | None:
     if not ts:
@@ -127,6 +131,7 @@ def estimate_context_pressure(
     steps: dict,
     base_path: str,
     cache: dict[str, DirStats] | None = None,
+    context_window: int = DEFAULT_CONTEXT_WINDOW,
 ) -> dict:
     """Estimate context pressure using artifact sizes and step progression."""
     completed = [s for s in step_order if steps.get(s, {}).get("status") == "completed"]
@@ -139,6 +144,10 @@ def estimate_context_pressure(
         stats = scan_dir(step_dir, cache)
         per_step_kb[name] = round(stats.size_kb, 1)
         total_artifact_kb += stats.size_kb
+
+    total_tokens = int(total_artifact_kb * 1024 / BYTES_PER_TOKEN)
+    per_step_tokens = {name: int(kb * 1024 / BYTES_PER_TOKEN) for name, kb in per_step_kb.items()}
+    window_pct = round(total_tokens / context_window * 100, 1) if context_window else 0
 
     weighted_load = sum(CONTEXT_HEAVY_STEPS.get(s, 0.5) for s in completed)
 
@@ -160,8 +169,16 @@ def estimate_context_pressure(
 
     if total_artifact_kb > 500:
         risk_score += 1
-        risk_factors.append(f"Total artifacts: {total_artifact_kb:.0f} KB")
+        risk_factors.append(
+            f"Total artifacts: {total_artifact_kb:.0f} KB "
+            f"(~{total_tokens:,} tokens, {window_pct}% of {context_window:,} window)"
+        )
     if total_artifact_kb > 1000:
+        risk_score += 2
+    if window_pct >= 75:
+        risk_score += 2
+        risk_factors.append(f"Estimated tokens fill {window_pct}% of context window")
+    if window_pct >= 90:
         risk_score += 2
 
     if weighted_load > 8.0:
@@ -187,6 +204,14 @@ def estimate_context_pressure(
                     f"({step_kb:.0f} KB over {it} iterations)"
                 )
 
+    heaviest = max(per_step_tokens.items(), key=lambda x: x[1], default=None)
+    if heaviest and heaviest[1] > context_window * 0.5:
+        risk_score += 2
+        hvt_pct = round(heaviest[1] / context_window * 100)
+        risk_factors.append(
+            f"{heaviest[0]} alone uses ~{heaviest[1]:,} tokens ({hvt_pct}% of window)"
+        )
+
     code_analysis_kb = per_step_kb.get("code-analysis", 0)
     if code_analysis_kb > 200:
         risk_score += 1
@@ -210,6 +235,10 @@ def estimate_context_pressure(
         "per_step_artifact_kb": per_step_kb,
         "weighted_context_load": round(weighted_load, 1),
         "iteration_overhead": iterations,
+        "total_estimated_tokens": total_tokens,
+        "context_window": context_window,
+        "context_window_pct": window_pct,
+        "per_step_estimated_tokens": per_step_tokens,
     }
 
 
@@ -487,6 +516,7 @@ def detect_failures(
     step_order: list[str],
     steps: dict,
     base_path: str,
+    progress: dict | None = None,
 ) -> list[dict]:
     """Identify failed steps, missing outputs, and anomalies."""
     issues = []
@@ -502,6 +532,19 @@ def detect_failures(
                     "step": name,
                     "severity": "high",
                     "detail": f"Step '{name}' has status 'failed' in progress file",
+                }
+            )
+
+        if progress is not None and status == "in_progress":
+            issues.append(
+                {
+                    "type": "step_stuck",
+                    "step": name,
+                    "severity": "high",
+                    "detail": (
+                        f"Step '{name}' is still in_progress"
+                        " — suggests agent crash or context compaction mid-step"
+                    ),
                 }
             )
 
@@ -529,6 +572,19 @@ def detect_failures(
                         "step": name,
                         "severity": "low",
                         "detail": f"Step '{name}' has no step-result.json sidecar",
+                    }
+                )
+
+            if progress is not None and info.get("result") is None:
+                issues.append(
+                    {
+                        "type": "null_result",
+                        "step": name,
+                        "severity": "medium",
+                        "detail": (
+                            f"Step '{name}' completed but result is null"
+                            " — downstream steps lose structured context"
+                        ),
                     }
                 )
 
@@ -614,6 +670,54 @@ def detect_failures(
                 "detail": "Writing step completed but produced 0 files",
             }
         )
+
+    # Orchestrator-level checks (require full progress dict)
+    if progress is not None:
+        missing_fields = [f for f in REQUIRED_PROGRESS_FIELDS if f not in progress]
+        if missing_fields:
+            issues.append(
+                {
+                    "type": "schema_drift",
+                    "step": None,
+                    "severity": "high",
+                    "detail": (
+                        f"Progress file missing required fields: {', '.join(missing_fields)}"
+                    ),
+                }
+            )
+
+        steps_in_order = set(step_order)
+        steps_in_dict = set(steps.keys())
+        orphaned = steps_in_dict - steps_in_order
+        if orphaned:
+            issues.append(
+                {
+                    "type": "step_order_mismatch",
+                    "step": None,
+                    "severity": "medium",
+                    "detail": (
+                        "Steps in progress dict but not in step_order: "
+                        f"{', '.join(sorted(orphaned))}"
+                    ),
+                }
+            )
+
+        workflow_status = progress.get("status", "unknown")
+        if workflow_status == "completed" and base_path:
+            workspace_root = os.path.dirname(base_path)
+            marker = os.path.join(workspace_root, ".active-workflow")
+            if os.path.isfile(marker):
+                issues.append(
+                    {
+                        "type": "active_workflow_marker",
+                        "step": None,
+                        "severity": "low",
+                        "detail": (
+                            ".active-workflow marker still present after workflow completed"
+                            " — will block future sessions"
+                        ),
+                    }
+                )
 
     return issues
 

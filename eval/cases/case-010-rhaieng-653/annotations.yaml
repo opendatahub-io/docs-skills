@@ -1,0 +1,16 @@
+ticket: RHAIENG-653
+summary: "Document Milvus Remote enablement in Llama Stack Operator"
+intent: |
+  Document how a cluster administrator uses the Llama Stack Operator to deploy a
+  distribution combining remote:milvus and remote:vllm, extending prior
+  inline:milvus-only support, so admins can set up a RAG chatbot on OpenShift AI
+  backed by a remote Milvus instance.
+acceptance_criteria:
+  - "Outline the process for enabling Milvus Remote on an OpenShift cluster via the Llama Stack Operator"
+  - "Provide at least one configuration example deploying a distribution with remote:milvus and remote:vllm"
+  - "Update existing RAG chatbot examples, or add new ones, to reflect Milvus Remote"
+  - "Include notes on prerequisites, supported versions, and limitations specific to Milvus Remote"
+audience: "admin (deploying and configuring the Llama Stack Operator)"
+scope:
+  in: "Enabling remote:milvus together with remote:vllm through the Llama Stack Operator, RAG chatbot example configuration"
+  out: "The existing inline:milvus provider, general Milvus administration outside the operator-managed distribution"

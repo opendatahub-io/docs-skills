@@ -30,7 +30,9 @@ FAIL = 0
 def run_extractor(files: list[str], lang: str, module: str = "test") -> dict:
     """Run the extractor script and return parsed JSON output."""
     cmd = [
-        sys.executable,
+        "uv",
+        "run",
+        "--script",
         str(SCRIPT),
         "--files",
         *files,

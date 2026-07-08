@@ -1,0 +1,15 @@
+ticket: RHOAIENG-16840
+source_repo:
+  url: https://github.com/opendatahub-io/model-registry
+  sha: c95133932c56
+source_repo_url: https://github.com/opendatahub-io/model-registry
+workflow: docs-workflow
+options:
+  format: adoc
+ground_truth:
+  tier: gold-standard
+  source: GitLab MR 2680, authored by stmccart
+docs_repo:
+  url: https://gitlab.cee.redhat.com/documentation-red-hat-openshift-data-science-documentation/openshift-ai-documentation.git
+  sha: 6dff1691dace8aa7f125312bd415851ea90b407b
+  branch: main
