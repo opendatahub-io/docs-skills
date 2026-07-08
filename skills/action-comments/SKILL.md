@@ -173,9 +173,9 @@ For each non-outdated comment, read the target file and prepare a suggested chan
 
 ### Grounding fixes with workspace context
 
-**Every applied change and every disagreement MUST be grounded in evidence from `.agent_workspace` (or the source repo it points to) — never act on a comment from assumption alone.** When `WORKSPACE` is set and the comment references technical content (API fields, commands, config options, prerequisites), use the loaded artifacts to verify and inform your suggested change:
+**Reviewers are SMEs who know the technology — treat every reasonable comment as authoritative and action it.** Try to ground each change in `.agent_workspace` evidence (or the source repo it points to). When the workspace confirms the comment, apply it. When you **cannot find evidence either way**, still apply the change, but note in the reply/summary that it isn't backed by workspace evidence. Use grounding to inform and strengthen the change, not as a gate that blocks it. When `WORKSPACE` is set and the comment references technical content (API fields, commands, config options, prerequisites), use the loaded artifacts:
 
-- **Code analysis** (`ONBOARDING.md`): verify reviewer claims about APIs/flags/structure before agreeing or disagreeing.
+- **Code analysis** (`ONBOARDING.md`): check reviewer claims about APIs/flags/structure to inform the change.
 - **Source repo** (`SOURCE_REPO` set): `grep`/`Read` the source to verify APIs, config keys, defaults, command syntax — don't guess.
 - **Requirements**: for suggested additions, check they're in the original ticket scope; note when they aren't.
 - **Technical review**: cite any prior tech-review validation of a claim the reviewer questions.
@@ -197,7 +197,7 @@ For each non-outdated comment, present:
 {your analysis and proposed edit, grounded in workspace context if available}
 ```
 
-If workspace context contradicts the comment, present both sides and use the Disagree option — never silently override the reviewer.
+If the workspace doesn't back the comment, still propose the edit — note the lack of evidence in your suggested change rather than withholding it.
 
 Call AskUserQuestion with these options:
 
@@ -205,12 +205,10 @@ Call AskUserQuestion with these options:
 |--------|-------------|
 | Apply | Apply the suggested change |
 | Edit | Apply with modifications — ask for user's preferred text |
-| Disagree | The comment is factually incorrect — draft an evidence-based rebuttal instead of changing the file |
-| Skip | Skip this comment (no fix, no rebuttal) |
+| Skip | Skip this comment |
 | View context | Show more surrounding lines, then re-ask |
 
 - **Apply**: apply the suggested change with the Edit tool. **Edit**: call AskUserQuestion with `textInput: true` ("Enter the text you'd like to use instead:") and apply the user's text. In both cases, read back the changed lines to verify the expected text is present; if the edit errors or verification fails, report `Failed to apply edit to {path}:{line}.` and call AskUserQuestion with **Retry** (re-read and retry) or **Skip**.
-- **Disagree**: do not modify the file. Draft a rebuttal citing the `.agent_workspace` evidence (API, config key, requirement, or tech-review validation) that contradicts the comment; present it for the user to post (or post it via the `reply` script — Step 6 CI — if the user asks).
 - **View context**: read 20 lines before and after the comment's line, display them, then re-present the same options.
 - **Skip**: move to next comment.
 
@@ -229,12 +227,12 @@ No interactive prompts. First skip comments with `has_bot_reply: true` (Step 4).
 | **Question** | Don't edit; post a reply answering it from workspace context |
 | **Outdated** | Auto-skip (already handled in Step 5) |
 
-**Disagree (cross-category):** if `.agent_workspace` evidence or the source repo directly contradicts a comment (wrong API, nonexistent config key, out-of-requirement change), do **not** apply it, regardless of category — post a rebuttal reply citing that evidence. Disagree only with concrete grounding; absent evidence, treat a Required comment as correct and apply it. A disagreement must always post a reply — never silently drop it.
+**Unverified comments (cross-category):** if you cannot find evidence in `.agent_workspace` or the source repo either way, still apply the change (the reviewer is an SME) and note in the reply that it wasn't backed by workspace evidence. Absence of evidence is never grounds to skip.
 
 For each comment, log the decision:
 
 ```text
-[{N}/{total}] {path}:{line} [{category}] → {Applied|Skipped|Replied|Disagreed} — {one-line rationale}
+[{N}/{total}] {path}:{line} [{category}] → {Applied|Applied (unverified)|Skipped|Replied} — {one-line rationale}
 ```
 
 #### Applying changes in CI mode
@@ -257,7 +255,7 @@ git push origin HEAD:"${HEAD_REF}"
 
 #### Posting reply comments
 
-After processing each comment (applied, skipped, answered, or disagreed with), post a reply on the thread explaining the action.
+After processing each comment (applied, skipped, or answered), post a reply on the thread explaining the action.
 
 **Reply body format** (passed as `REPLY_BODY`):
 
@@ -266,7 +264,7 @@ After processing each comment (applied, skipped, answered, or disagreed with), p
 
 {If change was applied: "Applied to `{path}` — {brief description of what changed}"}
 {If question was answered: the answer, grounded in workspace context}
-{If disagreed: the evidence contradicting the comment — cite the API, config key, requirement, or tech-review validation}
+{If no workspace evidence was found: "Applied on reviewer authority — not verified against workspace evidence."}
 ```
 
 **Routing flag** (from the Step 4 JSON): GitHub → `--comment-id "${COMMENT_ID}"` (the comment's `id`); GitLab → `--discussion-id "${DISCUSSION_ID}"`. Keep `--signoff` exactly `Claude Code action-comments (CI)` — that string is how `has_bot_reply` detects prior replies for idempotency.
@@ -281,7 +279,7 @@ If the reply post fails (non-zero exit code), log a warning and continue — do 
 
 ## Step 7: Summary
 
-After all comments are processed, present a summary with: PR/MR URL, branch, workspace grounding (path or "none"); a count table (total, applied, edited, skipped, disagreed, outdated); a **Changes applied** list (`{path}:{line}` — description); a **Disagreements** list (`{path}:{line}` — @author: evidence-based reason); and a **Comments skipped** list (`{path}:{line}` — @author: reason).
+After all comments are processed, present a summary with: PR/MR URL, branch, workspace grounding (path or "none"); a count table (total, applied, edited, skipped, outdated); a **Changes applied** list (`{path}:{line}` — description, flagging any applied without workspace evidence); and a **Comments skipped** list (`{path}:{line}` — @author: reason).
 
 In **interactive** mode, if any changes were applied, remind the user:
 
@@ -297,12 +295,12 @@ When `--base-path` is provided, write the `step-result.json` sidecar via the scr
 python3 ${CLAUDE_SKILL_DIR}/scripts/action_comments.py write-result \
   --base-path "${BASE_PATH}" --ticket "${TICKET}" ${CI_MODE_FLAG} \
   --comments-resolved <applied+edited> \
-  --comments-skipped <skipped+disagreed> \
+  --comments-skipped <skipped> \
   --comments-outdated <outdated> \
   --comments-replied <replies posted> \
   --files-modified <path1> <path2> ...
 ```
 
-Disagreements have no separate sidecar field: a disagreed comment applied no edit, so it counts under `--comments-skipped`; its rebuttal counts under `--comments-replied` (CI mode).
+Comments applied without workspace evidence still count as resolved (`--comments-resolved`) — the note lives in the reply/summary, not a separate counter.
 
 Pass `--ci-mode` in `${CI_MODE_FLAG}` when `ci_mode` is true (sets `comments_replied` to the count of replies successfully posted). In interactive mode omit it; `comments_replied` is `0`.
