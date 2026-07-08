@@ -13,7 +13,6 @@ Requires PYTHONPATH to include the agent-eval-harness package, e.g.:
 
 import argparse
 import importlib
-import os
 import sys
 from pathlib import Path
 
@@ -148,7 +147,7 @@ def _check_builtin(jc, errors):
 
 
 def _check_inline(jc, errors):
-    source = f"def _check(outputs, arguments):\n"
+    source = "def _check(outputs, arguments):\n"
     for line in jc.check.splitlines():
         source += f"    {line}\n"
     try:
@@ -228,7 +227,7 @@ def main():
     if not errors and not warnings:
         template = getattr(config.execution, "arguments", "")
         if template:
-            print(f"  OK    arguments template resolves")
+            print("  OK    arguments template resolves")
     for e in errors:
         print(f"  FAIL  {e}")
     for w in warnings:

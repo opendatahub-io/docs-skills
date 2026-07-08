@@ -40,7 +40,8 @@ TEMPLATE = """<!DOCTYPE html>
   }}
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    background: var(--bg); color: var(--fg); line-height: 1.6; padding: 2rem; max-width: 900px; margin: 0 auto; }}
+    background: var(--bg); color: var(--fg); line-height: 1.6;
+    padding: 2rem; max-width: 900px; margin: 0 auto; }}
   h1 {{ font-size: 1.5rem; margin-bottom: 0.25rem; }}
   .subtitle {{ color: var(--muted); font-size: 0.875rem; margin-bottom: 1.5rem; }}
   .card {{ background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
@@ -52,18 +53,22 @@ TEMPLATE = """<!DOCTYPE html>
   .analysis li {{ margin-bottom: 0.25rem; }}
   table {{ width: 100%; border-collapse: collapse; font-size: 0.875rem; }}
   th, td {{ text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }}
-  th {{ font-weight: 600; color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }}
+  th {{ font-weight: 600; color: var(--muted); font-size: 0.75rem;
+    text-transform: uppercase; letter-spacing: 0.05em; }}
   .pass {{ color: var(--green); font-weight: 600; }}
   .fail {{ color: var(--red); font-weight: 600; }}
   .neutral {{ color: var(--muted); }}
   .score {{ font-size: 1.25rem; font-weight: 700; }}
   .score-row td:nth-child(2) {{ font-size: 1.1rem; font-weight: 600; }}
-  .pairwise-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; text-align: center; }}
-  .pairwise-box {{ background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; }}
+  .pairwise-grid {{ display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem; text-align: center; }}
+  .pairwise-box {{ background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.75rem; }}
   .pairwise-box .count {{ font-size: 1.5rem; font-weight: 700; }}
   .pairwise-box .label {{ font-size: 0.75rem; color: var(--muted); text-transform: uppercase; }}
   .metrics-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }}
-  .metric {{ background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; text-align: center; }}
+  .metric {{ background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.75rem; text-align: center; }}
   .metric .value {{ font-size: 1.25rem; font-weight: 700; }}
   .metric .label {{ font-size: 0.75rem; color: var(--muted); }}
   .link {{ color: var(--accent); text-decoration: none; }}
@@ -290,13 +295,27 @@ def main():
     pairwise_html = ""
     pw = summary.get("pairwise")
     if pw:
+        wins_a = pw.get('wins_a', 0)
+        ties = pw.get('ties', 0)
+        wins_b = pw.get('wins_b', 0)
+        run_a = pw.get('run_a', '')
+        run_b = pw.get('run_b', '')
         pairwise_html = f"""
 <div class="card">
-<h2>Pairwise Comparison — {pw.get('run_a', '')} vs {pw.get('run_b', '')}</h2>
+<h2>Pairwise Comparison — {run_a} vs {run_b}</h2>
 <div class="pairwise-grid">
-  <div class="pairwise-box"><div class="count" style="color:var(--green)">{pw.get('wins_a', 0)}</div><div class="label">A wins</div></div>
-  <div class="pairwise-box"><div class="count" style="color:var(--muted)">{pw.get('ties', 0)}</div><div class="label">Ties</div></div>
-  <div class="pairwise-box"><div class="count" style="color:var(--red)">{pw.get('wins_b', 0)}</div><div class="label">B wins</div></div>
+  <div class="pairwise-box">
+    <div class="count" style="color:var(--green)">{wins_a}</div>
+    <div class="label">A wins</div>
+  </div>
+  <div class="pairwise-box">
+    <div class="count" style="color:var(--muted)">{ties}</div>
+    <div class="label">Ties</div>
+  </div>
+  <div class="pairwise-box">
+    <div class="count" style="color:var(--red)">{wins_b}</div>
+    <div class="label">B wins</div>
+  </div>
 </div>
 </div>"""
 
@@ -309,13 +328,33 @@ def main():
     cache = rm.get("cache_hit_rate", 0)
     cost_per_case = cost / cases if cases else 0
 
+    wall_h = wall / 3600
+
     metrics_html = f"""
-<div class="metric"><div class="value">${cost:.0f}</div><div class="label">Total cost</div></div>
-<div class="metric"><div class="value">${cost_per_case:.0f}</div><div class="label">Cost / case</div></div>
-<div class="metric"><div class="value">{wall/3600:.1f}h</div><div class="label">Wall clock</div></div>
-<div class="metric"><div class="value">{turns:,}</div><div class="label">Turns</div></div>
-<div class="metric"><div class="value">${cpt:.3f}</div><div class="label">Cost / turn</div></div>
-<div class="metric"><div class="value">{cache:.0%}</div><div class="label">Cache hit rate</div></div>"""
+<div class="metric">
+  <div class="value">${cost:.0f}</div>
+  <div class="label">Total cost</div>
+</div>
+<div class="metric">
+  <div class="value">${cost_per_case:.0f}</div>
+  <div class="label">Cost / case</div>
+</div>
+<div class="metric">
+  <div class="value">{wall_h:.1f}h</div>
+  <div class="label">Wall clock</div>
+</div>
+<div class="metric">
+  <div class="value">{turns:,}</div>
+  <div class="label">Turns</div>
+</div>
+<div class="metric">
+  <div class="value">${cpt:.3f}</div>
+  <div class="label">Cost / turn</div>
+</div>
+<div class="metric">
+  <div class="value">{cache:.0%}</div>
+  <div class="label">Cache hit rate</div>
+</div>"""
 
     generated_at = datetime.now(tz=None).strftime("%Y-%m-%d %H:%M")
 

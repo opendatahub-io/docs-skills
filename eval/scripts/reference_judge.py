@@ -17,12 +17,14 @@ from pathlib import Path
 
 DATASET_DIR = Path("eval/cases")
 
-PROMPT_TEMPLATE = """You are comparing AI-generated documentation against human-written gold-standard
-documentation for the same JIRA ticket. Both sets of AsciiDoc files document the same feature.
+PROMPT_TEMPLATE = """You are comparing AI-generated documentation against \
+human-written gold-standard documentation for the same JIRA ticket. \
+Both sets of AsciiDoc files document the same feature.
 
 Score on 4 dimensions (each 1-5):
 
-1. **Coverage** — does the AI output cover the same topics as the reference? Missing topics = low score.
+1. **Coverage** — does the AI output cover the same topics as the reference? \
+Missing topics = low score.
    Extra relevant topics are acceptable but not a bonus.
 2. **Structure** — similar module types (concept/procedure/reference), assembly grouping,
    modular docs compliance. Different but valid structures score 3+.
