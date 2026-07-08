@@ -163,7 +163,10 @@ def classify_outdated(comment: Dict, repo_root: Optional[str]) -> bool:
     path = comment.get("path")
     if not path:
         return False
-    fp = Path(repo_root) / path if repo_root else Path(path)
+    base = Path(repo_root).resolve() if repo_root else Path.cwd().resolve()
+    fp = (base / path).resolve()
+    if not fp.is_relative_to(base):
+        return True  # path from the forge escapes repo_root -> untrusted, skip
     return not fp.is_file()
 
 
@@ -232,7 +235,11 @@ def _cmd_workspace(args) -> int:
 
 def _cmd_classify_outdated(args) -> int:
     raw = Path(args.comments_file).read_text() if args.comments_file else sys.stdin.read()
-    comments = json.loads(raw)
+    try:
+        comments = json.loads(raw)
+    except ValueError as e:
+        print(json.dumps({"error": f"invalid comments JSON: {e}"}))
+        return 2
     for c in comments:
         c["outdated"] = classify_outdated(c, args.repo_root)
     print(json.dumps(comments))

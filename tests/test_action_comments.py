@@ -183,6 +183,16 @@ class TestClassifyOutdated:
     def test_no_path_not_outdated(self, tmp_path):
         assert classify_outdated({}, str(tmp_path)) is False
 
+    def test_traversal_path_treated_as_outdated(self, tmp_path):
+        # A forge-supplied path escaping repo_root must not probe outside it.
+        assert classify_outdated({"path": "../../../../etc/passwd"}, str(tmp_path)) is True
+
+    def test_traversal_path_to_real_file_still_skipped(self, tmp_path):
+        outside = tmp_path.parent / "secret.txt"
+        outside.write_text("x")
+        rel = f"../{outside.name}"
+        assert classify_outdated({"path": rel}, str(tmp_path)) is True
+
 
 class TestBuildSidecar:
     def test_shape_and_fields(self):

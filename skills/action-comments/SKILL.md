@@ -121,7 +121,7 @@ Otherwise the script prints `{"head_ref": "...", "on_target_branch": <bool>}`.
 **If `on_target_branch` is `true`**: proceed to Step 4. **If `false`**, switch branches:
 
 1. If `git status --porcelain` shows uncommitted changes, stop: "You have uncommitted changes. Please commit or stash them before switching branches."
-2. Fetch and check out (creating a tracking branch if it isn't local yet):
+2. Fetch and check out (creating a tracking branch if not local):
    ```bash
    git fetch origin "${HEAD_REF}"
    git checkout "${HEAD_REF}" 2>/dev/null || git checkout -b "${HEAD_REF}" "origin/${HEAD_REF}"
@@ -246,13 +246,14 @@ Same as interactive mode: read the file, apply the edit, read back changed lines
 After **all** comments are processed, if any files were modified, commit and push to the PR branch (otherwise the edits are lost when the job ends). Run once, after the loop:
 
 ```bash
+git add -A  # stage edits and new files
 git -c user.name="action-comments[bot]" \
     -c user.email="action-comments@users.noreply.github.com" \
-    commit -am "docs: action review comments [skip ci]"
+    commit -m "docs: action review comments [skip ci]"
 git push origin HEAD:"${HEAD_REF}"
 ```
 
-Use `[skip ci]` in the commit message to avoid retriggering the pipeline. If `git push` fails (protected branch, non-fast-forward, missing token), log the error and continue to reply-posting — do not abort the whole run.
+`[skip ci]` avoids retriggering the pipeline. If `git push` fails (protected branch, non-fast-forward, missing token), log the error and continue to reply-posting — don't abort the run.
 
 #### Posting reply comments
 
