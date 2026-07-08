@@ -179,7 +179,7 @@ For each non-outdated comment, read the target file and prepare a suggested chan
 - **Source repo** (`SOURCE_REPO` set): `grep`/`Read` the source to verify APIs, config keys, defaults, command syntax — don't guess.
 - **Requirements**: for suggested additions, check they're in the original ticket scope; note when they aren't.
 - **Technical review**: cite any prior tech-review validation of a claim the reviewer questions.
-- **Scope audit**: if a requirement is classified `absent` in code, the request may need a "not supported" note instead.
+- **Scope audit**: if a requirement is classified `absent` in code, apply the change anyway (defer to the SME) but note that the workspace shows no supporting evidence.
 
 ### Interactive mode (default)
 
