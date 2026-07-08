@@ -14,6 +14,7 @@ from action_comments import (
     build_sidecar,
     classify_outdated,
     list_artifacts,
+    plan_checkout,
     resolve_mode,
     select_workspace,
     validate_pr_url,
@@ -74,6 +75,37 @@ class TestValidatePrUrl:
     )
     def test_invalid(self, url):
         assert validate_pr_url(url) is False
+
+
+class TestPlanCheckout:
+    def test_already_on_target_branch(self):
+        assert plan_checkout("feat/x", "feat/x") == {
+            "head_ref": "feat/x",
+            "on_target_branch": True,
+        }
+
+    def test_different_branch(self):
+        result = plan_checkout("feat/x", "main")
+        assert result["on_target_branch"] is False
+        assert result["head_ref"] == "feat/x"
+
+    @pytest.mark.parametrize(
+        "ref",
+        [
+            "",
+            "feat/x;rm -rf",
+            "feat/x$(whoami)",
+            "feat x",
+            "feat/x`id`",
+        ],
+    )
+    def test_unsafe_ref_raises(self, ref):
+        with pytest.raises(ValueError):
+            plan_checkout(ref, "main")
+
+    @pytest.mark.parametrize("ref", ["main", "release-1.2.3", "user/feat_branch", "v1.0"])
+    def test_safe_refs_accepted(self, ref):
+        assert plan_checkout(ref, "other")["head_ref"] == ref
 
 
 class TestSelectWorkspace:

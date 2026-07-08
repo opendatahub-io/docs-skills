@@ -8,6 +8,7 @@ cron use case, where prose drift under compaction is unacceptable).
 Subcommands:
     resolve-mode        Decide CI vs interactive from flags + CI env vars.
     validate-url        Validate a PR/MR URL against the supported forge shapes.
+    checkout-plan       Validate the head ref and decide the checkout action.
     workspace           Resolve the .agent_workspace dir and list artifacts.
     classify-outdated   Annotate reader comments JSON with an `outdated` flag.
     write-result        Write the step-result.json sidecar.
@@ -15,6 +16,7 @@ Subcommands:
 Usage:
     python3 action_comments.py resolve-mode [--ci] [--no-ci]
     python3 action_comments.py validate-url <url>
+    python3 action_comments.py checkout-plan --head-ref <ref> [--current-branch <ref>]
     python3 action_comments.py workspace --repo-root <dir> [--base-path <dir>] [--pr <url>]
     python3 action_comments.py classify-outdated --repo-root <dir> [--comments-file <f>]
     python3 action_comments.py write-result --base-path <dir> --ticket <id> ...
@@ -31,6 +33,9 @@ from typing import Dict, List, Optional
 
 # Both public and self-hosted GitHub/GitLab.
 PR_URL_RE = re.compile(r"^https://[^/]+/.+/(pull/\d+|merge_requests/\d+)")
+
+# Safe git branch refs: alphanumerics, dot, hyphen, underscore, slash only.
+BRANCH_REF_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 # Env vars set to "true" by common CI providers. GitHub Actions and GitLab CI
 # both also set the generic CI var, but we check all three for robustness.
@@ -69,6 +74,18 @@ def resolve_mode(force_ci: bool, force_no_ci: bool, env: Dict[str, str]) -> Dict
 def validate_pr_url(url: Optional[str]) -> bool:
     """True if the URL matches a supported GitHub PR or GitLab MR shape."""
     return bool(url and PR_URL_RE.match(url))
+
+
+def plan_checkout(head_ref: str, current_branch: str) -> Dict:
+    """Decide the branch-checkout action for Step 3.
+
+    Validates head_ref against BRANCH_REF_RE (guards against injection into
+    later git commands) and reports whether we are already on the target
+    branch. Raises ValueError on an unsafe ref.
+    """
+    if not head_ref or not BRANCH_REF_RE.match(head_ref):
+        raise ValueError(f"unsafe branch ref: {head_ref!r}")
+    return {"head_ref": head_ref, "on_target_branch": head_ref == current_branch}
 
 
 def _read_sidecar_url(sidecar: Path) -> Optional[str]:
@@ -197,6 +214,16 @@ def _cmd_validate_url(args) -> int:
     return 0 if ok else 1
 
 
+def _cmd_checkout_plan(args) -> int:
+    try:
+        result = plan_checkout(args.head_ref, args.current_branch)
+    except ValueError as e:
+        print(json.dumps({"error": str(e)}))
+        return 2
+    print(json.dumps(result))
+    return 0
+
+
 def _cmd_workspace(args) -> int:
     workspace = select_workspace(args.repo_root, args.base_path, args.pr)
     print(json.dumps(list_artifacts(workspace)))
@@ -242,6 +269,11 @@ def main() -> int:
     p_url = sub.add_parser("validate-url", help="Validate a PR/MR URL")
     p_url.add_argument("url")
     p_url.set_defaults(func=_cmd_validate_url)
+
+    p_co = sub.add_parser("checkout-plan", help="Validate head ref and decide checkout action")
+    p_co.add_argument("--head-ref", dest="head_ref", required=True)
+    p_co.add_argument("--current-branch", dest="current_branch", default="")
+    p_co.set_defaults(func=_cmd_checkout_plan)
 
     p_ws = sub.add_parser("workspace", help="Resolve workspace and list artifacts")
     p_ws.add_argument("--repo-root", dest="repo_root")
