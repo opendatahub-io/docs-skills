@@ -34,7 +34,7 @@ from pathlib import Path
 sys.path.insert(
     0, str(Path(__file__).resolve().parent.parent / "skills" / "docs-orchestrator" / "scripts")
 )
-from load_workflow import resolve_yaml_path  # noqa: E402
+from load_workflow import parse_workflow_yaml, resolve_yaml_path  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -118,87 +118,6 @@ def git_root():
 def emit(data):
     json.dump(data, sys.stdout, indent=2)
     print()
-
-
-# ---------------------------------------------------------------------------
-# YAML parser (adapted from resolve_steps.py)
-# ---------------------------------------------------------------------------
-
-
-def parse_workflow_yaml(path):
-    """Parse the constrained workflow YAML format.
-
-    Returns (workflow_name, workflow_description, steps_list, requires_list).
-    """
-    with open(path) as f:
-        lines = f.readlines()
-
-    workflow_name = "docs-workflow"
-    workflow_description = ""
-    steps = []
-    requires = []
-    current = None
-    in_requires_block = False
-
-    for line in lines:
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-
-        if stripped.startswith("- name:"):
-            in_requires_block = False
-            if current:
-                steps.append(current)
-            current = {
-                "name": stripped.split(":", 1)[1].strip(),
-                "skill": None,
-                "description": "",
-                "when": None,
-                "inputs": [],
-            }
-            continue
-
-        if current is None:
-            if in_requires_block and stripped.startswith("- "):
-                requires.append(stripped[2:].strip())
-                continue
-
-            if ":" in stripped:
-                key, value = stripped.split(":", 1)
-                key = key.strip()
-                value = value.strip()
-                if key == "name":
-                    workflow_name = value
-                elif key == "description":
-                    workflow_description = value
-                elif key == "requires":
-                    in_requires_block = True
-                    match = re.match(r"\[(.*)\]", value)
-                    if match:
-                        requires = [s.strip() for s in match.group(1).split(",") if s.strip()]
-                        in_requires_block = False
-                else:
-                    in_requires_block = False
-            continue
-
-        if ":" in stripped and not stripped.startswith("-"):
-            key, value = stripped.split(":", 1)
-            key = key.strip()
-            value = value.strip()
-
-            if key == "inputs":
-                match = re.match(r"\[(.*)\]", value)
-                if match:
-                    current["inputs"] = [s.strip() for s in match.group(1).split(",") if s.strip()]
-            elif key in ("skill", "description", "when"):
-                current[key] = value
-            elif key == "name" and current.get("name") is None:
-                current["name"] = value
-
-    if current:
-        steps.append(current)
-
-    return workflow_name, workflow_description, steps, requires
 
 
 def validate_steps(steps):

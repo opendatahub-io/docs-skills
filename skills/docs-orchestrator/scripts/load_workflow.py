@@ -114,33 +114,48 @@ def validate_steps(steps: list[dict], plugin_root: str) -> list[str]:
     return errors
 
 
-def load(workflow_name: str, plugin_root: str, options: dict, base_path: str | None = None) -> dict:
-    """Resolve, parse, classify, and validate a workflow. Raises WorkflowError on failure."""
+def parse_workflow_yaml(path: str) -> tuple[str, str, list[dict], list[str]]:
+    """Parse a workflow YAML into ``(name, description, steps, requires)``.
+
+    Accepts both a nested ``workflow:`` block and a flat document (name/steps at
+    the top level). Steps are returned without a status — callers classify them.
+    Raises WorkflowError on unreadable or malformed YAML.
+    """
     import yaml  # deferred so pure helpers import without the YAML dependency
 
+    try:
+        with open(path) as f:
+            doc = yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError) as e:
+        raise WorkflowError(f"Cannot parse workflow YAML {path}: {e}") from e
+
+    wf = doc.get("workflow") or doc
+    name = wf.get("name") or "docs-workflow"
+    description = wf.get("description") or ""
+    requires = wf.get("requires") or []
+
+    steps = [
+        {
+            "name": s.get("name"),
+            "skill": s.get("skill"),
+            "description": s.get("description") or "",
+            "when": s.get("when"),
+            "inputs": s.get("inputs") or [],
+        }
+        for s in (wf.get("steps") or [])
+    ]
+
+    return name, description, steps, requires
+
+
+def load(workflow_name: str, plugin_root: str, options: dict, base_path: str | None = None) -> dict:
+    """Resolve, parse, classify, and validate a workflow. Raises WorkflowError on failure."""
     yaml_path = resolve_yaml_path(workflow_name, plugin_root, base_path)
     if yaml_path is None:
         raise WorkflowError(f"No workflow YAML found for '{workflow_name}'")
 
-    try:
-        with open(yaml_path) as f:
-            doc = yaml.safe_load(f) or {}
-    except (OSError, yaml.YAMLError) as e:
-        raise WorkflowError(f"Cannot parse workflow YAML {yaml_path}: {e}") from e
-
-    raw_steps = ((doc.get("workflow") or {}).get("steps")) or []
-    steps = []
-    for s in raw_steps:
-        steps.append(
-            {
-                "name": s.get("name"),
-                "skill": s.get("skill"),
-                "description": s.get("description"),
-                "when": s.get("when"),
-                "inputs": s.get("inputs", []) or [],
-                "status": evaluate_when(s.get("when"), options),
-            }
-        )
+    _, _, raw_steps, _ = parse_workflow_yaml(yaml_path)
+    steps = [{**s, "status": evaluate_when(s["when"], options)} for s in raw_steps]
 
     errors = validate_steps(steps, plugin_root)
     if errors:
