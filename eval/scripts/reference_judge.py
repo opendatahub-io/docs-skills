@@ -145,4 +145,7 @@ def judge(outputs=None, **arguments):
     )
 
     model = arguments.get("model", None)
-    return _call_llm(prompt, model)
+    try:
+        return _call_llm(prompt, model)
+    except Exception as e:
+        return (None, f"LLM call failed: {e}")

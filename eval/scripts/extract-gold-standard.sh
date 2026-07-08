@@ -56,17 +56,17 @@ for case_name in "${!MR_MAP[@]}"; do
     > "${tmp_file}" 2>/dev/null
 
   # Get target branch and merge commit SHA
-  target_branch=$(python3 -c "import json; d=json.load(open('${tmp_file}')); print(d.get('target_branch','main'))")
-  merge_sha=$(python3 -c "import json; d=json.load(open('${tmp_file}')); print(d.get('merge_commit_sha',''))")
+  target_branch=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('target_branch','main'))" "${tmp_file}")
+  merge_sha=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('merge_commit_sha',''))" "${tmp_file}")
 
   # Extract adoc file paths
   adoc_files=$(python3 -c "
-import json
-data = json.load(open('${tmp_file}'))
+import json, sys
+data = json.load(open(sys.argv[1]))
 for c in data['changes']:
     if c['new_path'].endswith('.adoc'):
         print(c['new_path'])
-")
+" "${tmp_file}")
 
   # Download each file at the merge commit
   for filepath in ${adoc_files}; do
@@ -80,10 +80,14 @@ for c in data['changes']:
       dest="${ref_dir}/${filename}"
     fi
 
-    encoded_path=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${filepath}', safe=''))")
-    glab api --hostname gitlab.cee.redhat.com \
+    encoded_path=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${filepath}")
+    if ! glab api --hostname gitlab.cee.redhat.com \
       "projects/${PROJECT_ID}/repository/files/${encoded_path}/raw?ref=${merge_sha}" \
-      > "${dest}" 2>/dev/null
+      > "${dest}" 2>/dev/null; then
+      echo "  FAILED: ${filename}" >&2
+      rm -f "${dest}"
+      continue
+    fi
 
     echo "  Downloaded: ${filename}"
   done

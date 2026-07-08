@@ -50,15 +50,15 @@ for case_name in "${!CASES[@]}"; do
 
   # Find the commit on the target branch just before the merge
   # Use the merge commit's parent on the target branch
+  pre_merge_sha=""
   if [ -n "$merge_commit" ]; then
     # Get the first parent of the merge commit (the target branch side)
     pre_merge_sha=$(git -C "$DOCS_REPO_CLONE" rev-parse "${merge_commit}^1" 2>/dev/null || echo "")
   fi
 
   if [ -z "$pre_merge_sha" ]; then
-    # Fallback: find latest commit on target branch before merge timestamp
-    git -C "$DOCS_REPO_CLONE" checkout -q "origin/${target_branch}" 2>/dev/null || git -C "$DOCS_REPO_CLONE" checkout -q "${target_branch}" 2>/dev/null
-    pre_merge_sha=$(git -C "$DOCS_REPO_CLONE" log --before="${merged_at}" --format="%H" -1 2>/dev/null || echo "UNKNOWN")
+    # Fallback: find latest commit on target branch before merge timestamp (read-only, no checkout)
+    pre_merge_sha=$(git -C "$DOCS_REPO_CLONE" log "origin/${target_branch}" --before="${merged_at}" --format="%H" -1 2>/dev/null || echo "UNKNOWN")
   fi
 
   echo "  Pre-merge SHA: ${pre_merge_sha}"

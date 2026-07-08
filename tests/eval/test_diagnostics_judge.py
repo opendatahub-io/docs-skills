@@ -518,14 +518,7 @@ class TestDiagnosticsReflection:
         _setup()
         mock_llm.return_value = (4, "Minor issues")
         outputs = _make_outputs(_healthy_progress())
-        # With threshold=5, the healthy pipeline_health score of 5 won't trigger
-        # but skipped judges (None) are excluded
         score, rationale = dj.diagnostics_reflection(outputs, threshold=5)
-        # pipeline_health scores 5, others are None (skipped)
-        # Only scored judges are checked, so 5 <= 5 is not <= threshold trigger
-        # Actually 5 <= 5 IS true. Let me check the logic...
-        # low_scores = {k: v for k, v in scored.items() if v[0] <= threshold}
-        # With threshold=5, score 5 <= 5 is True, so it WOULD trigger
         assert mock_llm.called
 
 

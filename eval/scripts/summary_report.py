@@ -148,7 +148,9 @@ def _fmt_score(value):
 
 def _md_to_html(text):
     """Convert basic markdown to HTML — bold, paragraphs, lists."""
+    import html
     import re
+    text = html.escape(text)
     text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
     text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
     text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
@@ -215,6 +217,10 @@ def main():
     parser.add_argument("--baseline", default=None)
     parser.add_argument("--open", action="store_true")
     args = parser.parse_args()
+
+    for name in [args.run_id, args.baseline]:
+        if name and (".." in name or name.startswith("/")):
+            parser.error(f"Invalid run ID: {name}")
 
     run_dir = RUNS_DIR / args.run_id
     summary = _load_yaml(run_dir / "summary.yaml")
@@ -301,10 +307,11 @@ def main():
     rm = summary.get("run_metrics", {})
     cpt = rm.get("cost_per_turn_usd", 0)
     cache = rm.get("cache_hit_rate", 0)
+    cost_per_case = cost / cases if cases else 0
 
     metrics_html = f"""
 <div class="metric"><div class="value">${cost:.0f}</div><div class="label">Total cost</div></div>
-<div class="metric"><div class="value">${cost/cases:.0f}</div><div class="label">Cost / case</div></div>
+<div class="metric"><div class="value">${cost_per_case:.0f}</div><div class="label">Cost / case</div></div>
 <div class="metric"><div class="value">{wall/3600:.1f}h</div><div class="label">Wall clock</div></div>
 <div class="metric"><div class="value">{turns:,}</div><div class="label">Turns</div></div>
 <div class="metric"><div class="value">${cpt:.3f}</div><div class="label">Cost / turn</div></div>

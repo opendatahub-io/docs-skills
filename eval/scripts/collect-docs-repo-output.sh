@@ -19,7 +19,7 @@ for case_dir in "$WORKSPACE"/cases/*/; do
     case_id=$(basename "$case_dir")
 
     # Find ticket ID from input.yaml
-    ticket=$(grep '^ticket:' "$case_dir/input.yaml" 2>/dev/null | awk '{print $2}')
+    ticket=$(python3 -c "import yaml,sys; print(yaml.safe_load(open(sys.argv[1])).get('ticket',''))" "$case_dir/input.yaml" 2>/dev/null)
     [ -z "$ticket" ] && continue
 
     # Find the writing step-result.json
@@ -34,7 +34,7 @@ for case_dir in "$WORKSPACE"/cases/*/; do
 
     while IFS= read -r filepath; do
         [ -f "$filepath" ] || continue
-        cp "$filepath" "$output_dir/$(basename "$filepath")" 2>/dev/null && ((count++)) || true
+        cp "$filepath" "$output_dir/$(basename "$filepath")" 2>/dev/null && count=$((count + 1)) || true
     done < <(python3 -c "
 import json, sys
 with open('$sr') as f:

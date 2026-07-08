@@ -30,11 +30,11 @@ for case_dir in ${EVAL_DIR}/case-*/; do
 
   # Extract docs_repo SHA
   docs_sha=$(python3 -c "
-import yaml
-data = yaml.safe_load(open('${input_yaml}'))
+import yaml, sys
+data = yaml.safe_load(open(sys.argv[1]))
 docs = data.get('docs_repo', {})
 print(docs.get('sha', ''))
-")
+" "${input_yaml}")
 
   if [ -z "$docs_sha" ]; then
     echo "SKIP ${case_name}: no docs_repo.sha"
@@ -45,7 +45,10 @@ print(docs.get('sha', ''))
 
   # Remove existing worktree if present
   if [ -d "$worktree_path" ]; then
-    git -C "$DOCS_REPO_CACHE" worktree remove --force "$worktree_path" 2>/dev/null || rm -rf "$worktree_path"
+    git -C "$DOCS_REPO_CACHE" worktree remove --force "$worktree_path" 2>/dev/null || {
+      rm -rf "$worktree_path"
+      git -C "$DOCS_REPO_CACHE" worktree prune
+    }
   fi
 
   echo "=== ${case_name} ==="
@@ -53,10 +56,10 @@ print(docs.get('sha', ''))
   if [ "$docs_sha" = "HEAD" ]; then
     # For HEAD cases, use the default branch
     default_branch=$(git -C "$DOCS_REPO_CACHE" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' || echo "main")
-    git -C "$DOCS_REPO_CACHE" worktree add --detach "$worktree_path" "origin/${default_branch}" 2>/dev/null
+    git -C "$DOCS_REPO_CACHE" worktree add --detach "$worktree_path" "origin/${default_branch}"
     echo "  Worktree: ${default_branch} HEAD"
   else
-    git -C "$DOCS_REPO_CACHE" worktree add --detach "$worktree_path" "$docs_sha" 2>/dev/null
+    git -C "$DOCS_REPO_CACHE" worktree add --detach "$worktree_path" "$docs_sha"
     echo "  Worktree: ${docs_sha:0:12}"
   fi
 
@@ -64,12 +67,12 @@ print(docs.get('sha', ''))
   if grep -q "docs_repo_path:" "$input_yaml" 2>/dev/null; then
     # Update existing path
     python3 -c "
-import yaml
-data = yaml.safe_load(open('${input_yaml}'))
-data['docs_repo_path'] = '${worktree_path}'
-with open('${input_yaml}', 'w') as f:
+import yaml, sys
+data = yaml.safe_load(open(sys.argv[1]))
+data['docs_repo_path'] = sys.argv[2]
+with open(sys.argv[1], 'w') as f:
     yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-"
+" "${input_yaml}" "${worktree_path}"
     echo "  Updated docs_repo_path in input.yaml"
   else
     # Append
