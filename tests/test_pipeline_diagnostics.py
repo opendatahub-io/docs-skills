@@ -440,6 +440,72 @@ class TestDetectFailures:
         assert "empty_plan" in types
         assert "step_deferred" in types
 
+    def test_progress_gated_checks_absent_without_progress(self, tmp_path):
+        # 3-arg call: new checks must NOT fire even with in_progress / null result
+        steps = {
+            "requirements": {"status": "in_progress"},
+            "planning": {"status": "completed"},  # no 'result' key -> null result
+        }
+        _make_step_dir(str(tmp_path), "planning", sidecar={"schema_version": 1, "step": "planning"})
+        failures = detect_failures(STEP_ORDER, steps, str(tmp_path))
+        types = {f["type"] for f in failures}
+        assert "step_stuck" not in types
+        assert "null_result" not in types
+
+    def test_step_stuck_when_progress_passed(self, tmp_path):
+        steps = {"writing": {"status": "in_progress"}}
+        failures = detect_failures(STEP_ORDER, steps, str(tmp_path), progress={"status": "running"})
+        stuck = [f for f in failures if f["type"] == "step_stuck"]
+        assert len(stuck) == 1
+        assert stuck[0]["severity"] == "high"
+
+    def test_null_result_when_progress_passed(self, tmp_path):
+        steps = {"planning": {"status": "completed"}}  # no 'result'
+        _make_step_dir(str(tmp_path), "planning", sidecar={"schema_version": 1, "step": "planning"})
+        failures = detect_failures(STEP_ORDER, steps, str(tmp_path), progress={"status": "running"})
+        nulls = [f for f in failures if f["type"] == "null_result"]
+        assert len(nulls) == 1
+        assert nulls[0]["severity"] == "medium"
+
+    def test_schema_drift_on_missing_progress_fields(self, tmp_path):
+        steps = {"requirements": _completed_step(result={"ok": 1})}
+        _make_step_dir(
+            str(tmp_path), "requirements", sidecar={"schema_version": 1, "step": "requirements"}
+        )
+        # progress missing 'ticket' and 'step_order'
+        failures = detect_failures(
+            STEP_ORDER, steps, str(tmp_path), progress={"steps": steps, "status": "running"}
+        )
+        drift = [f for f in failures if f["type"] == "schema_drift"]
+        assert len(drift) == 1
+        assert "ticket" in drift[0]["detail"]
+
+    def test_step_order_mismatch_for_orphaned_step(self, tmp_path):
+        steps = {
+            "requirements": _completed_step(result={"ok": 1}),
+            "ghost-step": _completed_step(result={"ok": 1}),
+        }
+        _make_step_dir(
+            str(tmp_path), "requirements", sidecar={"schema_version": 1, "step": "requirements"}
+        )
+        _make_step_dir(
+            str(tmp_path), "ghost-step", sidecar={"schema_version": 1, "step": "ghost-step"}
+        )
+        failures = detect_failures(
+            STEP_ORDER,
+            steps,
+            str(tmp_path),
+            progress={
+                "ticket": "X",
+                "step_order": STEP_ORDER,
+                "steps": steps,
+                "status": "running",
+            },
+        )
+        mism = [f for f in failures if f["type"] == "step_order_mismatch"]
+        assert len(mism) == 1
+        assert "ghost-step" in mism[0]["detail"]
+
 
 # ── detect_bottlenecks ───────────────────────────────────────────────────────
 
@@ -1191,3 +1257,32 @@ class TestDerivePipelineStatus:
         order = ["writing", "missing-step"]
         result = derive_pipeline_status(steps, order, "in_progress")
         assert result == "in_progress"
+
+
+def _write_kb(path, kb):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("x" * int(kb * 1024))
+
+
+def test_context_pressure_reports_token_estimate(tmp_path):
+    import pipeline_diagnostics as pd
+
+    # 8 KB of writing artifacts -> 8*1024/4 = 2048 tokens at 4 bytes/token
+    _write_kb(tmp_path / "writing" / "a.adoc", 8)
+    steps = {"writing": {"status": "completed"}}
+    cp = pd.estimate_context_pressure(["writing"], steps, str(tmp_path))
+    assert cp["total_estimated_tokens"] == 2048
+    assert cp["per_step_estimated_tokens"]["writing"] == 2048
+    assert cp["context_window"] == 200_000
+    assert cp["context_window_pct"] == round(2048 / 200_000 * 100, 1)
+
+
+def test_context_pressure_flags_high_window_fill(tmp_path):
+    import pipeline_diagnostics as pd
+
+    # ~600 KB -> ~153,600 tokens -> ~77% of a 200k window -> risk bump + factor
+    _write_kb(tmp_path / "writing" / "big.adoc", 600)
+    steps = {"writing": {"status": "completed"}}
+    cp = pd.estimate_context_pressure(["writing"], steps, str(tmp_path))
+    assert cp["context_window_pct"] >= 75
+    assert any("context window" in f.lower() for f in cp["risk_factors"])

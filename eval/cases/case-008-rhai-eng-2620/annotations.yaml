@@ -1,0 +1,15 @@
+ticket: RHAIENG-2620
+summary: "Document OpenAI Search & Responses API Annotation Feature"
+intent: |
+  Create documentation covering Llama Stack's support for OpenAI API annotations
+  on Search and Responses endpoints, including citations, confidence scores,
+  metadata, and UI behavior.
+acceptance_criteria:
+  - "Feature overview: annotations for citations, confidence, and metadata"
+  - "Usage instructions: how to enable and configure in Llama Stack"
+  - "UI behavior: filename display and click-to-download"
+  - "Example API requests and responses demonstrating annotation fields"
+audience: "developer (API consumers building on Llama Stack)"
+scope:
+  in: "OpenAI Search + Responses API annotation support, UI behavior, example payloads"
+  out: "Llama Stack deployment, model serving setup"

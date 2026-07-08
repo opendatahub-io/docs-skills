@@ -1,0 +1,16 @@
+ticket: RHAIENG-2388
+summary: "Document External S3-Compatible Provider Configuration for Llama Stack /v1/files Endpoint"
+intent: |
+  Document how customers configure Llama Stack's /v1/files endpoint to use an
+  external S3-compatible object storage backend (AWS S3, MinIO, Ceph, or any
+  S3-compatible system) instead of the inline provider, so enterprise customers
+  can reuse existing storage investments and meet regulated storage requirements.
+acceptance_criteria:
+  - "Explain generic external S3-compatible provider support for /v1/files, without provider-specific instructions"
+  - "Provide a complete LlamaStackDistribution configuration example: endpoint URL, region, bucket name/prefixes, SSL/TLS settings (including custom CA bundles), Kubernetes Secret-based authentication, and network options (timeout, proxy)"
+  - "Cover security considerations: access key/secret key management, IAM-based auth, encryption in transit, bucket policies and least privilege"
+  - "Include usage examples for /v1/files: uploading, listing, retrieving, and deleting files, plus using files in RAG workflows"
+audience: "admin (configuring external storage), developer (using /v1/files API)"
+scope:
+  in: "Generic external S3-compatible provider configuration for /v1/files — setup, security, and usage examples"
+  out: "Provider-specific instructions for individual S3-compatible systems, the inline S3 provider already shipped with the distribution"

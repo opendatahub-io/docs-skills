@@ -1,0 +1,18 @@
+ticket: RHAIENG-4485
+summary: "Document CA bundle configuration for LlamaStackDistribution"
+intent: |
+  Document how to configure custom Certificate Authority (CA) bundles for a
+  LlamaStackDistribution CR so the Llama Stack server can establish trusted TLS
+  connections to external LLM providers using self-signed certificates or private
+  CAs, integrating this guidance alongside the existing certificate chapters for
+  pipelines, workbenches, and model serving.
+acceptance_criteria:
+  - "Explain what CA bundle configuration is and why it is needed for the Llama Stack server"
+  - "Cover when to use it: self-signed certificates, private CAs, enterprise environments, and integration with the odh-trusted-ca-bundle cluster trust bundle"
+  - "Document the high-level architecture: source ConfigMap -> operator -> managed <instance-name>-ca-bundle ConfigMap -> pod mount"
+  - "Deliver a procedure module (proc_configuring-a-ca-bundle-for-llama-stack.adoc) placed as a peer to the existing component-specific certificate sections, covering ConfigMaps (odh-trusted-ca-bundle and dedicated), cross-namespace references, operator validation/lifecycle, security constraints, and verification steps"
+  - "Deliver a short concept module (con_connecting-llama-stack-to-providers-with-self-signed-certificates.adoc) in the Working with Llama Stack book that cross-links to the install book"
+audience: "admin (configuring TLS trust for the Llama Stack server)"
+scope:
+  in: "CA bundle configuration via ConfigMaps, cross-namespace ConfigMap references, operator behavior/validation/lifecycle, security considerations, verification steps, and cross-linking between the install and Llama Stack books"
+  out: "General TLS/PKI theory, external certificate generation steps, a standalone troubleshooting module"
