@@ -48,8 +48,12 @@ def main() -> int:
     parser.add_argument("--mode", required=True, help="Writing mode (update-in-place, draft)")
     parser.add_argument("--format", required=True, dest="fmt", help="Doc format (adoc, mkdocs)")
     parser.add_argument("--sidecar", required=True, help="Path to write step-result.json")
-    parser.add_argument("--iteration", type=int, default=None,
-                        help="Writing iteration (1=initial, 2+=fix). Auto-detected in fix mode.")
+    parser.add_argument(
+        "--iteration",
+        type=int,
+        default=None,
+        help="Writing iteration (1=initial, 2+=fix). Auto-detected in fix mode.",
+    )
     args = parser.parse_args()
 
     manifest_path = Path(args.manifest)

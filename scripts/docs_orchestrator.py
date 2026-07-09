@@ -1983,8 +1983,11 @@ def _prepare_writing(ticket, base_path, options, progress, phase=None):
     sidecar = os.path.join(cfg["output_dir"], "step-result.json")
     iteration = 1
     if mode == "fix":
-        iteration = (progress or {}).get("_tech_review_iteration") or \
-                    (progress or {}).get("_quality_gate_iteration") or 2
+        iteration = (
+            (progress or {}).get("_tech_review_iteration")
+            or (progress or {}).get("_quality_gate_iteration")
+            or 2
+        )
     finalize = [
         "python3 {script} --ticket {ticket} --manifest {manifest} "
         "--mode {mode} --format {fmt} --sidecar {sidecar} "

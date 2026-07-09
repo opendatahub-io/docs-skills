@@ -6,9 +6,7 @@ import sys
 
 sys.path.insert(
     0,
-    os.path.join(
-        os.path.dirname(__file__), "..", "skills", "docs-workflow-writing", "scripts"
-    ),
+    os.path.join(os.path.dirname(__file__), "..", "skills", "docs-workflow-writing", "scripts"),
 )
 
 from write_step_result import main
@@ -34,8 +32,19 @@ class TestIterationField:
         sidecar = str(tmp_path / "writing" / "step-result.json")
         monkeypatch.setattr(
             "sys.argv",
-            ["prog", "--ticket", "T-1", "--manifest", manifest,
-             "--mode", "update-in-place", "--format", "adoc", "--sidecar", sidecar],
+            [
+                "prog",
+                "--ticket",
+                "T-1",
+                "--manifest",
+                manifest,
+                "--mode",
+                "update-in-place",
+                "--format",
+                "adoc",
+                "--sidecar",
+                sidecar,
+            ],
         )
         main()
         data = json.loads(open(sidecar).read())
@@ -46,9 +55,21 @@ class TestIterationField:
         sidecar = str(tmp_path / "writing" / "step-result.json")
         monkeypatch.setattr(
             "sys.argv",
-            ["prog", "--ticket", "T-1", "--manifest", manifest,
-             "--mode", "update-in-place", "--format", "adoc", "--sidecar", sidecar,
-             "--iteration", "3"],
+            [
+                "prog",
+                "--ticket",
+                "T-1",
+                "--manifest",
+                manifest,
+                "--mode",
+                "update-in-place",
+                "--format",
+                "adoc",
+                "--sidecar",
+                sidecar,
+                "--iteration",
+                "3",
+            ],
         )
         main()
         data = json.loads(open(sidecar).read())
@@ -59,16 +80,35 @@ class TestIterationField:
         sidecar_path = tmp_path / "writing" / "step-result.json"
         # Write a prior sidecar with iteration 1
         sidecar_path.parent.mkdir(parents=True, exist_ok=True)
-        sidecar_path.write_text(json.dumps({
-            "schema_version": 1, "step": "writing", "ticket": "T-1",
-            "completed_at": "2020-01-01T00:00:00+00:00",
-            "files": [], "mode": "update-in-place", "format": "adoc",
-            "iteration": 1,
-        }))
+        sidecar_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "step": "writing",
+                    "ticket": "T-1",
+                    "completed_at": "2020-01-01T00:00:00+00:00",
+                    "files": [],
+                    "mode": "update-in-place",
+                    "format": "adoc",
+                    "iteration": 1,
+                }
+            )
+        )
         monkeypatch.setattr(
             "sys.argv",
-            ["prog", "--ticket", "T-1", "--manifest", manifest,
-             "--mode", "fix", "--format", "adoc", "--sidecar", str(sidecar_path)],
+            [
+                "prog",
+                "--ticket",
+                "T-1",
+                "--manifest",
+                manifest,
+                "--mode",
+                "fix",
+                "--format",
+                "adoc",
+                "--sidecar",
+                str(sidecar_path),
+            ],
         )
         main()
         data = json.loads(sidecar_path.read_text())
@@ -80,8 +120,19 @@ class TestIterationField:
         sidecar = str(tmp_path / "writing" / "step-result.json")
         monkeypatch.setattr(
             "sys.argv",
-            ["prog", "--ticket", "T-1", "--manifest", manifest,
-             "--mode", "fix", "--format", "adoc", "--sidecar", sidecar],
+            [
+                "prog",
+                "--ticket",
+                "T-1",
+                "--manifest",
+                manifest,
+                "--mode",
+                "fix",
+                "--format",
+                "adoc",
+                "--sidecar",
+                sidecar,
+            ],
         )
         main()
         data = json.loads(open(sidecar).read())
@@ -91,17 +142,37 @@ class TestIterationField:
         manifest = _make_manifest(tmp_path)
         sidecar_path = tmp_path / "writing" / "step-result.json"
         sidecar_path.parent.mkdir(parents=True, exist_ok=True)
-        sidecar_path.write_text(json.dumps({
-            "schema_version": 1, "step": "writing", "ticket": "T-1",
-            "completed_at": "2020-01-01T00:00:00+00:00",
-            "files": [], "mode": "update-in-place", "format": "adoc",
-            "iteration": 1,
-        }))
+        sidecar_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "step": "writing",
+                    "ticket": "T-1",
+                    "completed_at": "2020-01-01T00:00:00+00:00",
+                    "files": [],
+                    "mode": "update-in-place",
+                    "format": "adoc",
+                    "iteration": 1,
+                }
+            )
+        )
         monkeypatch.setattr(
             "sys.argv",
-            ["prog", "--ticket", "T-1", "--manifest", manifest,
-             "--mode", "fix", "--format", "adoc", "--sidecar", str(sidecar_path),
-             "--iteration", "5"],
+            [
+                "prog",
+                "--ticket",
+                "T-1",
+                "--manifest",
+                manifest,
+                "--mode",
+                "fix",
+                "--format",
+                "adoc",
+                "--sidecar",
+                str(sidecar_path),
+                "--iteration",
+                "5",
+            ],
         )
         main()
         data = json.loads(sidecar_path.read_text())

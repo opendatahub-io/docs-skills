@@ -726,7 +726,8 @@ def load_verified_claims(base_path):
 
     claims = data.get("claims", []) if isinstance(data, dict) else []
     verified = [
-        c for c in claims
+        c
+        for c in claims
         if isinstance(c, dict) and c.get("verdict") in ("supported", "partially_supported")
     ]
     if not verified:

@@ -111,17 +111,36 @@ class TestCmdPrepareInjectsClaimValidation:
         tr_dir.mkdir()
         cv_data = {
             "claims": [
-                {"id": "C1", "text": "KV cache transfer config requires vLLM 0.22.0+",
-                 "verdict": "supported", "evidence": "found in config",
-                 "file": "x.yaml", "line": 158},
-                {"id": "C2", "text": "Access log filtering requires vLLM 0.16.0+",
-                 "verdict": "supported", "evidence": "found", "file": "x.yaml", "line": 50},
-                {"id": "C3", "text": "Nonexistent flag --foo",
-                 "verdict": "unsupported", "evidence": "not found", "file": "x.yaml", "line": None},
+                {
+                    "id": "C1",
+                    "text": "KV cache transfer config requires vLLM 0.22.0+",
+                    "verdict": "supported",
+                    "evidence": "found in config",
+                    "file": "x.yaml",
+                    "line": 158,
+                },
+                {
+                    "id": "C2",
+                    "text": "Access log filtering requires vLLM 0.16.0+",
+                    "verdict": "supported",
+                    "evidence": "found",
+                    "file": "x.yaml",
+                    "line": 50,
+                },
+                {
+                    "id": "C3",
+                    "text": "Nonexistent flag --foo",
+                    "verdict": "unsupported",
+                    "evidence": "not found",
+                    "file": "x.yaml",
+                    "line": None,
+                },
             ],
             "summary": {
-                "supported": 2, "partially_supported": 0,
-                "unsupported": 1, "no_evidence_found": 0,
+                "supported": 2,
+                "partially_supported": 0,
+                "unsupported": 1,
+                "no_evidence_found": 0,
             },
         }
         (tr_dir / "claim-validation.json").write_text(json.dumps(cv_data))
