@@ -48,6 +48,12 @@ def main() -> int:
     parser.add_argument("--mode", required=True, help="Writing mode (update-in-place, draft)")
     parser.add_argument("--format", required=True, dest="fmt", help="Doc format (adoc, mkdocs)")
     parser.add_argument("--sidecar", required=True, help="Path to write step-result.json")
+    parser.add_argument(
+        "--iteration",
+        type=int,
+        default=None,
+        help="Writing iteration (1=initial, 2+=fix). Auto-detected in fix mode.",
+    )
     args = parser.parse_args()
 
     manifest_path = Path(args.manifest)
@@ -59,22 +65,56 @@ def main() -> int:
     if not files:
         print(f"WARNING: no file paths found in manifest: {manifest_path}", file=sys.stderr)
 
+    sidecar_path = Path(args.sidecar)
+
+    mode = args.mode
+    fmt = args.fmt
+    iteration = args.iteration
+
+    if mode == "fix":
+        if sidecar_path.is_file():
+            try:
+                prior = json.loads(sidecar_path.read_text())
+                mode = prior.get("mode", "update-in-place")
+                fmt = prior.get("format", fmt)
+                if iteration is None:
+                    iteration = prior.get("iteration", 1) + 1
+            except (json.JSONDecodeError, OSError) as exc:
+                print(
+                    f"WARNING: could not read prior sidecar at {sidecar_path} "
+                    f"({exc}); falling back to mode=update-in-place",
+                    file=sys.stderr,
+                )
+                mode = "update-in-place"
+        else:
+            print(
+                f"WARNING: fix mode with no prior sidecar at {sidecar_path}; "
+                "falling back to mode=update-in-place",
+                file=sys.stderr,
+            )
+            mode = "update-in-place"
+            if iteration is None:
+                iteration = 2
+
+    if iteration is None:
+        iteration = 1
+
     sidecar = {
         "schema_version": 1,
         "step": "writing",
         "ticket": args.ticket,
         "completed_at": datetime.now(timezone.utc).isoformat(),
         "files": files,
-        "mode": args.mode,
-        "format": args.fmt,
+        "mode": mode,
+        "format": fmt,
+        "iteration": iteration,
     }
 
-    sidecar_path = Path(args.sidecar)
     sidecar_path.parent.mkdir(parents=True, exist_ok=True)
     sidecar_path.write_text(json.dumps(sidecar, indent=2))
 
     print(f"Written {sidecar_path}")
-    print(f"files={len(files)} mode={args.mode} format={args.fmt}")
+    print(f"files={len(files)} mode={mode} format={fmt}")
     return 0
 
 

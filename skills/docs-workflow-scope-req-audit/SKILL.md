@@ -68,7 +68,7 @@ For each file, extract URLs matching:
 - `https://gitlab.<host>/<path>` (GitLab)
 
 Filter out:
-- The current repo URL (discover the remote via `git remote -v` in the repo directory and use the first available remote's URL). Normalize before comparing: strip trailing `.git`, convert `git@<host>:<org>/<repo>` SSH URLs to `https://<host>/<org>/<repo>` form
+- The current repo URL (discover the remote with `git -C "$REPO_PATH" remote -v` — which reads the repo without changing the shell's working directory — and use the first available remote's URL). Normalize before comparing: strip trailing `.git`, convert `git@<host>:<org>/<repo>` SSH URLs to `https://<host>/<org>/<repo>` form
 - Duplicate URLs (after normalization)
 - URLs that are clearly not repos (e.g., GitHub issue links, badge URLs)
 
@@ -104,7 +104,11 @@ Derive the repo name and check for existing analysis:
 
 ```bash
 REPO_NAME="$(basename "$REPO_PATH")"
-GIT_ROOT="$(cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" && pwd)"
+# Derive the docs-repo root from BASE_PATH (<docs-root>/.agent_workspace/<ticket>)
+# by stripping from `.agent_workspace` onward. Do NOT use `git rev-parse`, which
+# returns whichever repo the cwd is inside and points at the wrong root if the
+# agent drifted into the source repo.
+GIT_ROOT="${BASE_PATH%%/.agent_workspace/*}"
 ANALYSIS_PATH="${GIT_ROOT}/.agent_workspace/${REPO_NAME}"
 ```
 

@@ -56,8 +56,12 @@ def main() -> int:
 
     # Derive expected verdict files from the batch-claims files that
     # split_claims wrote for THIS run (plus the carryover from
-    # incremental_claims). Stale verdict files from prior runs are skipped.
-    expected_names = {"batch-verdict-carryover.json"}
+    # incremental_claims, which only exists on iteration 2+). Stale verdict
+    # files from prior runs are skipped.
+    expected_names = set()
+    carryover = output_dir / "batch-verdict-carryover.json"
+    if carryover.exists():
+        expected_names.add(carryover.name)
     for claims_file in output_dir.glob("batch-claims-*.json"):
         expected_names.add(claims_file.name.replace("batch-claims-", "batch-verdict-"))
 

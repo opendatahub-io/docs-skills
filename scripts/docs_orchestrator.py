@@ -28,6 +28,14 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Share workflow YAML resolution with the load_workflow skill script so the two
+# entry points cannot drift. resolve_yaml_path is pure stdlib; load_workflow's
+# pyyaml dependency is deferred to its load() path and is not imported here.
+sys.path.insert(
+    0, str(Path(__file__).resolve().parent.parent / "skills" / "docs-orchestrator" / "scripts")
+)
+from load_workflow import parse_workflow_yaml, resolve_yaml_path  # noqa: E402
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -40,10 +48,6 @@ RESOLVE_SOURCE_SCRIPT = str(
     / "docs-orchestrator"
     / "scripts"
     / "resolve_source.py"
-)
-
-DEFAULT_WORKFLOW_DIR = str(
-    Path(__file__).resolve().parent.parent / "skills" / "docs-orchestrator" / "defaults"
 )
 
 PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
@@ -62,10 +66,6 @@ VALID_WHEN_CONDITIONS = {
 }
 
 TICKET_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]+-\d+$")
-
-# Workflow name comes from the --workflow CLI arg and is interpolated into a
-# filename (docs-<name>.yaml). Restrict it to prevent path traversal.
-WORKFLOW_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _validate_ticket(ticket):
@@ -118,87 +118,6 @@ def git_root():
 def emit(data):
     json.dump(data, sys.stdout, indent=2)
     print()
-
-
-# ---------------------------------------------------------------------------
-# YAML parser (adapted from resolve_steps.py)
-# ---------------------------------------------------------------------------
-
-
-def parse_workflow_yaml(path):
-    """Parse the constrained workflow YAML format.
-
-    Returns (workflow_name, workflow_description, steps_list, requires_list).
-    """
-    with open(path) as f:
-        lines = f.readlines()
-
-    workflow_name = "docs-workflow"
-    workflow_description = ""
-    steps = []
-    requires = []
-    current = None
-    in_requires_block = False
-
-    for line in lines:
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-
-        if stripped.startswith("- name:"):
-            in_requires_block = False
-            if current:
-                steps.append(current)
-            current = {
-                "name": stripped.split(":", 1)[1].strip(),
-                "skill": None,
-                "description": "",
-                "when": None,
-                "inputs": [],
-            }
-            continue
-
-        if current is None:
-            if in_requires_block and stripped.startswith("- "):
-                requires.append(stripped[2:].strip())
-                continue
-
-            if ":" in stripped:
-                key, value = stripped.split(":", 1)
-                key = key.strip()
-                value = value.strip()
-                if key == "name":
-                    workflow_name = value
-                elif key == "description":
-                    workflow_description = value
-                elif key == "requires":
-                    in_requires_block = True
-                    match = re.match(r"\[(.*)\]", value)
-                    if match:
-                        requires = [s.strip() for s in match.group(1).split(",") if s.strip()]
-                        in_requires_block = False
-                else:
-                    in_requires_block = False
-            continue
-
-        if ":" in stripped and not stripped.startswith("-"):
-            key, value = stripped.split(":", 1)
-            key = key.strip()
-            value = value.strip()
-
-            if key == "inputs":
-                match = re.match(r"\[(.*)\]", value)
-                if match:
-                    current["inputs"] = [s.strip() for s in match.group(1).split(",") if s.strip()]
-            elif key in ("skill", "description", "when"):
-                current[key] = value
-            elif key == "name" and current.get("name") is None:
-                current["name"] = value
-
-    if current:
-        steps.append(current)
-
-    return workflow_name, workflow_description, steps, requires
 
 
 def validate_steps(steps):
@@ -608,6 +527,9 @@ def post_process(step_name, progress, base_path, options):
     sidecar = read_sidecar(base_path, step_name)
     if sidecar:
         progress["steps"][step_name]["result"] = sidecar
+        iteration = sidecar.get("iteration")
+        if iteration is not None:
+            progress["steps"][step_name]["iteration"] = iteration
     else:
         warnings.append(f"No step-result.json sidecar found for {step_name}")
 
@@ -862,6 +784,7 @@ def _pp_technical_review(sidecar, progress, base_path, options):
     if confidence == "HIGH":
         progress.pop("_tech_review_fix_from", None)
         progress.pop("_tech_review_iteration", None)
+        progress.pop("_tech_review_prior_severity", None)
         _eval_has_many_requirements_phase2(confidence, progress, messages)
         return {"warnings": warnings, "messages": messages}
 
@@ -880,6 +803,7 @@ def _pp_technical_review(sidecar, progress, base_path, options):
     if crit == 0 and sig == 0:
         progress.pop("_tech_review_fix_from", None)
         progress.pop("_tech_review_iteration", None)
+        progress.pop("_tech_review_prior_severity", None)
         sme = severity.get("sme", 0)
         if isinstance(sme, str):
             sme = int(sme)
@@ -897,6 +821,7 @@ def _pp_technical_review(sidecar, progress, base_path, options):
     if iteration >= max_iterations:
         progress.pop("_tech_review_fix_from", None)
         progress.pop("_tech_review_iteration", None)
+        progress.pop("_tech_review_prior_severity", None)
         _eval_has_many_requirements_phase2(confidence, progress, messages)
         if confidence == "MEDIUM":
             warnings.append(
@@ -916,6 +841,46 @@ def _pp_technical_review(sidecar, progress, base_path, options):
                     ),
                 },
             }
+
+    # Convergence detection: if the prior fix cycle produced the exact same
+    # severity counts as this iteration, another cycle re-runs the writer over
+    # the same unresolved issues and will stall identically. Stop early rather
+    # than burning the remaining iteration budget on a redundant review.
+    minor = severity.get("minor", 0)
+    sme = severity.get("sme", 0)
+    if isinstance(minor, str):
+        minor = int(minor)
+    if isinstance(sme, str):
+        sme = int(sme)
+    current_severity = {"critical": crit, "significant": sig, "minor": minor, "sme": sme}
+
+    if progress.get("_tech_review_prior_severity") == current_severity:
+        progress.pop("_tech_review_fix_from", None)
+        progress.pop("_tech_review_iteration", None)
+        progress.pop("_tech_review_prior_severity", None)
+        _eval_has_many_requirements_phase2(confidence, progress, messages)
+        if confidence == "MEDIUM":
+            warnings.append(
+                f"Technical review converged at iteration {iteration} with no "
+                "further progress — manual review recommended"
+            )
+            return {"warnings": warnings, "messages": messages}
+        return {
+            "warnings": warnings,
+            "messages": messages,
+            "action_override": {
+                "action": "fail",
+                "step": "technical-review",
+                "reason": (f"LOW confidence converged at iteration {iteration} with no progress"),
+                "message": (
+                    "Workflow failed: technical review stalled at LOW confidence "
+                    f"with no progress after iteration {iteration}"
+                ),
+            },
+        }
+
+    # Record this iteration's severity so the next cycle can detect a stall.
+    progress["_tech_review_prior_severity"] = current_severity
 
     # Need fix cycle
     review_path = os.path.join(base_path, "technical-review", "review.md")
@@ -1297,35 +1262,6 @@ def check_input_deps(step_name, progress, yaml_steps_map):
 
 
 # ---------------------------------------------------------------------------
-# Resolve workflow YAML path
-# ---------------------------------------------------------------------------
-
-
-def resolve_yaml_path(workflow_name=None):
-    """Resolve the workflow YAML file path with fallback chain."""
-    workspace = ".agent_workspace"
-
-    if workflow_name:
-        if not WORKFLOW_NAME_RE.fullmatch(workflow_name):
-            return None
-        project_file = os.path.join(workspace, f"docs-{workflow_name}.yaml")
-        if os.path.isfile(project_file):
-            return project_file
-        default_file = os.path.join(DEFAULT_WORKFLOW_DIR, f"docs-{workflow_name}.yaml")
-        if os.path.isfile(default_file):
-            return default_file
-        return None
-
-    project_file = os.path.join(workspace, "docs-workflow.yaml")
-    if os.path.isfile(project_file):
-        return project_file
-    default_file = os.path.join(DEFAULT_WORKFLOW_DIR, "docs-workflow.yaml")
-    if os.path.isfile(default_file):
-        return default_file
-    return None
-
-
-# ---------------------------------------------------------------------------
 # Build options dict from CLI args
 # ---------------------------------------------------------------------------
 
@@ -1373,7 +1309,7 @@ def cmd_init(args):
     options = build_options(args)
 
     # Resolve workflow YAML
-    yaml_path = resolve_yaml_path(getattr(args, "workflow", None))
+    yaml_path = resolve_yaml_path(getattr(args, "workflow", None), PLUGIN_ROOT, base_path=base_path)
     if not yaml_path:
         emit({"action": "fail", "error": True, "message": "No workflow YAML found"})
         sys.exit(1)
@@ -2039,22 +1975,33 @@ def _prepare_writing(ticket, base_path, options, progress, phase=None):
         "schema": None,
     }
 
-    finalize = []
-    verify = None
-    if cfg.get("verify_output"):
-        verify = cfg["output_file"]
-        sidecar = os.path.join(cfg["output_dir"], "step-result.json")
-        finalize.append(
-            "python3 {script} --ticket {ticket} --manifest {manifest} "
-            "--mode {mode} --format {fmt} --sidecar {sidecar}".format(
-                script=shlex.quote(WRITE_STEP_RESULT_SCRIPT),
-                ticket=shlex.quote(ticket),
-                manifest=shlex.quote(cfg["output_file"]),
-                mode=shlex.quote(mode),
-                fmt=shlex.quote(fmt),
-                sidecar=shlex.quote(sidecar),
-            )
+    # The sidecar finalize runs for every writing dispatch — including fix
+    # iterations — so downstream steps always read a current step-result.json.
+    # (write_step_result carries mode/format forward for --mode fix.) The
+    # output-file verify stays gated on verify_output: fix mode skips it by
+    # design because it edits files in place rather than regenerating _index.md.
+    sidecar = os.path.join(cfg["output_dir"], "step-result.json")
+    iteration = 1
+    if mode == "fix":
+        iteration = (
+            (progress or {}).get("_tech_review_iteration")
+            or (progress or {}).get("_quality_gate_iteration")
+            or 2
         )
+    finalize = [
+        "python3 {script} --ticket {ticket} --manifest {manifest} "
+        "--mode {mode} --format {fmt} --sidecar {sidecar} "
+        "--iteration {iteration}".format(
+            script=shlex.quote(WRITE_STEP_RESULT_SCRIPT),
+            ticket=shlex.quote(ticket),
+            manifest=shlex.quote(cfg["output_file"]),
+            mode=shlex.quote(mode),
+            fmt=shlex.quote(fmt),
+            sidecar=shlex.quote(sidecar),
+            iteration=iteration,
+        )
+    ]
+    verify = cfg["output_file"] if cfg.get("verify_output") else None
 
     return {
         "agents": [agent],

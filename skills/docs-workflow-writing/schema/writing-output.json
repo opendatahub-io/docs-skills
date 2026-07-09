@@ -23,6 +23,11 @@
       "type": "string",
       "enum": ["adoc", "mkdocs"],
       "description": "Documentation format"
+    },
+    "iteration": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Writing iteration (1 = initial, 2+ = fix pass)"
     }
   },
   "additionalProperties": false

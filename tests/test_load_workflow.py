@@ -41,6 +41,18 @@ class TestResolveYamlPath:
     def test_unknown_workflow_returns_none(self):
         assert resolve_yaml_path("does-not-exist", str(REPO_ROOT), base_path=None) is None
 
+    def test_empty_name_defaults_to_workflow(self):
+        # An absent --workflow (None) resolves the default docs-workflow.yaml.
+        path = resolve_yaml_path(None, str(REPO_ROOT), base_path=None)
+        assert path is not None
+        assert path.endswith("defaults/docs-workflow.yaml")
+
+    def test_rejects_path_traversal_workflow_name(self):
+        assert resolve_yaml_path("../../etc/passwd", str(REPO_ROOT), base_path=None) is None
+
+    def test_rejects_slash_in_workflow_name(self):
+        assert resolve_yaml_path("foo/bar", str(REPO_ROOT), base_path=None) is None
+
 
 # ── evaluate_when ────────────────────────────────────────────────────────────
 

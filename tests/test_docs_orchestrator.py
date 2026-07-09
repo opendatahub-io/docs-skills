@@ -44,7 +44,6 @@ from docs_orchestrator import (
     read_progress,
     read_sidecar,
     resolve_source_post_requirements,
-    resolve_yaml_path,
     validate_steps,
     write_active_marker,
     write_progress,
@@ -412,6 +411,84 @@ class TestPostProcessTechReview:
         result = post_process("technical-review", progress, base, {})
         assert "action_override" in result
         assert result["action_override"]["action"] == "fail"
+
+    def test_fix_cycle_records_prior_severity(self, tmp_path):
+        # First fix cycle: no prior recorded, so it dispatches and stores the
+        # current severity for the next iteration to compare against.
+        severity = {"critical": 2, "significant": 1, "minor": 0, "sme": 0}
+        base = self._make_sidecar(tmp_path, "LOW", severity)
+        progress = {
+            "ticket": "T-1",
+            "_step_skills": {"writing": "docs-tools:docs-workflow-writing"},
+            "steps": {
+                "technical-review": {"status": "completed", "output": None, "result": None},
+                "writing": {"status": "completed", "output": None, "result": None},
+            },
+        }
+        result = post_process("technical-review", progress, base, {})
+        assert "action_override" in result
+        assert progress.get("_tech_review_prior_severity") == severity
+
+    def test_medium_convergence_proceeds_with_warning(self, tmp_path):
+        severity = {"critical": 1, "significant": 0, "minor": 0, "sme": 0}
+        base = self._make_sidecar(tmp_path, "MEDIUM", severity, iteration=2)
+        progress = {
+            "ticket": "T-1",
+            "_tech_review_fix_from": "/some/review.md",
+            "_tech_review_iteration": 2,
+            "_tech_review_prior_severity": dict(severity),
+            "steps": {"technical-review": {"status": "completed", "output": None, "result": None}},
+        }
+        result = post_process("technical-review", progress, base, {})
+        assert "action_override" not in result
+        assert any("converged" in w for w in result["warnings"])
+        # Loop state is cleaned up so a later run starts fresh.
+        assert progress.get("_tech_review_prior_severity") is None
+        assert progress.get("_tech_review_fix_from") is None
+
+    def test_low_convergence_fails(self, tmp_path):
+        severity = {"critical": 1, "significant": 0, "minor": 0, "sme": 0}
+        base = self._make_sidecar(tmp_path, "LOW", severity, iteration=2)
+        progress = {
+            "ticket": "T-1",
+            "_tech_review_iteration": 2,
+            "_tech_review_prior_severity": dict(severity),
+            "steps": {"technical-review": {"status": "completed", "output": None, "result": None}},
+        }
+        result = post_process("technical-review", progress, base, {})
+        assert "action_override" in result
+        assert result["action_override"]["action"] == "fail"
+        assert "converged" in result["action_override"]["reason"]
+
+    def test_no_convergence_when_severity_changes(self, tmp_path):
+        # Prior iteration had more issues; progress was made, so keep iterating.
+        base = self._make_sidecar(
+            tmp_path, "LOW", {"critical": 1, "significant": 0, "minor": 0, "sme": 0}, iteration=2
+        )
+        progress = {
+            "ticket": "T-1",
+            "_step_skills": {"writing": "docs-tools:docs-workflow-writing"},
+            "_tech_review_iteration": 2,
+            "_tech_review_prior_severity": {
+                "critical": 3,
+                "significant": 2,
+                "minor": 0,
+                "sme": 0,
+            },
+            "steps": {
+                "technical-review": {"status": "completed", "output": None, "result": None},
+                "writing": {"status": "completed", "output": None, "result": None},
+            },
+        }
+        result = post_process("technical-review", progress, base, {})
+        assert "action_override" in result
+        assert result["action_override"]["action"] != "fail"
+        assert progress.get("_tech_review_prior_severity") == {
+            "critical": 1,
+            "significant": 0,
+            "minor": 0,
+            "sme": 0,
+        }
 
 
 class TestPostProcessWriting:
@@ -1750,14 +1827,19 @@ class TestPrepareWriting:
         result = _prepare_writing("T-1", base, {"format": "mkdocs"}, {})
         assert result["agents"][0]["description"] == "Write mkdocs documentation for T-1"
 
-    def test_fix_mode_no_finalize_or_verify(self, tmp_path):
+    def test_fix_mode_finalizes_but_skips_verify(self, tmp_path):
         base = self._setup(tmp_path)
         review = tmp_path / "review.md"
         review.write_text("issues to fix")
-        progress = {"_tech_review_fix_from": str(review)}
+        progress = {"_tech_review_fix_from": str(review), "_tech_review_iteration": 2}
         result = _prepare_writing("T-1", base, {"format": "adoc"}, progress)
+        # verify stays gated on verify_output (off for fix mode, by design)
         assert result["verify"] is None
-        assert result["finalize"] == []
+        # but the sidecar finalize now runs so completed_at/files stay current
+        assert len(result["finalize"]) == 1
+        assert "write_step_result.py" in result["finalize"][0]
+        assert "--mode fix" in result["finalize"][0]
+        assert "--iteration 2" in result["finalize"][0]
         assert result["agents"][0]["description"] == "Fix documentation for T-1"
         assert str(review) in result["agents"][0]["prompt"]
 
@@ -1809,23 +1891,6 @@ class TestCmdPrepareStep:
         out = json.loads(capsys.readouterr().out)
         assert out["action"] == "fail"
         assert "No prepare function" in out["message"]
-
-
-class TestResolveYamlPath:
-    def test_rejects_path_traversal_workflow_name(self, monkeypatch, tmp_path):
-        monkeypatch.chdir(tmp_path)
-        assert resolve_yaml_path("../../etc/passwd") is None
-
-    def test_rejects_slash_in_workflow_name(self, monkeypatch, tmp_path):
-        monkeypatch.chdir(tmp_path)
-        assert resolve_yaml_path("foo/bar") is None
-
-    def test_valid_named_workflow_resolves(self, monkeypatch, tmp_path):
-        ws = tmp_path / ".agent_workspace"
-        ws.mkdir()
-        (ws / "docs-custom.yaml").write_text("name: docs-custom\nsteps: []\n")
-        monkeypatch.chdir(tmp_path)
-        assert resolve_yaml_path("custom") == os.path.join(".agent_workspace", "docs-custom.yaml")
 
 
 class TestInitStepDoneLoop:
@@ -2246,3 +2311,52 @@ class TestResolveSourcePostRequirements:
 
         monkeypatch.setattr("docs_orchestrator.call_resolve_source", boom)
         assert resolve_source_post_requirements(base, pfile, progress, options) == []
+
+
+class TestPostProcessPromotesIteration:
+    def test_iteration_promoted_from_sidecar(self, tmp_path):
+        base = str(tmp_path)
+        step_dir = tmp_path / "technical-review"
+        step_dir.mkdir()
+        sidecar = {
+            "schema_version": 1,
+            "step": "technical-review",
+            "ticket": "T-1",
+            "completed_at": "2020-01-01T00:00:00+00:00",
+            "confidence": "HIGH",
+            "severity_counts": {"critical": 0, "significant": 0, "minor": 0, "sme": 0},
+            "iteration": 3,
+            "code_grounded": True,
+        }
+        (step_dir / "step-result.json").write_text(json.dumps(sidecar))
+        progress = {
+            "ticket": "T-1",
+            "steps": {
+                "technical-review": {"status": "completed", "output": None, "result": None},
+            },
+        }
+        post_process("technical-review", progress, base, {})
+        assert progress["steps"]["technical-review"]["iteration"] == 3
+
+    def test_no_iteration_when_sidecar_lacks_field(self, tmp_path):
+        base = str(tmp_path)
+        step_dir = tmp_path / "writing"
+        step_dir.mkdir()
+        sidecar = {
+            "schema_version": 1,
+            "step": "writing",
+            "ticket": "T-1",
+            "completed_at": "2020-01-01T00:00:00+00:00",
+            "files": ["/a.adoc"],
+            "mode": "update-in-place",
+            "format": "adoc",
+        }
+        (step_dir / "step-result.json").write_text(json.dumps(sidecar))
+        progress = {
+            "ticket": "T-1",
+            "steps": {
+                "writing": {"status": "completed", "output": None, "result": None},
+            },
+        }
+        post_process("writing", progress, base, {})
+        assert "iteration" not in progress["steps"]["writing"]

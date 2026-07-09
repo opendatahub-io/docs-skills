@@ -148,11 +148,13 @@ documentation VERBATIM — copy it exactly as written, including punctuation.
    array holding one object per criterion, in the same order, each shaped exactly:
    {{"id": "<the ID shown in brackets>", "covered": true, "quote": "verbatim sentence"}}
    or {{"id": "<the ID shown in brackets>", "covered": false, "quote": null}}
-6. The full reply must be:
+6. The JSON object must be shaped:
    ```json
    {{"items": [ ... ]}}
    ```
-   Output only that fenced JSON object — no prose before or after it.
+7. Write that JSON object — only the fenced ```json block, nothing else — to
+   `{raw_file}` using the Write tool. After writing the file, reply with only
+   the word DONE. Do NOT paste the JSON into your reply.
 """
 
 DOC_QUALITY_PROMPT = """\
@@ -172,7 +174,7 @@ and absence of fabricated commands, flags, or API details.
 ## Documentation to evaluate
 
 {doc_content}
-
+{verified_claims_section}
 ## Output
 
 Output only a single JSON object inside a ```json fenced code block, shaped exactly:
@@ -181,7 +183,9 @@ Output only a single JSON object inside a ```json fenced code block, shaped exac
 {{"score": <integer 1-5>, "rationale": "<detailed rationale for the score>"}}
 ```
 
-No prose before or after the fenced block.
+Write that JSON object — only the fenced ```json block, nothing else — to
+`{raw_file}` using the Write tool. After writing the file, reply with only the
+word DONE. Do NOT paste the JSON into your reply.
 """
 
 INTENT_ALIGNMENT_PROMPT = """\
@@ -235,8 +239,11 @@ Output only a single JSON object inside a ```json fenced code block, shaped exac
 }}
 ```
 
-Use an empty array for "missed_items" if nothing is missed. No prose before or after \
-the fenced block.
+Use an empty array for "missed_items" if nothing is missed.
+
+Write that JSON object — only the fenced ```json block, nothing else — to
+`{raw_file}` using the Write tool. After writing the file, reply with only the
+word DONE. Do NOT paste the JSON into your reply.
 """
 
 
@@ -702,6 +709,37 @@ def cmd_brief(args):
     print(f"Written {brief_path}")
 
 
+def load_verified_claims(base_path):
+    """Load supported/partially-supported claims from technical-review.
+
+    Returns a formatted string for prompt injection, or empty string if
+    no claim-validation data exists. The claim-validation.json file has
+    the structure ``{"claims": [...], "summary": {...}}``.
+    """
+    cv_path = base_path / "technical-review" / "claim-validation.json"
+    if not cv_path.is_file():
+        return ""
+    try:
+        data = json.loads(cv_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return ""
+
+    claims = data.get("claims", []) if isinstance(data, dict) else []
+    verified = [
+        c
+        for c in claims
+        if isinstance(c, dict) and c.get("verdict") in ("supported", "partially_supported")
+    ]
+    if not verified:
+        return ""
+
+    lines = []
+    for c in verified:
+        verdict = c["verdict"].replace("_", " ")
+        lines.append(f"- [{verdict}] {c.get('text', 'unknown')}")
+    return "\n".join(lines)
+
+
 def cmd_prepare(args):
     """Read pipeline outputs and write judge prompt files."""
     base_path = Path(args.base_path)
@@ -711,10 +749,28 @@ def cmd_prepare(args):
     doc_content = read_doc_content(base_path)
     ticket_context = read_ticket_context(base_path)
 
-    dq_prompt = DOC_QUALITY_PROMPT.format(doc_content=doc_content)
+    verified_text = load_verified_claims(base_path)
+    if verified_text:
+        verified_claims_section = (
+            "\n## Verified claims (from upstream technical review)\n\n"
+            "The following technical claims in this documentation have been independently\n"
+            "verified against source code by automated claim-validation agents. Do NOT\n"
+            "downgrade the score for fabrication if the documented content aligns with a\n"
+            "verified claim.\n\n"
+            f"{verified_text}\n\n"
+        )
+    else:
+        verified_claims_section = ""
+
+    dq_prompt = DOC_QUALITY_PROMPT.format(
+        doc_content=doc_content,
+        raw_file=str(output_dir / "dq-raw.md"),
+        verified_claims_section=verified_claims_section,
+    )
     ia_prompt = INTENT_ALIGNMENT_PROMPT.format(
         ticket_context=ticket_context,
         doc_content=doc_content,
+        raw_file=str(output_dir / "ia-raw.md"),
     )
 
     (output_dir / "dq-prompt.md").write_text(dq_prompt)
@@ -767,6 +823,7 @@ def cmd_verify(args):
         prompt = COVERAGE_CHECK_PROMPT.format(
             ac_list="\n".join(ac_lines),
             doc_content=doc_content,
+            raw_file=str(output_dir / "coverage-raw.md"),
         )
         prompt_file = output_dir / "coverage-prompt.md"
         prompt_file.write_text(prompt)
