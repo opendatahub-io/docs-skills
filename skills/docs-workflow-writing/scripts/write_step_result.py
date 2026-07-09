@@ -73,11 +73,19 @@ def main() -> int:
 
     if mode == "fix":
         if sidecar_path.is_file():
-            prior = json.loads(sidecar_path.read_text())
-            mode = prior.get("mode", "update-in-place")
-            fmt = prior.get("format", fmt)
-            if iteration is None:
-                iteration = prior.get("iteration", 1) + 1
+            try:
+                prior = json.loads(sidecar_path.read_text())
+                mode = prior.get("mode", "update-in-place")
+                fmt = prior.get("format", fmt)
+                if iteration is None:
+                    iteration = prior.get("iteration", 1) + 1
+            except (json.JSONDecodeError, OSError) as exc:
+                print(
+                    f"WARNING: could not read prior sidecar at {sidecar_path} "
+                    f"({exc}); falling back to mode=update-in-place",
+                    file=sys.stderr,
+                )
+                mode = "update-in-place"
         else:
             print(
                 f"WARNING: fix mode with no prior sidecar at {sidecar_path}; "

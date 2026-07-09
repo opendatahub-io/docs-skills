@@ -129,10 +129,19 @@ def parse_workflow_yaml(path: str) -> tuple[str, str, list[dict], list[str]]:
     except (OSError, yaml.YAMLError) as e:
         raise WorkflowError(f"Cannot parse workflow YAML {path}: {e}") from e
 
+    if not isinstance(doc, dict):
+        raise WorkflowError(f"Workflow YAML {path} must be a mapping at the top level")
+
     wf = doc.get("workflow") or doc
+    if not isinstance(wf, dict):
+        raise WorkflowError(f"Workflow YAML {path} 'workflow' block must be a mapping")
     name = wf.get("name") or "docs-workflow"
     description = wf.get("description") or ""
     requires = wf.get("requires") or []
+
+    raw_steps = wf.get("steps") or []
+    if not isinstance(raw_steps, list):
+        raise WorkflowError(f"Workflow YAML {path} 'steps' must be a list")
 
     steps = [
         {
@@ -142,7 +151,7 @@ def parse_workflow_yaml(path: str) -> tuple[str, str, list[dict], list[str]]:
             "when": s.get("when"),
             "inputs": s.get("inputs") or [],
         }
-        for s in (wf.get("steps") or [])
+        for s in raw_steps
     ]
 
     return name, description, steps, requires
