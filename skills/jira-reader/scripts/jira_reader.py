@@ -30,6 +30,7 @@ import json
 import os
 import re
 import sys
+import urllib.parse
 from datetime import datetime, timedelta
 
 import urllib3
@@ -147,6 +148,43 @@ def adf_to_text(node):
     # doc, panel, expand, mediaSingle, etc.: recurse into children
     parts = [adf_to_text(child) for child in content]
     return "".join(parts)
+
+
+_BARE_URL_RE = re.compile(r"https?://[^\s,\]\)\|]+")
+_GIT_HOSTS = ("github.com", "www.github.com", "gitlab.com")
+
+
+def _extract_git_pr_field(fields, field_id="customfield_10875"):
+    """Extract GitHub/GitLab URLs from a JIRA 'Git Pull Request' custom field.
+
+    The field may be an ADF document (PropertyHolder), a wiki-markup string,
+    or a plain-text string. Returns a deduplicated list of git-host URLs.
+    """
+    if isinstance(fields, dict):
+        value = fields.get(field_id)
+    else:
+        value = getattr(fields, field_id, None)
+    if not value:
+        return []
+    if isinstance(value, str):
+        text = value
+    else:
+        text = adf_to_text(value)
+    if not text:
+        return []
+    urls = _BARE_URL_RE.findall(text)
+    seen = set()
+    result = []
+    for url in urls:
+        url = url.rstrip("/")
+        try:
+            host = urllib.parse.urlparse(url).hostname
+        except Exception:
+            continue
+        if host and host in _GIT_HOSTS and url not in seen:
+            seen.add(url)
+            result.append(url)
+    return result
 
 
 def load_env_file():
@@ -435,6 +473,7 @@ class JiraReader:
 
             # Extract Git links
             git_links = self.extract_git_links(links, git_link_types)
+            git_links.extend(u for u in _extract_git_pr_field(issue.fields) if u not in git_links)
 
             # Extract custom fields
             custom_fields = {}
@@ -701,6 +740,7 @@ class JiraReader:
             "assignee": f.assignee.displayName
             if f.assignee and hasattr(f.assignee, "displayName")
             else None,
+            "_git_pr_field": _extract_git_pr_field(f),
         }
 
     def _enrich_with_remote_links(self, issues, errors):
@@ -715,6 +755,9 @@ class JiraReader:
                 except Exception:  # noqa: BLE001, S112
                     continue
                 if host and host.startswith(("github", "www.github", "gitlab")):
+                    item["git_links"].append(url)
+            for url in item.pop("_git_pr_field", []):
+                if url not in item["git_links"]:
                     item["git_links"].append(url)
             item["auto_discovered_urls"] = auto_discovered
             errors.extend(link_errors)
