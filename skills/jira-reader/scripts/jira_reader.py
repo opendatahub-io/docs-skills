@@ -30,6 +30,7 @@ import json
 import os
 import re
 import sys
+import urllib.parse
 from datetime import datetime, timedelta
 
 import urllib3
@@ -149,8 +150,7 @@ def adf_to_text(node):
     return "".join(parts)
 
 
-_WIKI_LINK_RE = re.compile(r"\[([^|\]\s]+)\|[^\]]*\]")
-_BARE_URL_RE = re.compile(r"https?://[^\s,\]\)]+")
+_BARE_URL_RE = re.compile(r"https?://[^\s,\]\)\|]+")
 _GIT_HOSTS = ("github.com", "www.github.com", "gitlab.com")
 
 
@@ -160,7 +160,10 @@ def _extract_git_pr_field(fields, field_id="customfield_10875"):
     The field may be an ADF document (PropertyHolder), a wiki-markup string,
     or a plain-text string. Returns a deduplicated list of git-host URLs.
     """
-    value = getattr(fields, field_id, None) if not isinstance(fields, dict) else fields.get(field_id)
+    if isinstance(fields, dict):
+        value = fields.get(field_id)
+    else:
+        value = getattr(fields, field_id, None)
     if not value:
         return []
     if isinstance(value, str):
@@ -169,13 +172,13 @@ def _extract_git_pr_field(fields, field_id="customfield_10875"):
         text = adf_to_text(value)
     if not text:
         return []
-    urls = _WIKI_LINK_RE.findall(text) or _BARE_URL_RE.findall(text)
+    urls = _BARE_URL_RE.findall(text)
     seen = set()
     result = []
     for url in urls:
         url = url.rstrip("/")
         try:
-            host = urllib3.util.parse_url(url).host
+            host = urllib.parse.urlparse(url).hostname
         except Exception:
             continue
         if host and host in _GIT_HOSTS and url not in seen:
@@ -470,9 +473,7 @@ class JiraReader:
 
             # Extract Git links
             git_links = self.extract_git_links(links, git_link_types)
-            git_links.extend(
-                u for u in _extract_git_pr_field(issue.fields) if u not in git_links
-            )
+            git_links.extend(u for u in _extract_git_pr_field(issue.fields) if u not in git_links)
 
             # Extract custom fields
             custom_fields = {}
