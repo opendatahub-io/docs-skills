@@ -23,6 +23,6 @@ If any required items are missing, tell the user what's needed and how to fix it
 - **`git`**: Install via system package manager.
 - **`jq`**: Install via system package manager.
 - **`gh`**: Install from https://cli.github.com/.
-- **`glab`**: Install from https://gitlab.com/gitlab-org/cli. Optional — only needed for GitLab-based repositories.
+- **`glab`**: Install from https://gitlab.com/gitlab-org/cli. Required for GitLab workflows (create-merge-request, git-pr-reader).
 - **`vale`**: Install from https://vale.sh/docs/install/. Optional — only needed for style review skills.
 - **`shellcheck`** / **`ruff`**: Optional dev/CI tools.
