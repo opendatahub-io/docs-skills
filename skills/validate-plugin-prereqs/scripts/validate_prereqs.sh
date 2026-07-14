@@ -53,6 +53,7 @@ CLI_CHECKS=(
   "git:required"
   "jq:required"
   "gh:required"
+  "glab:optional"
   "vale:optional"
   "shellcheck:optional"
   "ruff:optional"
