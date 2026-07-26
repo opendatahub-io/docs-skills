@@ -46,6 +46,50 @@ def load_json(path):
         return None
 
 
+DRAFT_SUFFIXES = (".adoc", ".md")
+
+
+def writing_sidecar_files(base_path):
+    """Return the writing sidecar's explicit file list, or None.
+
+    None means the writing step did not write in place, so the drafts live in
+    a directory rather than being enumerated. Single source of truth for that
+    decision: both the reviewer's source_files_block and the extraction
+    planner branch on it.
+    """
+    sidecar = load_json(os.path.join(base_path, "writing", "step-result.json"))
+    if (
+        isinstance(sidecar, dict)
+        and sidecar.get("mode") == "update-in-place"
+        and sidecar.get("files")
+    ):
+        return sidecar["files"]
+    return None
+
+
+def resolve_source_files(base_path):
+    """Return the absolute draft files this run reviews, in a stable order.
+
+    Shared with plan_extraction.py so the files that get hashed are exactly
+    the files that get extracted. Resolving them twice invites the two sets to
+    drift apart, which silently loses claims.
+
+    Unlike source_files_block, this filters to reviewable draft suffixes — a
+    topic map or attributes file listed in the sidecar yields no claims, so
+    hashing it would only add churn.
+    """
+    files = writing_sidecar_files(base_path)
+    if files is not None:
+        return [f for f in files if f.endswith(DRAFT_SUFFIXES)]
+
+    drafts_dir = Path(base_path) / "writing"
+    if not drafts_dir.is_dir():
+        return []
+    return sorted(
+        str(p) for p in drafts_dir.rglob("*") if p.is_file() and p.suffix in DRAFT_SUFFIXES
+    )
+
+
 def _extract_section(content, heading):
     """Return the body under a `### <heading>` up to the next heading (or end)."""
     pattern = re.compile(
@@ -125,14 +169,9 @@ def main() -> int:
     has_code_analysis = os.path.isfile(os.path.join(code_analysis_dir, "ONBOARDING.md"))
 
     # Read writing sidecar to determine source files
-    writing_sidecar = load_json(os.path.join(base_path, "writing", "step-result.json"))
-    source_files_block = ""
-    if (
-        isinstance(writing_sidecar, dict)
-        and writing_sidecar.get("mode") == "update-in-place"
-        and writing_sidecar.get("files")
-    ):
-        file_lines = "\n".join(f"- `{f}`" for f in writing_sidecar["files"])
+    sidecar_files = writing_sidecar_files(base_path)
+    if sidecar_files is not None:
+        file_lines = "\n".join(f"- `{f}`" for f in sidecar_files)
         source_files_block = f"Source files — review each of these:\n{file_lines}"
     else:
         drafts_dir = os.path.join(base_path, "writing")
