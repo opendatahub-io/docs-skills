@@ -118,6 +118,22 @@ The SKILL.md itself should only contain:
 
 Do NOT embed procedural logic (conditionals, path construction, validation, JSON assembly, decision tables) inline in SKILL.md. If you find yourself writing "if X then set Y" or a JSON block with placeholders to fill in, stop and move it to a script.
 
+## Converting prose steps to scripts
+
+When you replace prose instructions in a SKILL.md with a script, the script inherits only the behaviour someone wrote down. Anything the prose runs did incidentally — extra artifacts, retained intermediates, snapshots taken before an overwrite — stops happening silently, because no test covers a file nobody specified.
+
+Before merging a conversion, inventory what the prose actually produced:
+
+```bash
+python3 scripts/artifact_inventory.py --step <step-name> --current <new-output-dir>
+```
+
+It takes the union of paths that prior runs wrote under `.agent_workspace/*/<step-name>/`, diffs it against what the scripted version writes, and reports what is no longer produced along with how many runs produced it. For every dropped path, state in the PR whether it is dead weight, an unspecified feature to preserve, or an accident being dropped on purpose.
+
+The test: *if you cannot say why an artifact stopped being produced, the conversion is not finished.*
+
+This catches dropped **artifacts** only. Prose that chose to re-read a file, reorder work, or batch adaptively leaves nothing on disk, and no inventory will find it — weigh that separately when the prose step made decisions rather than just writing output.
+
 ## Workflow step skills must write step-result.json
 
 All `docs-workflow-*` step skills must write a `step-result.json` sidecar alongside their primary output. This lightweight metadata file lets the orchestrator read structured results without parsing markdown.
