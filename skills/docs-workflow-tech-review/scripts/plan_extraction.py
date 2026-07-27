@@ -42,6 +42,7 @@ MANIFEST_NAME = "claims-manifest.json"
 MANIFEST_VERSION = 1
 CARRIED_NAME = "carried-claims.json"
 FRESH_NAME = "extracted-changed.json"
+PLAN_NAME = "extraction-plan.json"
 CLAIMS_LIST_NAME = "claims-list.json"
 REVIEW_NAME = "review.md"
 
@@ -273,19 +274,24 @@ def main() -> int:
 
     write_manifest(output_dir, hashes, prior_files, current_state, prior_claims, index)
 
-    json.dump(
-        {
-            "extract_all": gate_off,
-            "files_to_extract": source_files if gate_off else changed,
-            "unchanged_files": unchanged,
-            "carried_claim_count": len(carried),
-            "changed_file_count": len(changed),
-            "carried_byte_share": round(carried_bytes / total_bytes, 4) if total_bytes else 0.0,
-            "invalidation_reason": reason,
-        },
-        sys.stdout,
-        indent=2,
-    )
+    plan = {
+        "extract_all": gate_off,
+        "files_to_extract": source_files if gate_off else changed,
+        "unchanged_files": unchanged,
+        "carried_claim_count": len(carried),
+        "changed_file_count": len(changed),
+        "unchanged_file_count": len(unchanged),
+        "carried_byte_share": round(carried_bytes / total_bytes, 4) if total_bytes else 0.0,
+        "invalidation_reason": reason,
+    }
+
+    # Persist the plan so write_step_result.py can fold the carry-forward
+    # counters into the step sidecar. Without a durable copy the numbers exist
+    # only on stdout, and the carry-forward rate stays unmeasurable across runs
+    # — the exact gap that made this work necessary in the first place.
+    (output_dir / PLAN_NAME).write_text(json.dumps(plan, indent=2))
+
+    json.dump(plan, sys.stdout, indent=2)
     sys.stdout.write("\n")
     return 0
 

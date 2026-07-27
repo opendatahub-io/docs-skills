@@ -298,3 +298,261 @@ def test_stdout_never_contains_claim_text(tmp_path):
     run_plan(base, "--iteration", "1", "--report-only")
     _, raw = run_plan(base, "--iteration", "2")
     assert "SECRET_CLAIM_TEXT" not in raw
+
+
+# --- merge_extraction (Stage 1) ---------------------------------------------
+
+MERGE_SCRIPT = os.path.join(SCRIPTS_DIR, "merge_extraction.py")
+
+from merge_extraction import id_number, renumber  # noqa: E402
+
+
+def run_merge(base, *extra):
+    result = subprocess.run(
+        [
+            sys.executable,
+            MERGE_SCRIPT,
+            "--base-path",
+            str(base),
+            "--output-dir",
+            str(base / "technical-review"),
+            *extra,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    return result
+
+
+def write_fresh(base, claims):
+    (base / "technical-review" / "extracted-changed.json").write_text(json.dumps(claims))
+
+
+def test_id_number_parses_every_observed_format():
+    # All three have come out of the identical extractor prompt.
+    assert id_number("claim-1") == 1
+    assert id_number("C001") == 1
+    assert id_number("B042") == 42
+    assert id_number("17") == 17
+    assert id_number("no-digits") == 0
+    assert id_number(None) == 0
+
+
+def test_renumber_discards_agent_ids():
+    fresh = [{"id": "claim-1", "text": "a"}, {"id": "C001", "text": "b"}]
+    out = renumber(fresh, 5)
+    assert [c["id"] for c in out] == ["C005", "C006"]
+    assert [c["text"] for c in out] == ["a", "b"]
+
+
+def test_merge_renumbers_fresh_past_carried_ids(tmp_path):
+    base, paths = build_workspace(tmp_path)
+    write_claims(
+        base,
+        [
+            {"id": "C001", "text": "t1", "file": "a.adoc", "line": 3},
+            {"id": "C002", "text": "t2", "file": "b.adoc", "line": 3},
+        ],
+    )
+    run_plan(base, "--iteration", "1", "--report-only")
+    with open(paths[1], "a") as handle:
+        handle.write("\nEdited.\n")
+    run_plan(base, "--iteration", "2")
+
+    # The extractor returns ids that collide with the carried claim's id.
+    write_fresh(base, [{"id": "C001", "text": "fresh", "file": "b.adoc", "line": 9}])
+    result = run_merge(base)
+    assert result.returncode == 0, result.stderr
+
+    claims = json.loads((base / "technical-review" / "claims-list.json").read_text())
+    ids = [c["id"] for c in claims]
+    assert ids == ["C001", "C002"], ids
+    assert len(set(ids)) == len(ids), "collision would misattribute a verdict"
+    # The carried claim keeps its identity; the fresh one was renumbered.
+    assert claims[0]["text"] == "t1"
+    assert claims[1]["text"] == "fresh"
+
+
+def test_merge_fails_loudly_when_extractor_produced_nothing(tmp_path):
+    base, paths = build_workspace(tmp_path)
+    write_claims(base, [{"id": "C001", "text": "t1", "file": "a.adoc", "line": 3}])
+    run_plan(base, "--iteration", "1", "--report-only")
+    with open(paths[1], "a") as handle:
+        handle.write("\nEdited.\n")
+    run_plan(base, "--iteration", "2")
+
+    # No extracted-changed.json written at all.
+    result = run_merge(base)
+    assert result.returncode == 1
+    assert "Refusing" in result.stderr
+    # Must not leave a claims list that silently dropped the changed file.
+    stale = json.loads((base / "technical-review" / "claims-list.json").read_text())
+    assert stale == [{"id": "C001", "text": "t1", "file": "a.adoc", "line": 3}]
+
+
+def test_merge_keeps_carried_manifest_entries(tmp_path):
+    base, paths = build_workspace(tmp_path)
+    write_claims(
+        base,
+        [
+            {"id": "C001", "text": "t1", "file": "a.adoc", "line": 3},
+            {"id": "C002", "text": "t2", "file": "b.adoc", "line": 3},
+        ],
+    )
+    run_plan(base, "--iteration", "1", "--report-only")
+    with open(paths[1], "a") as handle:
+        handle.write("\nEdited.\n")
+    run_plan(base, "--iteration", "2")
+    write_fresh(base, [{"id": "x", "text": "fresh", "file": "b.adoc", "line": 9}])
+    run_merge(base)
+
+    manifest = json.loads((base / "technical-review" / "claims-manifest.json").read_text())
+    # Unchanged file keeps its entry, changed file gets a refreshed one.
+    assert paths[0] in manifest["files"]
+    assert paths[1] in manifest["files"]
+    assert manifest["files"][paths[1]]["claim_ids"] == ["C002"]
+
+
+def test_merge_omits_files_that_returned_no_claims(tmp_path):
+    base, paths = build_workspace(tmp_path)
+    write_claims(base, [{"id": "C001", "text": "t1", "file": "a.adoc", "line": 3}])
+    run_plan(base, "--iteration", "1", "--report-only")
+    with open(paths[1], "a") as handle:
+        handle.write("\nEdited.\n")
+    run_plan(base, "--iteration", "2")
+
+    # Extractor read b.adoc but produced nothing for it.
+    write_fresh(base, [])
+    assert run_merge(base).returncode == 0
+    manifest = json.loads((base / "technical-review" / "claims-manifest.json").read_text())
+    assert paths[1] not in manifest["files"], "would cache the file as claim-free"
+
+
+def test_end_to_end_carry_forward_reaches_incremental_claims(tmp_path):
+    """The whole point: a carried claim keeps its prior verdict.
+
+    Drives the real scripts rather than mocks — if the join or the verbatim
+    copy regresses, carry-forward silently returns to zero and only this test
+    notices.
+    """
+    base, paths = build_workspace(tmp_path)
+    out = base / "technical-review"
+    write_claims(
+        base,
+        [
+            {"id": "C001", "text": "unchanged claim", "file": "a.adoc", "line": 3},
+            {"id": "C002", "text": "stale claim", "file": "b.adoc", "line": 3},
+        ],
+    )
+    run_plan(base, "--iteration", "1", "--report-only")
+
+    # Prior validation, as merge_verdicts.py would have written it.
+    (out / "claim-validation.json").write_text(
+        json.dumps(
+            {
+                "claims": [
+                    {
+                        "id": "C001",
+                        "text": "unchanged claim",
+                        "file": "a.adoc",
+                        "line": 3,
+                        "verdict": "unsupported",
+                        "evidence": "contradicts config.go:12",
+                    }
+                ],
+                "summary": {},
+            }
+        )
+    )
+
+    with open(paths[1], "a") as handle:
+        handle.write("\nEdited.\n")
+    run_plan(base, "--iteration", "2")
+    write_fresh(base, [{"id": "whatever", "text": "reworded claim", "file": "b.adoc", "line": 9}])
+    assert run_merge(base).returncode == 0
+
+    subprocess.run(
+        [
+            sys.executable,
+            os.path.join(SCRIPTS_DIR, "incremental_claims.py"),
+            "--claims-list",
+            str(out / "claims-list.json"),
+            "--prior-validation",
+            str(out / "claim-validation.json"),
+            "--output-dir",
+            str(out),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    carryover = json.loads((out / "batch-verdict-carryover.json").read_text())
+    to_validate = json.loads((out / "claims-to-validate.json").read_text())
+
+    # The unchanged file's claim keeps its verdict without re-validation...
+    assert len(carryover) == 1
+    assert carryover[0]["claim_id"] == "C001"
+    assert carryover[0]["verdict"] == "unsupported"
+    # ...and only the changed file's claim is re-validated.
+    assert [c["file"] for c in to_validate] == ["b.adoc"]
+
+
+# --- sidecar instrumentation ------------------------------------------------
+
+
+def _load_tech_review_step_result():
+    """Load this skill's write_step_result by path.
+
+    Several skills ship a module of that name, and conftest puts all their
+    script dirs on sys.path — a bare import binds whichever one is imported
+    first and poisons sys.modules for the other suites.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "tech_review_write_step_result",
+        os.path.join(SCRIPTS_DIR, "write_step_result.py"),
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+read_claim_cache = _load_tech_review_step_result().read_claim_cache
+
+
+def test_read_claim_cache_extracts_counters_only(tmp_path):
+    plan = tmp_path / "extraction-plan.json"
+    plan.write_text(
+        json.dumps(
+            {
+                "extract_all": False,
+                "files_to_extract": ["/x/a.adoc"],
+                "unchanged_files": ["/x/b.adoc"],
+                "carried_claim_count": 47,
+                "changed_file_count": 1,
+                "unchanged_file_count": 1,
+                "carried_byte_share": 0.61,
+                "invalidation_reason": None,
+            }
+        )
+    )
+    cache = read_claim_cache(str(plan))
+    assert cache["carried_claim_count"] == 47
+    assert cache["carried_byte_share"] == 0.61
+    # File lists stay out of the sidecar the orchestrator reads every step.
+    assert "files_to_extract" not in cache
+    assert "unchanged_files" not in cache
+
+
+def test_read_claim_cache_tolerates_missing_or_broken_plan(tmp_path):
+    # Instrumentation must never fail the tech-review step.
+    assert read_claim_cache("") is None
+    assert read_claim_cache(str(tmp_path / "nope.json")) is None
+    bad = tmp_path / "bad.json"
+    bad.write_text("{ not json")
+    assert read_claim_cache(str(bad)) is None
+    empty = tmp_path / "empty.json"
+    empty.write_text("{}")
+    assert read_claim_cache(str(empty)) is None
