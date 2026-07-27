@@ -139,6 +139,40 @@ def snapshot_prior_iteration(output_dir, iteration):
     return copied or None
 
 
+def snapshot_drafts(output_dir, iteration, source_files):
+    """Copy the draft files as they stand at the start of this iteration.
+
+    The hash diff answers "did this file change"; it cannot answer "how much of
+    it changed", because a hash of the previous content is not the previous
+    content. Diffing consecutive snapshots is the only way to recover that, and
+    it decides whether block-level claim identity is worth building: if fix
+    passes rewrite most of a changed file, no anchoring scheme can carry its
+    claims forward.
+
+    Runs on every iteration, the first included — that snapshot is the baseline
+    the second is diffed against. Files are copied under their basename, which
+    is how claims refer to them; a colliding basename gets a short digest of its
+    full path so nothing is silently overwritten.
+    """
+    dest = output_dir / f"drafts-iter-{iteration}"
+    dest.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for path in source_files:
+        src = Path(path)
+        if not src.is_file():
+            continue
+        target = dest / src.name
+        if target.exists():
+            digest = hashlib.sha256(str(path).encode()).hexdigest()[:8]
+            target = dest / f"{src.stem}.{digest}{src.suffix}"
+        try:
+            shutil.copy2(src, target)
+        except OSError:
+            continue
+        copied += 1
+    return copied
+
+
 def read_manifest(output_dir):
     """Return (files_map, stored_code_state, reason). reason is set on failure."""
     path = output_dir / MANIFEST_NAME
@@ -216,6 +250,7 @@ def main() -> int:
     snapshot_prior_iteration(output_dir, args.iteration)
 
     source_files = resolve_source_files(str(base_path))
+    snapshot_drafts(output_dir, args.iteration, source_files)
     hashes = {f: file_hash(f) for f in source_files}
     sizes = {f: (Path(f).stat().st_size if Path(f).is_file() else 0) for f in source_files}
     current_state = code_state(args.repo)

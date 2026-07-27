@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 SCRIPTS_DIR = os.path.join(
     os.path.dirname(__file__),
@@ -556,3 +557,65 @@ def test_read_claim_cache_tolerates_missing_or_broken_plan(tmp_path):
     empty = tmp_path / "empty.json"
     empty.write_text("{}")
     assert read_claim_cache(str(empty)) is None
+
+
+# --- draft snapshots (Phase 2 measurement input) ----------------------------
+
+from plan_extraction import snapshot_drafts  # noqa: E402
+
+
+def test_draft_snapshot_taken_on_every_iteration(tmp_path):
+    base, paths = build_workspace(tmp_path)
+    run_plan(base, "--iteration", "1", "--report-only")
+    # Iteration 1 is the baseline the second is diffed against, so it must be
+    # captured even though there is nothing to compare it with yet.
+    snap1 = base / "technical-review" / "drafts-iter-1"
+    assert sorted(p.name for p in snap1.iterdir()) == ["a.adoc", "b.adoc"]
+
+    with open(paths[1], "a") as handle:
+        handle.write("\nEdited.\n")
+    run_plan(base, "--iteration", "2")
+
+    snap2 = base / "technical-review" / "drafts-iter-2"
+    assert (snap1 / "a.adoc").read_text() == (snap2 / "a.adoc").read_text()
+    assert (snap1 / "b.adoc").read_text() != (snap2 / "b.adoc").read_text()
+
+
+def test_draft_snapshot_measures_edit_size(tmp_path):
+    """The snapshot exists to answer 'how much of the file changed'."""
+    base, paths = build_workspace(tmp_path)
+    Path(paths[0]).write_text("\n".join(f"line {i}" for i in range(20)) + "\n")
+    run_plan(base, "--iteration", "1", "--report-only")
+
+    lines = Path(paths[0]).read_text().splitlines()
+    lines[3] = "line 3 corrected"
+    Path(paths[0]).write_text("\n".join(lines) + "\n")
+    run_plan(base, "--iteration", "2")
+
+    before = (base / "technical-review" / "drafts-iter-1" / "a.adoc").read_text().splitlines()
+    after = (base / "technical-review" / "drafts-iter-2" / "a.adoc").read_text().splitlines()
+    changed = sum(1 for x, y in zip(before, after) if x != y)
+    assert changed == 1
+    assert changed / len(before) < 0.1
+
+
+def test_draft_snapshot_does_not_overwrite_colliding_basenames(tmp_path):
+    out = tmp_path / "technical-review"
+    out.mkdir()
+    one = tmp_path / "x" / "dup.adoc"
+    two = tmp_path / "y" / "dup.adoc"
+    for path, body in ((one, "from x\n"), (two, "from y\n")):
+        path.parent.mkdir(parents=True)
+        path.write_text(body)
+
+    assert snapshot_drafts(out, 1, [str(one), str(two)]) == 2
+    bodies = sorted(p.read_text() for p in (out / "drafts-iter-1").iterdir())
+    assert bodies == ["from x\n", "from y\n"]
+
+
+def test_draft_snapshot_skips_missing_files(tmp_path):
+    out = tmp_path / "technical-review"
+    out.mkdir()
+    real = tmp_path / "real.adoc"
+    real.write_text("content\n")
+    assert snapshot_drafts(out, 1, [str(real), str(tmp_path / "gone.adoc")]) == 1
