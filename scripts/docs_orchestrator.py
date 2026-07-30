@@ -1468,6 +1468,7 @@ def cmd_init(args):
             "create_jira",
             "auto_discover_repos",
             "max_secondary_repos",
+            "docs_repo_path",
         ):
             new_val = options.get(key)
             if new_val and not progress["options"].get(key):
