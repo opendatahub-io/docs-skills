@@ -25,6 +25,24 @@ Pass args **unquoted**. The script emits JSON on stdout. Key fields used below: 
 
 #### 2a. Extract claims
 
+First record what changed since the last iteration. This does **not** yet gate
+extraction — it writes `claims-manifest.json` and reports how many claims
+*could* have been carried forward, so the carry-forward rate can be measured on
+real runs before the gate is switched on.
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/plan_extraction.py \
+  --base-path <base_path> --output-dir <output_dir> \
+  --iteration <iteration> --report-only \
+  [--repo <repo_path>]...
+```
+
+Emits `{extract_all, files_to_extract, carried_claim_count, changed_file_count,
+carried_byte_share, invalidation_reason}`. In `--report-only` mode `extract_all`
+is always true and `files_to_extract` is every draft file, so the dispatch below
+is unchanged. Log `carried_claim_count` and `carried_byte_share` — they are the
+measurement. Never fails the step.
+
 ```
 Agent:
   description: "Extract technical claims from docs for <ticket>"

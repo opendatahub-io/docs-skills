@@ -152,9 +152,7 @@ metadata = api.get_metadata()
 comments = api.get_review_comments()
 
 # Post comments
-api.post_comments([
-    {"file": "path/to/file.adoc", "line": 42, "message": "Issue description"}
-])
+api.post_comments([{"file": "path/to/file.adoc", "line": 42, "message": "Issue description"}])
 
 # Reply to an existing comment
 api.reply_to_comment(comment_id=12345, body="Fixed.")
