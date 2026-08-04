@@ -71,7 +71,7 @@ def read_claim_cache(plan_path):
         return None
     try:
         plan = json.loads(Path(plan_path).read_text())
-    except (json.JSONDecodeError, OSError):
+    except (ValueError, OSError):
         return None
     if not isinstance(plan, dict) or "extract_all" not in plan:
         return None

@@ -1,9 +1,10 @@
-"""Tests for the tech-review claim cache (Stage 0: measurement, no gating).
+"""Tests for the tech-review claim cache.
 
-Covers plan_extraction.py and the resolve_source_files helper it shares with
-prepare_review.py. The behaviour under test is deliberately conservative: every
-failure path must fall back to extracting everything, because a wrong plan
-costs tokens while a missing claim costs correctness.
+Covers plan_extraction.py, merge_extraction.py, and the resolve_source_files
+helper they share with prepare_review.py. The behaviour under test is
+deliberately conservative: every failure path must fall back to extracting
+everything, because a wrong plan costs tokens while a missing claim costs
+correctness.
 """
 
 import json
@@ -243,9 +244,29 @@ def test_missing_prior_claims_extracts_everything(tmp_path):
 def test_code_state_change_extracts_everything(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
-    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t"}
-    env.update(GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    empty_hooks = tmp_path / "empty-hooks"
+    empty_hooks.mkdir()
+    empty_cfg = tmp_path / "empty.gitconfig"
+    empty_cfg.write_text("")
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": str(empty_cfg),
+    }
+    subprocess.run(
+        ["git", "init", "-q", str(repo)],
+        check=True,
+        env=env,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "core.hooksPath", str(empty_hooks)],
+        check=True,
+        env=env,
+    )
     subprocess.run(
         ["git", "-C", str(repo), "commit", "-q", "--allow-empty", "-m", "one"],
         check=True,
@@ -427,6 +448,40 @@ def test_merge_omits_files_that_returned_no_claims(tmp_path):
     assert run_merge(base).returncode == 0
     manifest = json.loads((base / "technical-review" / "claims-manifest.json").read_text())
     assert paths[1] not in manifest["files"], "would cache the file as claim-free"
+
+
+def test_merge_drops_fresh_claims_for_unchanged_files(tmp_path):
+    """An extractor that wanders outside the planned file list must not
+    duplicate a carried claim."""
+    base, paths = build_workspace(tmp_path)
+    write_claims(
+        base,
+        [
+            {"id": "C001", "text": "t1", "file": "a.adoc", "line": 3},
+            {"id": "C002", "text": "t2", "file": "b.adoc", "line": 3},
+        ],
+    )
+    run_plan(base, "--iteration", "1", "--report-only")
+    with open(paths[1], "a") as handle:
+        handle.write("\nEdited.\n")
+    run_plan(base, "--iteration", "2")
+
+    # Extractor returns a claim for unchanged a.adoc (agent misbehaviour).
+    write_fresh(
+        base,
+        [
+            {"id": "x1", "text": "reworded a claim", "file": "a.adoc", "line": 3},
+            {"id": "x2", "text": "fresh b claim", "file": "b.adoc", "line": 9},
+        ],
+    )
+    result = run_merge(base)
+    assert result.returncode == 0, result.stderr
+
+    claims = json.loads((base / "technical-review" / "claims-list.json").read_text())
+    a_claims = [c for c in claims if c["file"] == "a.adoc"]
+    # Only the carried claim survives; the reworded fresh one is dropped.
+    assert len(a_claims) == 1
+    assert a_claims[0]["text"] == "t1"
 
 
 def test_end_to_end_carry_forward_reaches_incremental_claims(tmp_path):

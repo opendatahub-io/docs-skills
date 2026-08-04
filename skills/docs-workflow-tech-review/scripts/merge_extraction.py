@@ -101,12 +101,6 @@ def main() -> int:
     if not isinstance(carried, list):
         carried = []
 
-    next_id = max((id_number(c.get("id")) for c in carried if isinstance(c, dict)), default=0) + 1
-    renumbered = renumber(fresh, next_id)
-
-    claims = carried + renumbered
-    (output_dir / CLAIMS_LIST_NAME).write_text(json.dumps(claims, indent=2))
-
     source_files = resolve_source_files(args.base_path)
     index = claim_file_index(source_files)
     prior_files, _, _ = read_manifest(output_dir)
@@ -114,6 +108,17 @@ def main() -> int:
 
     plan = load_json(output_dir / PLAN_NAME)
     unchanged = set((plan or {}).get("unchanged_files") or [])
+
+    # Drop fresh claims attributed to unchanged files: the carried copy already
+    # has a verdict, and a duplicate would be validated twice with potentially
+    # contradicting results.
+    fresh = [c for c in fresh if index.get((c or {}).get("file")) not in unchanged]
+
+    next_id = max((id_number(c.get("id")) for c in carried if isinstance(c, dict)), default=0) + 1
+    renumbered = renumber(fresh, next_id)
+
+    claims = carried + renumbered
+    (output_dir / CLAIMS_LIST_NAME).write_text(json.dumps(claims, indent=2))
 
     by_file = {}
     for claim in renumbered:

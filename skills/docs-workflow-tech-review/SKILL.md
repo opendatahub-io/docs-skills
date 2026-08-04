@@ -38,10 +38,11 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/plan_extraction.py \
 
 Emits `{extract_all, files_to_extract, unchanged_files, carried_claim_count,
 changed_file_count, unchanged_file_count, carried_byte_share,
-invalidation_reason}`. Never fails the step — on iteration 1, a missing manifest,
-or a source-repo change it returns every draft file and behaves exactly as an
-ungated run. Add `--report-only` to keep the measurement while forcing full
-extraction (kill switch).
+invalidation_reason}`. Cache state never fails the step — on iteration 1, a
+missing manifest, or a source-repo change it returns every draft file and
+behaves exactly as an ungated run. It does exit non-zero on an unusable
+`--base-path` or `--output-dir`; stop on non-zero exit. Add `--report-only` to
+keep the measurement while forcing full extraction (kill switch).
 
 **Interpolate `files_to_extract` into `<file_list>` below.** Do not substitute
 `<source_files_block>` here — the extractor must be given only the files in the
