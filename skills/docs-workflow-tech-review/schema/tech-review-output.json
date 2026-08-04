@@ -3,38 +3,132 @@
   "title": "technical-review step result",
   "description": "Sidecar schema for the technical-review workflow step.",
   "type": "object",
-  "required": ["schema_version", "step", "ticket", "completed_at", "confidence", "severity_counts", "iteration", "code_grounded"],
+  "required": [
+    "schema_version",
+    "step",
+    "ticket",
+    "completed_at",
+    "confidence",
+    "severity_counts",
+    "iteration",
+    "code_grounded"
+  ],
   "properties": {
-    "schema_version": { "const": 1 },
-    "step": { "const": "technical-review" },
-    "ticket": { "type": "string", "description": "JIRA ticket ID as provided by the user (preserves original case)" },
-    "completed_at": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`" },
+    "schema_version": {
+      "const": 1
+    },
+    "step": {
+      "const": "technical-review"
+    },
+    "ticket": {
+      "type": "string",
+      "description": "JIRA ticket ID as provided by the user (preserves original case)"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`"
+    },
     "confidence": {
       "type": "string",
-      "enum": ["HIGH", "MEDIUM", "LOW"],
+      "enum": [
+        "HIGH",
+        "MEDIUM",
+        "LOW"
+      ],
       "description": "Consumed by orchestrator for iteration logic"
     },
     "severity_counts": {
       "type": "object",
-      "required": ["critical", "significant", "minor", "sme"],
+      "required": [
+        "critical",
+        "significant",
+        "minor",
+        "sme"
+      ],
       "properties": {
-        "critical": { "type": "integer", "minimum": 0, "description": "Critical issues found" },
-        "significant": { "type": "integer", "minimum": 0, "description": "Significant issues found" },
-        "minor": { "type": "integer", "minimum": 0, "description": "Minor issues found" },
-        "sme": { "type": "integer", "minimum": 0, "description": "Issues requiring SME verification" }
+        "critical": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Critical issues found"
+        },
+        "significant": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Significant issues found"
+        },
+        "minor": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Minor issues found"
+        },
+        "sme": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Issues requiring SME verification"
+        }
       },
       "additionalProperties": false,
       "description": "Issue counts by severity level. Consumed by orchestrator for iteration logic."
     },
-    "iteration": { "type": "integer", "minimum": 1, "description": "Which iteration of review this represents (1-based)" },
+    "iteration": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Which iteration of review this represents (1-based)"
+    },
     "code_grounded": {
       "type": "boolean",
       "description": "Whether code-learner analysis was available for claim validation (code-analysis step completed)"
     },
     "missing_batches": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Verdict files expected by merge_verdicts.py but not found on disk (agent failures). Absent when all expected batches were present. Claims from missing batches get no_evidence_found fallback verdicts."
+    },
+    "claim_cache": {
+      "type": "object",
+      "description": "Incremental claim-extraction counters from plan_extraction.py for this iteration. Absent when claim validation did not run. Accumulating these across runs is how the carry-forward rate is measured in production.",
+      "properties": {
+        "extract_all": {
+          "type": "boolean",
+          "description": "True when the gate did not fire and every draft file was re-extracted."
+        },
+        "carried_claim_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Claims reused verbatim from the prior iteration."
+        },
+        "changed_file_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unchanged_file_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "carried_byte_share": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Byte share of draft files unchanged since the prior iteration."
+        },
+        "invalidation_reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why the gate did not fire, when extract_all is true."
+        }
+      },
+      "required": [
+        "extract_all",
+        "carried_claim_count",
+        "changed_file_count",
+        "carried_byte_share"
+      ],
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

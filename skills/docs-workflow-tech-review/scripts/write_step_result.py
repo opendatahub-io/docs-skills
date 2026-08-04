@@ -50,6 +50,34 @@ def detect_iteration(sidecar_path: Path) -> int:
     return prior_iter + 1
 
 
+CACHE_FIELDS = (
+    "extract_all",
+    "carried_claim_count",
+    "changed_file_count",
+    "unchanged_file_count",
+    "carried_byte_share",
+    "invalidation_reason",
+)
+
+
+def read_claim_cache(plan_path):
+    """Return the sidecar's claim_cache object from an extraction plan.
+
+    Counters only — the plan's file lists stay out of the sidecar, which the
+    orchestrator reads on every step. A missing or malformed plan yields None:
+    the tech-review step must not fail because instrumentation is absent.
+    """
+    if not plan_path:
+        return None
+    try:
+        plan = json.loads(Path(plan_path).read_text())
+    except (ValueError, OSError):
+        return None
+    if not isinstance(plan, dict) or "extract_all" not in plan:
+        return None
+    return {k: plan[k] for k in CACHE_FIELDS if k in plan}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ticket", required=True)
@@ -71,6 +99,11 @@ def main() -> int:
         type=int,
         default=None,
         help="Iteration number (auto-detected from prior sidecar if not provided)",
+    )
+    parser.add_argument(
+        "--extraction-plan",
+        default="",
+        help="extraction-plan.json from plan_extraction.py (adds claim_cache counters)",
     )
     args = parser.parse_args()
 
@@ -114,6 +147,14 @@ def main() -> int:
         "iteration": iteration,
         "code_grounded": args.code_grounded == "true",
     }
+
+    # Fold in the extraction plan so the carry-forward rate accumulates in the
+    # step sidecars. Measuring it after the fact is otherwise impossible: the
+    # pipeline overwrites claims-list.json each iteration and only terminal
+    # state survives a run.
+    cache = read_claim_cache(args.extraction_plan)
+    if cache:
+        sidecar["claim_cache"] = cache
     sidecar_path.parent.mkdir(parents=True, exist_ok=True)
     sidecar_path.write_text(json.dumps(sidecar, indent=2))
 

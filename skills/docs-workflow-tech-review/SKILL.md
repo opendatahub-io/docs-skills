@@ -25,23 +25,28 @@ Pass args **unquoted**. The script emits JSON on stdout. Key fields used below: 
 
 #### 2a. Extract claims
 
-First record what changed since the last iteration. This does **not** yet gate
-extraction — it writes `claims-manifest.json` and reports how many claims
-*could* have been carried forward, so the carry-forward rate can be measured on
-real runs before the gate is switched on.
+Decide which draft files the extractor needs to read. Files unchanged since the
+last iteration keep their prior claims verbatim, so the reviewer sees a stable
+set of claims across the run and their verdicts carry forward.
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/plan_extraction.py \
   --base-path <base_path> --output-dir <output_dir> \
-  --iteration <iteration> --report-only \
+  --iteration <iteration> \
   [--repo <repo_path>]...
 ```
 
-Emits `{extract_all, files_to_extract, carried_claim_count, changed_file_count,
-carried_byte_share, invalidation_reason}`. In `--report-only` mode `extract_all`
-is always true and `files_to_extract` is every draft file, so the dispatch below
-is unchanged. Log `carried_claim_count` and `carried_byte_share` — they are the
-measurement. Never fails the step.
+Emits `{extract_all, files_to_extract, unchanged_files, carried_claim_count,
+changed_file_count, unchanged_file_count, carried_byte_share,
+invalidation_reason}`. Cache state never fails the step — on iteration 1, a
+missing manifest, or a source-repo change it returns every draft file and
+behaves exactly as an ungated run. It does exit non-zero on an unusable
+`--base-path` or `--output-dir`; stop on non-zero exit. Add `--report-only` to
+keep the measurement while forcing full extraction (kill switch).
+
+**Interpolate `files_to_extract` into `<file_list>` below.** Do not substitute
+`<source_files_block>` here — the extractor must be given only the files in the
+plan.
 
 ```
 Agent:
@@ -49,22 +54,39 @@ Agent:
   prompt: |
     Extract verifiable technical claims from documentation draft files.
 
-    <source_files_block>
+    Extract claims from exactly these files:
+    <file_list>
 
-    Read all .adoc and .md files from the source location above.
     Skip files whose names match release-notes patterns: `new-features-and-enhancements*`,
     `release-notes*`, `known-issues*`, `fixed-issues*`, `deprecated-removed*`. These contain
     announcement-level statements not verifiable against source code.
     For each remaining file, extract factual claims verifiable against code: function names, signatures, parameters, behavior descriptions, config options, defaults, API endpoints, CRD kinds, class names, return types, CLI flags, subcommands.
 
-    Write the claims list to: <output_dir>/claims-list.json
+    Write the claims list to: <output_dir>/extracted-changed.json
 
     Format: JSON array of objects with fields: id, text, file, line.
+    Assign each claim a unique `id`; any format is acceptable, ids are
+    reassigned downstream.
 
-    After writing, print ONLY: Written <output_dir>/claims-list.json
+    After writing, print ONLY: Written <output_dir>/extracted-changed.json
 ```
 
-After the agent completes, prepare claims for validation:
+Merge the fresh claims with the carried ones. This assigns final claim ids and
+refreshes the manifest:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/merge_extraction.py \
+  --base-path <base_path> --output-dir <output_dir> \
+  [--repo <repo_path>]...
+```
+
+Emits `{total_claims, carried, fresh, files_manifested}` and writes
+`claims-list.json`. **Exits non-zero if the extractor produced no readable
+output** — treat that as a step failure rather than continuing, because a
+claims list built from carried claims alone would silently drop every changed
+file's claims.
+
+After the merge, prepare claims for validation:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/prepare_claims.py \
@@ -183,5 +205,6 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
   --sidecar "<output_dir>/step-result.json" \
   --code-grounded <true if HAS_CLAIMS, else false> \
   --missing-batches "<comma-separated missing batch names from 2b-verify, or empty string if none>" \
-  --iteration <iteration number from prepare_review.py output>
+  --iteration <iteration number from prepare_review.py output> \
+  --extraction-plan "<output_dir>/extraction-plan.json"
 ```
