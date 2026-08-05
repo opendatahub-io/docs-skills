@@ -472,7 +472,7 @@ Supported inline elements include:
 
 ## Features not available
 
-The following features are available in `redhat.mdita.extended` but **not** in `org.lwdita` Markdown DITA mode:
+The following features are **not** available in `org.lwdita` Markdown DITA mode:
 
 ### Keyref syntax
 
