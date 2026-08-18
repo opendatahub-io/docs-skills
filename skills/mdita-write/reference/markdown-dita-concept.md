@@ -8,6 +8,7 @@ keyword:
   - orchestration
   - kubernetes
 ---
+
 # About container orchestration
 
 Container orchestration is the automated management of containerized application deployment, scaling, networking, and lifecycle across clusters of machines.

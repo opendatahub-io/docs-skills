@@ -8,6 +8,7 @@ keyword:
   - installation
   - setup
 ---
+
 # Installing the command-line tool
 
 ## Prerequisites

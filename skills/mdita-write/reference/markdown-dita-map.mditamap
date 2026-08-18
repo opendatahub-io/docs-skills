@@ -16,6 +16,7 @@ $schema: urn:oasis:names:tc:dita:xsd:map.xsd
   - [CLI command reference](reference/cli-command-reference.md)
   - [API reference](reference/api-reference.md)
 
-| [About the product](about-product.md)          | [CLI command reference](reference/cli-command-reference.md) |
-|------------------------------------------------|-------------------------------------------------------------|
-| [Installation](getting-started/installation.md) | [Cluster management](admin/cluster-management.md)          |
+| Concepts                               | Tasks                                              |
+|----------------------------------------|----------------------------------------------------|
+| [About the product](about-product.md)  | [Installation](getting-started/installation.md)    |
+| [About the product](about-product.md)  | [Cluster management](admin/cluster-management.md)  |
