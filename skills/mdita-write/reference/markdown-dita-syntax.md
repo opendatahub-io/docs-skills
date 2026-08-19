@@ -103,24 +103,19 @@ Use task topics for step-by-step procedures. Task semantics come mainly from the
 
 ### Task section headings
 
-This plugin build enables *implicit task sections*: four well-known H2 headings map to task section elements instead of creating nested topics. The heading text is matched case-insensitively.
+This plugin build enables *implicit task sections*: well-known H2 headings map to task section elements instead of creating nested topics. The heading text is matched case-insensitively.
 
 | H2 heading | DITA element |
 |------------|--------------|
 | `## Prerequisites` | `<prereq>` |
 | `## About this task` | `<context>` |
+| `## Steps` or `## Procedure` | `<steps>` |
 | `## Verification` | `<result>` |
 | `## Next steps` | `<postreq>` |
 
-Any other H2 heading still creates a nested `<task>` topic, so use only these four within a single procedure.
+Any other H2 heading still creates a nested `<task>` topic, so use only these headings within a single procedure.
 
-A section heading captures every block that follows it until the next heading. This has a consequence for the ordered list of steps: an ordered list becomes `<steps>` only while it sits at body level, with no section heading open before it. A list that follows `## Prerequisites` or `## About this task` is pulled into that section as a plain `<ol>`, not `<steps>`.
-
-So the two leading sections and the trailing sections behave differently in a procedure that has steps:
-
-- Supply the short description and context as body-level paragraphs, and write the numbered steps as a body-level ordered list. The paragraph before the list becomes `<context>` and the list becomes `<steps>`.
-- Add `## Verification` and `## Next steps` after the steps to produce `<result>` and `<postreq>`.
-- Use `## Prerequisites` and `## About this task` only in a task with no ordered-list steps, since either heading would otherwise swallow the steps.
+Author the sections in task order: `## Prerequisites`, `## About this task`, `## Steps` (or `## Procedure`), `## Verification`, then `## Next steps`. The first paragraph after the H1 is the short description. Write the ordered list under `## Steps`, and it becomes `<steps>` with its nested lists mapped as shown in [Step mapping](#step-mapping).
 
 ### Step mapping
 
@@ -136,7 +131,7 @@ Within the ordered list, list structure maps to task step elements:
 | Nested unordered list in a step | `<ul>` / `<li>` |
 | Body-level unordered list (in place of the ordered list) | `<steps-unordered>` |
 
-Produce `<result>` and `<postreq>` with the trailing task section headings `## Verification` and `## Next steps`. See [Task section headings](#task-section-headings) for the full mapping and the ordering rule.
+Produce `<prereq>`, `<context>`, `<result>`, and `<postreq>` with the task section headings. See [Task section headings](#task-section-headings) for the full mapping.
 
 ### Task example
 
@@ -145,8 +140,16 @@ Produce `<result>` and `<postreq>` with the trailing task section headings `## V
 
 Install the CLI tool to manage resources from the terminal.
 
-The installation downloads a binary and installs it to your system path. Before
-you start, make sure you have administrator privileges and a network connection.
+## Prerequisites
+
+- Administrator privileges
+- A network connection
+
+## About this task
+
+The installation downloads a binary and installs it to your system path.
+
+## Steps
 
 1. Download the installer for your platform.
 
@@ -175,7 +178,7 @@ Run `tool --version` to confirm the installation succeeded.
 Configure authentication credentials using `tool login`.
 ```
 
-The short description becomes `<shortdesc>`, the body-level paragraph becomes `<context>`, the ordered list becomes `<steps>` (with `<substeps>` and a nested `<ul>`), `## Verification` becomes `<result>`, and `## Next steps` becomes `<postreq>`.
+The short description becomes `<shortdesc>`, `## Prerequisites` becomes `<prereq>`, `## About this task` becomes `<context>`, the ordered list under `## Steps` becomes `<steps>` (with `<substeps>` and a nested `<ul>`), `## Verification` becomes `<result>`, and `## Next steps` becomes `<postreq>`.
 
 ## Reference topics
 

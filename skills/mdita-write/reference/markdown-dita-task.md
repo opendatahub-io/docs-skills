@@ -12,7 +12,17 @@ keyword:
 
 The command-line tool is a utility for managing and automating tasks from the terminal. It extends basic shell commands with additional features for workflow automation.
 
-Before you start, make sure you have a running system with network access, administrator or elevated privileges on your workstation, and either `curl` or `wget` installed.
+## Prerequisites
+
+- A running system with network access
+- Administrator or elevated privileges on your workstation
+- Either `curl` or `wget` installed
+
+## About this task
+
+The installation downloads a signed binary, verifies it, and installs it to a directory on your `PATH`. You perform this installation once per workstation.
+
+## Steps
 
 1.  Download the CLI archive for your operating system:
 
@@ -51,11 +61,11 @@ Before you start, make sure you have a running system with network access, admin
         sudo mv cli /usr/local/bin/
         ```
 
-4.  Choose a verification method:
+4.  Choose an authentication method:
 
-    -   Run `cli version` to check the installed version
-    -   Run `which cli` to confirm the binary location
-    -   Run `cli --help` to display available commands
+    -   Use environment variables for automated systems
+    -   Use a configuration file for interactive sessions
+    -   Use command-line flags for one-time operations
 
 ## Verification
 

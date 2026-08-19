@@ -70,3 +70,21 @@ Container orchestration provides the following benefits for production environme
 4. Unified resource management and multi-cluster capabilities
 
 > Infrastructure abstraction through orchestration enables teams to focus on application development rather than machine-level operations and configuration management.
+
+## Example workload definition
+
+A workload is described declaratively. The orchestrator reconciles the running state with the definition, so you set the desired `replicas` count and the control plane maintains it.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: web
+          image: registry.example.com/web:1.4.0
+```

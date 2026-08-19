@@ -10,6 +10,8 @@ keyword:
 
 # CLI command reference {.reference}
 
+The command-line tool groups its operations into connection, resource, and administrative commands. This reference lists each command, its common flags, and the exit codes it returns.
+
 ## Connection commands
 
 The following commands manage connection operations.
@@ -49,6 +51,14 @@ The following commands manage connection operations.
 
 `--all`
 :   Operate across all resources or namespaces.
+
+## Command syntax
+
+Every invocation follows the same structure:
+
+```bash
+tool [global-flags] <command> [command-flags] [arguments]
+```
 
 ## Exit codes
 

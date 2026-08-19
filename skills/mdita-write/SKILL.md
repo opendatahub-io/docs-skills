@@ -36,7 +36,7 @@ Read these before writing Markdown DITA content:
 
 - [Markdown DITA syntax reference](reference/markdown-dita-syntax.md): front matter, topic types, block elements, maps
 - [Concept topic example](reference/markdown-dita-concept.md): sections, tables, definition lists, admonitions
-- [Task topic example](reference/markdown-dita-task.md): context, steps with substeps and choices, verification and next steps section headings
+- [Task topic example](reference/markdown-dita-task.md): prerequisites, context, steps with substeps and choices, verification, and next steps section headings
 - [Reference topic example](reference/markdown-dita-reference.md): lookup tables, definition lists, admonitions
 - [Map example](reference/markdown-dita-map.mditamap): topic references, topic heads, ordered sequences, relationship tables
 
