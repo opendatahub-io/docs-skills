@@ -11,7 +11,13 @@ Write Markdown DITA topics and maps, then convert them to DITA XML using DITA-OT
 
 ## Prerequisites
 
-Requires Java 17+, DITA-OT 4.x, and the `org.lwdita` plugin. The conversion script checks for all three and reports what to install if anything is missing.
+Requires Java 17+, DITA-OT 4.x, and the `org.lwdita` plugin, version 6.0.0. Install the plugin from the [v6.0.0 release](https://github.com/aireilly/org.lwdita/releases/tag/v6.0.0):
+
+```bash
+dita install https://github.com/aireilly/org.lwdita/releases/download/v6.0.0/org.lwdita-6.0.0.zip
+```
+
+The conversion script checks for Java, DITA-OT, and the plugin, and reports what to install if anything is missing.
 
 ## Synopsis
 
@@ -30,7 +36,7 @@ Read these before writing Markdown DITA content:
 
 - [Markdown DITA syntax reference](reference/markdown-dita-syntax.md): front matter, topic types, block elements, maps
 - [Concept topic example](reference/markdown-dita-concept.md): sections, tables, definition lists, admonitions
-- [Task topic example](reference/markdown-dita-task.md): prerequisites, context, steps with substeps and choices, verification, next steps
+- [Task topic example](reference/markdown-dita-task.md): context, steps with substeps and choices, verification and next steps section headings
 - [Reference topic example](reference/markdown-dita-reference.md): lookup tables, definition lists, admonitions
 - [Map example](reference/markdown-dita-map.mditamap): topic references, topic heads, ordered sequences, relationship tables
 

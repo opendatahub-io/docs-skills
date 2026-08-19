@@ -57,18 +57,22 @@ Before you start, make sure you have a running system with network access, admin
     -   Run `which cli` to confirm the binary location
     -   Run `cli --help` to display available commands
 
-5.  Verify the installation:
+## Verification
 
-    ```bash
-    cli version
-    ```
+Confirm the installation by checking the version:
 
-    The output shows the version information:
+```bash
+cli version
+```
 
-    ```
-    CLI Version: 1.0.0
-    Build Date: 2025-08-05
-    Platform: linux/amd64
-    ```
+The output shows the version information:
 
-After the CLI is installed, confirm it is working by running `cli --help` and `cli status`. Then configure shell completion for the CLI to speed up your workflow.
+```
+CLI Version: 1.0.0
+Build Date: 2025-08-05
+Platform: linux/amd64
+```
+
+## Next steps
+
+Configure shell completion for the CLI to speed up your workflow, then run `cli status` to confirm connectivity.

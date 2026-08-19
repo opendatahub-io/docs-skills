@@ -92,9 +92,7 @@ Container runtime manages isolated processes using kernel features.
 
 ## Task topics
 
-Use task topics for step-by-step procedures. Task semantics come from the **body structure**, not from headings. Write the whole procedure in the topic body with no H2 headings. Any H2 heading in a task creates a nested `<task>` topic instead of a task section, so avoid headings within a single procedure.
-
-The processor maps the body content by position:
+Use task topics for step-by-step procedures. Task semantics come mainly from the **body structure**. The processor maps the body content by position:
 
 | Body content | DITA element |
 |--------------|--------------|
@@ -102,6 +100,27 @@ The processor maps the body content by position:
 | Paragraph(s) between the short description and the first list | `<context>` |
 | Ordered list | `<steps>` |
 | Paragraph(s) after the list | `<result>` |
+
+### Task section headings
+
+This plugin build enables *implicit task sections*: four well-known H2 headings map to task section elements instead of creating nested topics. The heading text is matched case-insensitively.
+
+| H2 heading | DITA element |
+|------------|--------------|
+| `## Prerequisites` | `<prereq>` |
+| `## About this task` | `<context>` |
+| `## Verification` | `<result>` |
+| `## Next steps` | `<postreq>` |
+
+Any other H2 heading still creates a nested `<task>` topic, so use only these four within a single procedure.
+
+A section heading captures every block that follows it until the next heading. This has a consequence for the ordered list of steps: an ordered list becomes `<steps>` only while it sits at body level, with no section heading open before it. A list that follows `## Prerequisites` or `## About this task` is pulled into that section as a plain `<ol>`, not `<steps>`.
+
+So the two leading sections and the trailing sections behave differently in a procedure that has steps:
+
+- Supply the short description and context as body-level paragraphs, and write the numbered steps as a body-level ordered list. The paragraph before the list becomes `<context>` and the list becomes `<steps>`.
+- Add `## Verification` and `## Next steps` after the steps to produce `<result>` and `<postreq>`.
+- Use `## Prerequisites` and `## About this task` only in a task with no ordered-list steps, since either heading would otherwise swallow the steps.
 
 ### Step mapping
 
@@ -117,7 +136,7 @@ Within the ordered list, list structure maps to task step elements:
 | Nested unordered list in a step | `<ul>` / `<li>` |
 | Body-level unordered list (in place of the ordered list) | `<steps-unordered>` |
 
-There is no Markdown construct that produces `<prereq>` or `<postreq>`. State prerequisites in the short description or context paragraph, and put follow-up actions in the trailing result paragraph.
+Produce `<result>` and `<postreq>` with the trailing task section headings `## Verification` and `## Next steps`. See [Task section headings](#task-section-headings) for the full mapping and the ordering rule.
 
 ### Task example
 
@@ -147,11 +166,16 @@ you start, make sure you have administrator privileges and a network connection.
    - Use a configuration file for interactive sessions
    - Use command-line flags for one-time operations
 
-Run `tool --version` to confirm the installation succeeded, then configure
-authentication credentials using `tool login`.
+## Verification
+
+Run `tool --version` to confirm the installation succeeded.
+
+## Next steps
+
+Configure authentication credentials using `tool login`.
 ```
 
-The first paragraph becomes `<shortdesc>`, the following paragraph becomes `<context>`, the ordered list becomes `<steps>` (with `<substeps>` and a nested `<ul>`), and the trailing paragraph becomes `<result>`.
+The short description becomes `<shortdesc>`, the body-level paragraph becomes `<context>`, the ordered list becomes `<steps>` (with `<substeps>` and a nested `<ul>`), `## Verification` becomes `<result>`, and `## Next steps` becomes `<postreq>`.
 
 ## Reference topics
 
