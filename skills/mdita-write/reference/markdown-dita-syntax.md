@@ -68,7 +68,7 @@ Body content for the nested topic.
 This H3 creates a topic nested inside the H2 topic.
 ```
 
-You cannot author a `<section>` with a heading. The processor wraps some block content (such as definition lists and blockquotes that follow other content) in a `<section>` automatically.
+You cannot author a `<section>` with a heading. In reference topics, the processor automatically wraps loose body content (paragraphs, definition lists, code blocks, and notes) in `<section>` elements, because the reference body model does not allow that content directly.
 
 ## Concept topics
 
@@ -92,7 +92,7 @@ Container runtime manages isolated processes using kernel features.
 
 ## Task topics
 
-Use task topics for step-by-step procedures. Task semantics come mainly from the **body structure**. The processor maps the body content by position:
+Use task topics for step-by-step procedures. A task builds its sections in two ways: from **section headings** (recommended, see [Task section headings](#task-section-headings)) and from the **body structure** by position. When you do not use section headings, the processor maps the body content by position:
 
 | Body content | DITA element |
 |--------------|--------------|

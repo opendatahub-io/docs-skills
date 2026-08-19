@@ -35,9 +35,9 @@ The conversion script checks for Java, DITA-OT, and the plugin, and reports what
 Read these before writing Markdown DITA content:
 
 - [Markdown DITA syntax reference](reference/markdown-dita-syntax.md): front matter, topic types, block elements, maps
-- [Concept topic example](reference/markdown-dita-concept.md): sections, tables, definition lists, admonitions
+- [Concept topic example](reference/markdown-dita-concept.md): nested topics, tables, definition lists, code blocks, admonitions
 - [Task topic example](reference/markdown-dita-task.md): prerequisites, context, steps with substeps and choices, verification, and next steps section headings
-- [Reference topic example](reference/markdown-dita-reference.md): lookup tables, definition lists, admonitions
+- [Reference topic example](reference/markdown-dita-reference.md): lookup tables, definition lists, code blocks, admonitions
 - [Map example](reference/markdown-dita-map.mditamap): topic references, topic heads, ordered sequences, relationship tables
 
 ## Usage workflow
@@ -66,7 +66,7 @@ Arguments:
 The script outputs JSON with the conversion results:
 
 ```json
-{"status": "success", "dita_version": "DITA-OT 4.2.3", "input": "guide.mditamap", "output_dir": "./dita-output", "file_count": 2, "files": ["dita-output/topic.dita", "dita-output/guide.ditamap"]}
+{"status": "success", "dita_version": "DITA-OT version 4.3.1", "input": "guide.mditamap", "output_dir": "./dita-output", "file_count": 2, "files": ["dita-output/topic.dita", "dita-output/guide.ditamap"]}
 ```
 
 ## Example invocations
