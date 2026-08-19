@@ -1,5 +1,4 @@
 ---
-$schema: urn:oasis:names:tc:dita:xsd:concept.xsd
 id: about-container-orchestration
 author: Documentation Team
 category: Infrastructure
@@ -9,7 +8,7 @@ keyword:
   - kubernetes
 ---
 
-# About container orchestration
+# About container orchestration {.concept}
 
 Container orchestration is the automated management of containerized application deployment, scaling, networking, and lifecycle across clusters of machines.
 
@@ -58,6 +57,7 @@ Container orchestration can be deployed on various infrastructure providers:
 | Bare metal | x86_64, aarch64 | Requires manual infrastructure provisioning |
 
 !!! note
+
     Most platforms support multiple architectures and offer both managed and self-managed deployment options. Consult your provider documentation for specific support matrices.
 
 ## Key benefits

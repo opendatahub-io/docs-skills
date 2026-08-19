@@ -1,5 +1,4 @@
 ---
-$schema: urn:oasis:names:tc:dita:xsd:reference.xsd
 id: cli-command-reference
 author: Documentation Team
 category: Reference
@@ -9,7 +8,7 @@ keyword:
   - reference
 ---
 
-# CLI command reference
+# CLI command reference {.reference}
 
 ## Connection commands
 
@@ -62,5 +61,6 @@ The following commands manage connection operations.
 | `127` | Command not found |
 
 !!! important
+
     Some commands require elevated privileges. Ensure you have the necessary
     permissions before executing administrative operations.

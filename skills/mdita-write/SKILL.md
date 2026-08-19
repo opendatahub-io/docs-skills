@@ -40,7 +40,7 @@ When asked to write Markdown DITA content:
 
 1. **Determine the topic type**: concept (explains what), task (explains how), or reference (lookup info)
 2. **Read the syntax reference** and the matching example file for the correct structure
-3. **Write the Markdown DITA file** using the `.md` extension with the appropriate `$schema` in YAML front matter
+3. **Write the Markdown DITA file** using the `.md` extension and set the topic type with an H1 class: `# Title {.concept}`, `{.task}`, or `{.reference}`
 4. **Convert to DITA XML** using the conversion script to validate the output
 5. **Fix issues**: if conversion fails, adjust the source and retry
 

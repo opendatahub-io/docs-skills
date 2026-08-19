@@ -1,5 +1,4 @@
 ---
-$schema: urn:oasis:names:tc:dita:xsd:task.xsd
 id: installing-cli-tool
 author: Documentation Team
 category: Installation
@@ -9,17 +8,11 @@ keyword:
   - setup
 ---
 
-# Installing the command-line tool
+# Installing the command-line tool {.task}
 
-## Prerequisites
+The command-line tool is a utility for managing and automating tasks from the terminal. It extends basic shell commands with additional features for workflow automation.
 
-- You have a running system with network access.
-- You have administrator or elevated privileges on your workstation.
-- You have `curl` or `wget` installed on your workstation.
-
-## About this task
-
-The command-line tool is a powerful utility for managing and automating tasks from the terminal. It extends basic shell commands with additional features for enhanced productivity and workflow automation.
+Before you start, make sure you have a running system with network access, administrator or elevated privileges on your workstation, and either `curl` or `wget` installed.
 
 1.  Download the CLI archive for your operating system:
 
@@ -28,8 +21,9 @@ The command-line tool is a powerful utility for managing and automating tasks fr
     ```
 
     !!! tip
-        You can also download the CLI from the official website
-        by visiting the downloads page and selecting your platform.
+
+        You can also download the CLI from the official website by visiting
+        the downloads page and selecting your platform.
 
 2.  Extract the archive:
 
@@ -77,18 +71,4 @@ The command-line tool is a powerful utility for managing and automating tasks fr
     Platform: linux/amd64
     ```
 
-## Verification
-
-Confirm the CLI is working correctly:
-
-```bash
-cli --help
-cli status
-```
-
-The commands display the help information and current system status.
-
-## Next steps
-
-Configure shell completion for the CLI to speed up your workflow.
-See _Configuring shell completion_.
+After the CLI is installed, confirm it is working by running `cli --help` and `cli status`. Then configure shell completion for the CLI to speed up your workflow.
