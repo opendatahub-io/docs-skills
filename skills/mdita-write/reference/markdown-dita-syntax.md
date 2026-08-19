@@ -50,9 +50,7 @@ keyword:
 
 ## Topic structure
 
-The H1 heading becomes the topic title. Content that follows becomes the topic body.
-
-Markdown DITA does not generate a `<shortdesc>`. The first paragraph after the H1 becomes body content (in a task it becomes `<context>`). If a short description is required, add it in a later editing pass on the DITA XML.
+The H1 heading becomes the topic title. The first paragraph after the H1 becomes the `<shortdesc>`. Content that follows becomes the topic body. If there is no paragraph directly under the H1 (for example, the next line is a heading or a table), no `<shortdesc>` is generated.
 
 Every heading below H1 creates a **nested topic**, not a section. An H2 creates a topic nested inside the H1 topic; an H3 creates a topic nested inside the H2 topic, and so on. Each nested topic takes the same type as its parent (a concept nests concepts, a task nests tasks).
 
@@ -100,7 +98,8 @@ The processor maps the body content by position:
 
 | Body content | DITA element |
 |--------------|--------------|
-| Paragraph(s) before the first list | `<context>` |
+| First paragraph after H1 | `<shortdesc>` |
+| Paragraph(s) between the short description and the first list | `<context>` |
 | Ordered list | `<steps>` |
 | Paragraph(s) after the list | `<result>` |
 
@@ -118,16 +117,17 @@ Within the ordered list, list structure maps to task step elements:
 | Nested unordered list in a step | `<ul>` / `<li>` |
 | Body-level unordered list (in place of the ordered list) | `<steps-unordered>` |
 
-There is no Markdown construct that produces `<prereq>` or `<postreq>`. State prerequisites in the context paragraph, and put follow-up actions in the trailing result paragraph.
+There is no Markdown construct that produces `<prereq>` or `<postreq>`. State prerequisites in the short description or context paragraph, and put follow-up actions in the trailing result paragraph.
 
 ### Task example
 
 ```markdown
 # Installing the command-line tool {.task}
 
-Install the CLI tool to manage resources from the terminal. The installation
-downloads a binary and installs it to your system path. Before you start, make
-sure you have administrator privileges and a network connection.
+Install the CLI tool to manage resources from the terminal.
+
+The installation downloads a binary and installs it to your system path. Before
+you start, make sure you have administrator privileges and a network connection.
 
 1. Download the installer for your platform.
 
@@ -151,7 +151,7 @@ Run `tool --version` to confirm the installation succeeded, then configure
 authentication credentials using `tool login`.
 ```
 
-The lead paragraph becomes `<context>`, the ordered list becomes `<steps>` (with `<substeps>` and a nested `<ul>`), and the trailing paragraph becomes `<result>`.
+The first paragraph becomes `<shortdesc>`, the following paragraph becomes `<context>`, the ordered list becomes `<steps>` (with `<substeps>` and a nested `<ul>`), and the trailing paragraph becomes `<result>`.
 
 ## Reference topics
 
