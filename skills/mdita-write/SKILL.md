@@ -17,6 +17,13 @@ Requires Java 17+, DITA-OT 4.x, and the `org.lwdita` plugin, version 6.0.0. Inst
 dita install https://github.com/aireilly/org.lwdita/releases/download/v6.0.0/org.lwdita-6.0.0.zip
 ```
 
+To verify the download before installing, check its SHA-256 against the expected value:
+
+```bash
+curl -sL https://github.com/aireilly/org.lwdita/releases/download/v6.0.0/org.lwdita-6.0.0.zip | sha256sum
+# expected: c8da500aa8a5b7b34fba60b9cc42f1b8d445770710d550b5f8281cce0c3bd036
+```
+
 The conversion script checks for Java, DITA-OT, and the plugin, and reports what to install if anything is missing.
 
 ## Synopsis
@@ -63,11 +70,13 @@ Arguments:
 - `input`: path to a `.md` or `.mditamap` file (not a directory; use a map to convert multiple topics at once)
 - `output_dir`: output directory (default: `./dita-output`). The script clears prior `.dita` and `.ditamap` files here before converting
 
-The script outputs JSON with the conversion results:
+The script outputs JSON with the conversion results, always including a `status` field:
 
 ```json
 {"status": "success", "dita_version": "DITA-OT version 4.3.1", "input": "guide.mditamap", "output_dir": "./dita-output", "file_count": 2, "files": ["dita-output/topic.dita", "dita-output/guide.ditamap"]}
 ```
+
+On failure (missing prerequisites, invalid input, or a conversion error), the script exits non-zero and emits `{"status": "error", "error": "..."}` or, once prerequisites are met, `{"status": "error", "dita_version": "...", "input": "...", "output_dir": "...", "stderr": "..."}`.
 
 ## Example invocations
 
