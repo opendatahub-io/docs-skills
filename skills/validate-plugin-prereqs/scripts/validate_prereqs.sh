@@ -57,6 +57,8 @@ CLI_CHECKS=(
   "vale:optional"
   "shellcheck:optional"
   "ruff:optional"
+  "java:optional"
+  "dita:optional"
 )
 
 # --- Output helpers ---

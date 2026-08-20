@@ -1,0 +1,22 @@
+---
+$schema: urn:oasis:names:tc:dita:xsd:map.xsd
+---
+
+# Product documentation
+
+- [About the product](about-product.md)
+- Getting started
+  1. [Prerequisites](getting-started/prerequisites.md)
+  2. [Installation](getting-started/installation.md)
+  3. [Configuration](getting-started/configuration.md)
+- Administration
+  - [Cluster management](admin/cluster-management.md)
+  - [User management](admin/user-management.md)
+- Reference
+  - [CLI command reference](reference/cli-command-reference.md)
+  - [API reference](reference/api-reference.md)
+
+| Concepts                               | Tasks                                              |
+|----------------------------------------|----------------------------------------------------|
+| [About the product](about-product.md)  | [Installation](getting-started/installation.md)    |
+| [About the product](about-product.md)  | [Cluster management](admin/cluster-management.md)  |
