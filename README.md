@@ -1,10 +1,10 @@
 # docs-skills
 
-Claude Code plugin for documentation workflows. Provides orchestrator skills, review agents, code analysis tools, and style guide compliance checking for AsciiDoc and Markdown documentation.
+Documentation workflow plugin for Codex and Claude Code. It provides orchestrator skills, review agents, code analysis tools, and style guide compliance checking for AsciiDoc and Markdown documentation.
 
 ## Overview
 
-This plugin provides the documentation automation layer for Claude Code. It includes skills for requirements analysis, documentation planning and writing, code-grounded technical review, style guide compliance, and CI/CD integration with JIRA and Git platforms.
+This plugin provides documentation automation for Codex and Claude Code. It includes skills for requirements analysis, documentation planning and writing, code-grounded technical review, style guide compliance, and CI/CD integration with JIRA and Git platforms.
 
 ### Skills
 
@@ -39,7 +39,28 @@ This plugin provides the documentation automation layer for Claude Code. It incl
 
 ## Installation
 
-### From GitHub (marketplace)
+### Codex
+
+Install from the GitHub marketplace:
+
+```bash
+codex plugin marketplace add opendatahub-io/docs-skills
+codex plugin add docs-skills@opendatahub-docs
+```
+
+For a local clone, register its absolute path instead:
+
+```bash
+git clone git@github.com:opendatahub-io/docs-skills.git
+codex plugin marketplace add /absolute/path/to/docs-skills
+codex plugin add docs-skills@opendatahub-docs
+```
+
+Start a new Codex thread after installation so the new skills are loaded.
+
+### Claude Code
+
+Install from GitHub:
 
 Add the repo as a marketplace, then install the plugin:
 
@@ -48,20 +69,22 @@ claude plugin marketplace add opendatahub-io/docs-skills
 claude plugin install docs-skills@opendatahub-docs
 ```
 
-### From local clone
+For a local clone:
 
 ```bash
 git clone git@github.com:opendatahub-io/docs-skills.git
 claude --plugin-dir ./docs-skills
 ```
 
-### For development
-
-Use `--plugin-dir` to load the plugin without installing. Run `/reload-plugins` after making changes:
+For development, use `--plugin-dir` to load the plugin without installing. Run `/reload-plugins` after making changes:
 
 ```bash
 claude --plugin-dir /path/to/docs-skills
 ```
+
+## Platform compatibility
+
+The `skills/` and bundled scripts are shared by both platforms. Claude Code loads the custom agents in `agents/` directly. In Codex, skills translate those named-agent instructions to collaboration subagents by following [runtime compatibility](reference/runtime-compatibility.md). Claude Code hooks are not installed by Codex.
 
 ## Prerequisites
 
@@ -126,6 +149,17 @@ These are declared as PEP 723 inline metadata in their scripts and installed aut
 
 Run the docs orchestrator from the root of your documentation repository:
 
+### Codex
+
+```text
+$docs-orchestrator PROJ-123
+$docs-orchestrator PROJ-123 --repo https://github.com/org/repo
+$docs-orchestrator PROJ-123 --pr https://github.com/org/repo/pull/456
+$docs-workflow-start PROJ-123
+```
+
+### Claude Code
+
 ```bash
 # Basic workflow from a JIRA ticket
 /docs-orchestrator PROJ-123
@@ -147,7 +181,7 @@ The orchestrator runs a YAML-defined step list. Customize per-repo by placing a 
 ```bash
 mkdir -p .agent_workspace
 # Copy the default workflow and edit it
-cp $(claude plugin path docs-skills)/skills/docs-orchestrator/defaults/docs-workflow.yaml \
+cp /absolute/path/to/docs-skills/skills/docs-orchestrator/defaults/docs-workflow.yaml \
    .agent_workspace/docs-workflow.yaml
 ```
 

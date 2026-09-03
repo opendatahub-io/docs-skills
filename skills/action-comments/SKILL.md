@@ -1,11 +1,13 @@
 ---
 name: action-comments
-description: Fetch unresolved review comments from GitHub PRs or GitLab MRs and action them on local files. Works standalone (interactive) or in CI mode (autonomous). Optionally reads .agent_workspace artifacts for grounding. MUST BE USED when the user asks to action, address, or process review comments on a PR/MR.
+description: Fetch and action unresolved GitHub PR or GitLab MR review comments on local files, interactively or in CI. MUST BE USED when the user asks to action, address, or process review comments on a PR/MR.
 argument-hint: "[url] [--ci] | <ticket> --base-path <path> [--ci] [url]"
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Agent, AskUserQuestion
 ---
 
 # Action Review Comments
+
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
 
 Action review comments on local files: interactive by default, autonomous in CI (auto-detected, or forced with `--ci`).
 

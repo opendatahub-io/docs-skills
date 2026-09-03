@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, WebSearch, Web
 
 # Technical Review Step
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Step skill for the docs-orchestrator pipeline. Performs a single review pass; the iteration loop is driven by the orchestrator.
 
 ## Execution

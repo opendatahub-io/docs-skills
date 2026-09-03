@@ -5,6 +5,8 @@ description: Check that all environment variables and CLI tools required by the 
 
 # Validate plugin prerequisites
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Run the prerequisite checker:
 
 ```bash

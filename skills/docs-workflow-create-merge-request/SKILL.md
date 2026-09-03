@@ -8,6 +8,8 @@ allowed-tools: Bash, Read
 
 # Create Merge Request Step
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Step skill for the docs-orchestrator pipeline. After writing and reviews are complete, this step creates a feature branch (if needed), commits the manifest-listed files, pushes to the remote, and creates an MR/PR via `gh` (GitHub) or `glab` (GitLab).
 
 **Skipped in draft mode** (`--draft` flag). When `--repo-path` is set, the script operates in the target repo but expects the user to have already switched to a feature branch.

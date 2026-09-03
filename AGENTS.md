@@ -1,11 +1,14 @@
 # docs-skills
 
-A Claude Code plugin providing documentation review, writing, and workflow tools. This file defines the shared project conventions for all AI coding agents. For Claude Code-specific instructions, see [CLAUDE.md](CLAUDE.md).
+A Codex and Claude Code plugin providing documentation review, writing, and workflow tools. This file defines the shared project conventions for all AI coding agents. For Claude Code-specific instructions, see [CLAUDE.md](CLAUDE.md).
 
 ## Repository structure
 
 ```text
 .claude-plugin/plugin.json   Plugin packaging metadata (name, version, description)
+.claude-plugin/marketplace.json  Claude Code marketplace metadata
+.codex-plugin/plugin.json    Codex plugin packaging metadata
+.agents/plugins/marketplace.json  Codex marketplace metadata
 skills/<skill>/SKILL.md      Skill definitions with frontmatter
 agents/<agent>.md            Subagent definitions with frontmatter
 reference/                   Shared domain knowledge (frameworks, templates, guides)
@@ -33,6 +36,10 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --issue PROJ-123
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/learn-code/scripts/detect_language.py --repo /path
 ```
 
+### Codex
+
+Codex does not define the Claude path variables. Skills that use them must link to [runtime compatibility](reference/runtime-compatibility.md). Resolve the loaded skill and plugin directories to absolute paths before running bundled scripts.
+
 ### Cursor
 
 Use paths relative to the repository root (workspace):
@@ -45,12 +52,15 @@ python3 skills/learn-code/scripts/detect_language.py --repo /path/to/repo
 
 **Skills** (invoked via the Skill tool) use bare names: `docs-workflow-requirements`, `jira-reader`, `learn-code`. Qualified names (`docs-skills:docs-workflow-requirements`) also work. Use bare names in workflow YAML step lists and skill-to-skill invocations.
 
-**Agents** (invoked via the Agent tool's `subagent_type`) require fully-qualified names with the plugin prefix: `docs-skills:technical-reviewer`, `docs-skills:docs-writer`. Bare names like `technical-reviewer` will fail with "Agent type not found".
+**Agents in Claude Code** (invoked via the Agent tool's `subagent_type`) require fully-qualified names with the plugin prefix: `docs-skills:technical-reviewer`, `docs-skills:docs-writer`. Bare names like `technical-reviewer` will fail with "Agent type not found".
+
+**Agents in Codex** use collaboration subagents. The invoking skill must direct the subagent to load the matching file from `agents/`; see [runtime compatibility](reference/runtime-compatibility.md).
 
 ## Contributing rules
 
 - Use kebab-case for skill and agent names
-- Bump version in `.claude-plugin/plugin.json` when making changes
+- Bump `PLUGIN_VERSION` in `scripts/sync_plugin_manifests.py` when making changes, then regenerate both platform manifests
+- Run `python3 scripts/sync_plugin_manifests.py --check` before committing
 - New Python scripts with external dependencies must use PEP 723 inline metadata
 - New stdlib-only scripts use plain `python3` invocation
 - Run `make lint` before committing (skillsaw + ruff + shellcheck)

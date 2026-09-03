@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, WebSearch, Web
 
 # Requirements Analysis Step
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → discover → fan out → merge → write output**.
 
 This skill uses a two-pass architecture to analyze documentation requirements:

@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Bash, Glob, Grep, Skill, Agent
 
 # Query-Code — Ask Questions About an Analyzed Codebase
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Takes a natural-language question about a codebase, loads the analysis data produced by `learn-code`, and dispatches an agent that answers the question with evidence grounded in actual source files and line numbers.
 
 ## Usage

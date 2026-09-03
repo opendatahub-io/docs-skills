@@ -6,6 +6,8 @@ author: Gabriel McGoldrick (gmcgoldr@redhat.com)
 
 # JIRA Writer Skill
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 This skill provides write access to JIRA issues on Red Hat Issue Tracker (https://redhat.atlassian.net).
 
 **WARNING: This skill modifies JIRA issues. Always verify the changes before confirming.**

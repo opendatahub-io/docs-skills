@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Bash, Glob, Grep, Agent
 
 # Learn-Code — Codebase Analysis for Onboarding
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Single-skill pipeline that detects language, maps modules, analyzes each module in parallel via fan-out agents, discovers cross-module relationships, and produces a structured onboarding guide.
 
 ## Usage

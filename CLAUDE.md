@@ -1,6 +1,6 @@
-# docs-skills
+# docs-skills for Claude Code
 
-Follow the shared project conventions in @AGENTS.md for repository structure, skill naming, contributing rules, and general script invocation patterns. The instructions below apply only to Claude Code.
+Follow the shared, cross-platform project conventions in @AGENTS.md for repository structure, skill naming, contributing rules, and general script invocation patterns. The instructions below apply only to Claude Code.
 
 ## Repository structure
 

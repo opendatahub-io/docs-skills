@@ -7,6 +7,8 @@ allowed-tools: Read, Bash, Write
 
 # Red Hat Docs TOC Extractor Skill
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 This skill extracts distinct article URLs from Red Hat documentation table of contents (TOC) pages. It parses the navigation element to find all separate documentation articles, making it easy to process or download entire documentation sections.
 
 ## Capabilities

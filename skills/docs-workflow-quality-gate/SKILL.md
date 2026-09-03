@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Bash, Glob, Grep, Agent
 
 # Quality Gate
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Score the pipeline's documentation output before creating a merge request. This skill dispatches two judge agents in parallel — one for doc_quality, one for intent_alignment — using the same model as the eval harness (Opus). Each agent returns a JSON object in a fenced code block, which the `extract-json` script pulls out and validates against the step's schema.
 
 The quality gate produces a pass/fail verdict and, when intent alignment is below threshold, a structured list of gaps with recommended actions and a feedback brief (`feedback-brief.md`) ready for the orchestrator to dispatch the writer in fix mode.

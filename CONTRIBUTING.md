@@ -1,6 +1,6 @@
 # Contributing to docs-skills
 
-Thank you for your interest in contributing to docs-skills! This plugin provides documentation review, writing, and workflow tools for Claude Code.
+Thank you for your interest in contributing to docs-skills! This plugin provides documentation review, writing, and workflow tools for Codex and Claude Code.
 
 ## Getting Started
 
@@ -18,11 +18,13 @@ Thank you for your interest in contributing to docs-skills! This plugin provides
 ## Repository Layout
 
 ```text
-.claude-plugin/plugin.json   Plugin packaging metadata
+.claude-plugin/              Claude Code plugin and marketplace metadata
+.codex-plugin/               Codex plugin metadata
+.agents/plugins/             Codex marketplace metadata
 skills/                      Skill directories (SKILL.md + scripts/)
 agents/                      Subagent definitions
 reference/                   Shared domain knowledge
-hooks/                       Claude Code event hooks
+hooks/                       Claude Code event hooks (not loaded by Codex)
 eval/                        Evaluation test cases
 ```
 
@@ -55,18 +57,30 @@ make lint
 ```
 
 The `lint` target runs:
+- **manifest checks** prevent Claude Code and Codex metadata from drifting
+- **runtime compatibility checks** verify platform-specific skills link to their Codex guidance
 - **skillsaw** validates plugin structure and skill frontmatter
 - **ruff** checks and formats Python code
 - **shellcheck** lints shell scripts
 
-### Test Locally (Claude Code)
+When changing release metadata, edit `scripts/sync_plugin_manifests.py`, run `python3 scripts/sync_plugin_manifests.py`, and commit all generated manifests.
 
-To test a skill with Claude Code before submitting:
+### Test Locally
 
-1. Open `claude`
-2. Install the local plugin: `claude plugin install /path/to/docs-skills`
-3. Test your skill
-4. Remove the local plugin when done
+For Codex:
+
+```bash
+codex plugin marketplace add /absolute/path/to/docs-skills
+codex plugin add docs-skills@opendatahub-docs
+```
+
+Start a new thread to load the updated skills.
+
+For Claude Code:
+
+```bash
+claude --plugin-dir /absolute/path/to/docs-skills
+```
 
 ## Submitting Your Contribution
 

@@ -8,6 +8,8 @@ allowed-tools: Read, Bash, Glob, Grep
 
 # Ticket Readiness Assessment
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Standalone skill that evaluates whether a JIRA ticket has sufficient information for the docs-orchestrator workflow to succeed. Checks four dimensions and produces a structured verdict.
 
 ## Parse arguments

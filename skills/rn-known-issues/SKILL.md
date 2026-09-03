@@ -6,6 +6,8 @@ allowed-tools: Read, Bash, Grep, Glob
 
 # Release Notes: Known Issue Audit
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Audit known issues for a release version. Produces a categorized report showing which known issues remain open and which have been resolved since the previous release.
 
 ## Arguments

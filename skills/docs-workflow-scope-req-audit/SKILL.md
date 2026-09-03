@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Glob, Grep, Bash, Agent, Skill
 
 # Scope Requirements Audit Step
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → fan out → merge → write output**.
 
 This skill classifies each JIRA requirement from the requirements step as grounded, partial, or absent by dispatching one subagent per requirement. Each subagent receives learn-code analysis context (module registry, summaries, onboarding guide) and can inspect the actual source code with Read/Grep/Glob. The planning step then uses these classifications to scope documentation modules — grounded requirements get full specs, partial ones are flagged for SME review, and absent ones are deferred to prevent documenting unimplemented features.

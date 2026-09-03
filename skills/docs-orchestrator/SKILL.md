@@ -1,6 +1,6 @@
 ---
 name: docs-orchestrator
-description: Documentation workflow orchestrator. Reads the step list from .agent_workspace/docs-workflow.yaml (or the plugin default). Runs steps sequentially, manages progress state, handles iteration and confirmation gates. Claude is the orchestrator — the YAML is a step list, not a workflow engine.
+description: Documentation workflow orchestrator. Reads the step list from .agent_workspace/docs-workflow.yaml (or the plugin default). Runs steps sequentially, manages progress state, handles iteration and confirmation gates. The active agent is the orchestrator; the YAML is a step list, not a workflow engine.
 
 argument-hint: <ticket> [--workflow <name>] [--pr <url>...] [--source-code-repo <url-or-path>...] [--no-source-repo] [--auto-discover-repos] [--max-secondary-repos <N>] [--mkdocs] [--draft] [--docs-repo-path <path>] [--create-jira <PROJECT>] [--create-merge-request]
 
@@ -9,17 +9,21 @@ allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, AskUserQuestio
 
 # Docs Orchestrator
 
-**When the user invokes `/docs-orchestrator`, run THIS skill directly. Do NOT redirect to `docs-workflow-start` or any other skill.**
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
 
-The Python state machine driver owns all orchestrator logic. Claude calls the driver, parses JSON actions, and executes them.
+**When the user invokes `/docs-orchestrator` or `$docs-orchestrator`, run THIS skill directly. Do NOT redirect to `docs-workflow-start` or any other skill.**
+
+The Python state machine driver owns all orchestrator logic. The active agent calls the driver, parses JSON actions, and executes them.
 
 ## Pre-flight
 
-Install the workflow completion Stop hook (safe to re-run):
+In Claude Code, install the workflow completion Stop hook (safe to re-run):
 
 ```bash
 bash ${CLAUDE_SKILL_DIR}/scripts/setup-hooks.sh
 ```
+
+In Codex, do not run this Claude-specific hook installer. Continue the action loop in the active thread until the driver returns `complete` or `fail`; the driver performs post-requirements source resolution itself.
 
 Do not source `.env` files or check for tokens/CLIs — downstream scripts handle their own prerequisites.
 
@@ -125,7 +129,7 @@ This resets the step to `in_progress`, un-fails the workflow, restores the activ
 
 ## Guardrails
 
-Rules the script cannot enforce — Claude must follow these during execution:
+Rules the script cannot enforce—the active agent must follow these during execution:
 
 1. **Synchronous primary agents.** When a step skill instructs you to dispatch an Agent, pass `run_in_background: false` for the step's primary agent (the one whose output file the step verifies). Fan-out agents within a step may remain background.
 

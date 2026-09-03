@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Bash, Agent, Glob, Grep
 
 # docs-workflow-code-analysis
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Orchestrator step skill that wraps `learn-code` to analyze a source repository and produce structured code understanding for downstream documentation steps.
 
 ## Arguments

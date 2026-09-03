@@ -1,0 +1,37 @@
+{
+  "name": "docs-skills",
+  "version": "0.4.0",
+  "description": "Documentation review, writing, and workflow tools for AsciiDoc and Markdown documentation",
+  "author": {
+    "name": "opendatahub-io"
+  },
+  "homepage": "https://github.com/opendatahub-io/docs-skills",
+  "repository": "https://github.com/opendatahub-io/docs-skills",
+  "license": "Apache-2.0",
+  "keywords": [
+    "documentation",
+    "writing",
+    "review",
+    "asciidoc",
+    "markdown"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Documentation Skills",
+    "shortDescription": "Plan, write, and review technical documentation",
+    "longDescription": "Reusable documentation workflows for requirements analysis, planning, writing, code-grounded review, and style-guide compliance.",
+    "developerName": "opendatahub-io",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/opendatahub-io/docs-skills",
+    "defaultPrompt": [
+      "Plan documentation for this change.",
+      "Review these docs for technical accuracy.",
+      "Run the documentation workflow for this ticket."
+    ]
+  }
+}

@@ -7,6 +7,8 @@ argument-hint: "[topic-type] [description]"
 
 # Markdown DITA writing and conversion skill
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Write Markdown DITA topics and maps, then convert them to DITA XML using DITA-OT with the `org.lwdita` plugin.
 
 ## Prerequisites

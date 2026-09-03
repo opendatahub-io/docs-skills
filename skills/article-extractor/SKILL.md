@@ -7,6 +7,8 @@ allowed-tools: Read, Bash, Write
 
 # Article Extractor Skill
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 This skill downloads HTML from websites and extracts the article content, removing unnecessary HTML bloat. It's particularly useful for documentation websites that have large amounts of navigation, styling, and other non-content HTML.
 
 ## Capabilities

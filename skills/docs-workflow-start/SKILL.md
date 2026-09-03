@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Glob, Grep, Bash, Skill, AskUserQuestion
 
 # Docs Workflow Start
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Interactive entry point for the documentation workflow.
 
 ## Parse arguments

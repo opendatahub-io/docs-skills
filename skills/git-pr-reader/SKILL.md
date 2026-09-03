@@ -7,6 +7,8 @@ allowed-tools: Read, Bash, Grep, Glob
 
 # Git PR Reader Skill
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Unified interface for GitHub Pull Requests and GitLab Merge Requests — read, review, and post comments.
 
 ## Capabilities

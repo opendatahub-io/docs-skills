@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Bash, Glob, Grep, Agent
 
 # Understand-Pull-Request — PR/MR Analysis
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Fetches PR/MR metadata, identifies affected modules, analyzes changes in each module via fan-out agents, and produces a structured PR analysis document.
 
 ## Usage

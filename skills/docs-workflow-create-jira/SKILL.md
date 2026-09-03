@@ -8,6 +8,8 @@ allowed-tools: Read, Write, Bash
 
 # Create JIRA Step
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → do work → write output**.
 
 Unlike other step skills, this skill does **not** dispatch an agent. It runs `scripts/create-jira-ticket.sh` directly.

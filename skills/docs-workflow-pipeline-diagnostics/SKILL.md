@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Bash, Glob, Grep
 
 # Pipeline Diagnostics Step
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → run diagnostics script → analyze results → write output**.
 
 ## Arguments

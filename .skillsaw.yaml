@@ -21,9 +21,6 @@ rules:
       skill:
         warn: 4000
         error: 8000
-  content-critical-position:
-    enabled: true
-    severity: info
   plugin-naming:
     exclude: [".claude"]
   plugin-json-required:

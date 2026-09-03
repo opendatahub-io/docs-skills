@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, WebSearch, Web
 
 # Style Guide and Modular Docs Review
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Multi-agent style guide compliance and modular docs review with confidence-based scoring.
 
 For technical accuracy and code-aware validation, use `docs-review-technical`.

@@ -7,6 +7,8 @@ allowed-tools: Bash, Read, Write
 
 # Convert Google Docs, Slides, or Sheets
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Export Google content using `gcloud` CLI or Google Application Default Credentials for authentication:
 
 - **Google Docs** → Markdown (`.md`)

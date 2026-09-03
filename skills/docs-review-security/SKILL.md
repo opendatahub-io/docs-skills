@@ -11,6 +11,8 @@ description: >-
 
 # Security and PII review skill
 
+Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Scan documentation for sensitive data that must not appear in published content:
 real IP addresses, credentials, internal hostnames, customer-identifying
 information, and other PII.
