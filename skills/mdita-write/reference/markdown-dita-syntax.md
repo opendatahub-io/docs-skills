@@ -128,8 +128,10 @@ Within the ordered list, list structure maps to task step elements:
 | First paragraph in item | `<cmd>` (the command) |
 | Additional paragraphs in item | `<info>` (supplemental info) |
 | Nested ordered list | `<substeps>` / `<substep>` |
-| Nested unordered list in a step | `<ul>` / `<li>` |
+| Nested unordered list in a step | `<substeps>` / `<substep>` |
 | Body-level unordered list (in place of the ordered list) | `<steps-unordered>` |
+
+A DITA `<step>` cannot contain a bare list, so a nested ordered or unordered list is always promoted to `<substeps>`, matching the numbered example in [Task example](#task-example) and the bulleted one that follows it.
 
 Produce `<prereq>`, `<context>`, `<result>`, and `<postreq>` with the task section headings. See [Task section headings](#task-section-headings) for the full mapping.
 
@@ -178,7 +180,7 @@ Run `tool --version` to confirm the installation succeeded.
 Configure authentication credentials using `tool login`.
 ```
 
-The short description becomes `<shortdesc>`, `## Prerequisites` becomes `<prereq>`, `## About this task` becomes `<context>`, the ordered list under `## Steps` becomes `<steps>` (with `<substeps>` and a nested `<ul>`), `## Verification` becomes `<result>`, and `## Next steps` becomes `<postreq>`.
+The short description becomes `<shortdesc>`, `## Prerequisites` becomes `<prereq>`, `## About this task` becomes `<context>`, the ordered list under `## Steps` becomes `<steps>` (with the nested ordered and unordered lists both becoming `<substeps>`), `## Verification` becomes `<result>`, and `## Next steps` becomes `<postreq>`.
 
 ## Reference topics
 

@@ -21,7 +21,7 @@ To verify the download before installing, check its SHA-256 against the expected
 
 ```bash
 curl -sL https://github.com/aireilly/org.lwdita/releases/download/v6.0.0/org.lwdita-6.0.0.zip | sha256sum
-# expected: c8da500aa8a5b7b34fba60b9cc42f1b8d445770710d550b5f8281cce0c3bd036
+# expected: bcec1d72dfc2597107a8a937c27a2ac5b32bb9833a2ef17813c22f7722b501db
 ```
 
 The conversion script checks for Java, DITA-OT, and the plugin, and reports what to install if anything is missing.
@@ -54,8 +54,8 @@ When asked to write Markdown DITA content:
 1. **Determine the topic type**: concept (explains what), task (explains how), or reference (lookup info)
 2. **Read the syntax reference** and the matching example file for the correct structure
 3. **Write the Markdown DITA file** using the `.md` extension and set the topic type with an H1 class: `# Title {.concept}`, `{.task}`, or `{.reference}`
-4. **Convert to DITA XML** using the conversion script to validate the output
-5. **Fix issues**: if conversion fails, adjust the source and retry
+4. **Convert to DITA XML** using the conversion script
+5. **Fix issues and retry**: the conversion script also runs `dita validate` against each generated file, so a `"status": "error"` result can mean either a failed transform or DTD-invalid output (for example a task with two `<result>` elements, which the `org.lwdita` transform will serialize without complaint since it doesn't reparse its own output against the DTD). Read the reported error, adjust the Markdown source, and reconvert. Loop until `"status": "success"` — that status is the only signal that the output is genuinely DTD-valid DITA, so do not report the task done before reaching it.
 
 ## Conversion to DITA XML
 
@@ -77,6 +77,8 @@ The script outputs JSON with the conversion results, always including a `status`
 ```
 
 On failure (missing prerequisites, invalid input, or a conversion error), the script exits non-zero and emits `{"status": "error", "error": "..."}` or, once prerequisites are met, `{"status": "error", "dita_version": "...", "input": "...", "output_dir": "...", "stderr": "..."}`.
+
+The script also validates every generated `.dita`/`.ditamap` file against its DTD with `dita validate`. If that fails — the transform can produce structurally invalid output (for example two `<result>` elements in a task) without itself failing — the script reports `{"status": "error", "dita_version": "...", "input": "...", "output_dir": "...", "error": "Generated DITA is not valid against its DTD...\n<file>:\n<dita validate output>"}`. Treat this the same as a conversion failure: fix the Markdown source and reconvert.
 
 ## Example invocations
 
