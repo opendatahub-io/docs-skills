@@ -41,14 +41,52 @@ This plugin provides documentation automation for Codex and Claude Code. It incl
 
 ### Codex
 
-Install from the GitHub marketplace:
+Install the plugin as a complete bundle. Do not copy individual directories from
+`skills/`: several skills use sibling skills and shared repository resources.
+
+Confirm that your Codex CLI supports plugins:
+
+```bash
+codex plugin --help
+```
+
+#### Install from GitHub
+
+Register this repository as a marketplace, then install the plugin:
 
 ```bash
 codex plugin marketplace add opendatahub-io/docs-skills
 codex plugin add docs-skills@opendatahub-docs
 ```
 
-For a local clone, register its absolute path instead:
+Verify the installation:
+
+```bash
+codex plugin marketplace list
+codex plugin list
+```
+
+Start a new Codex thread after installation so the skills are discovered. Invoke
+them with a `$` prefix, for example:
+
+```text
+$docs-orchestrator PROJ-123
+$docs-review-technical
+$learn-code
+```
+
+#### Install a branch or tag
+
+Use `--ref` when testing an unreleased branch or installing a specific tag:
+
+```bash
+codex plugin marketplace add opendatahub-io/docs-skills --ref <branch-or-tag>
+codex plugin add docs-skills@opendatahub-docs
+```
+
+#### Install from a local checkout
+
+Clone the repository and register its absolute path as the marketplace source:
 
 ```bash
 git clone git@github.com:opendatahub-io/docs-skills.git
@@ -56,7 +94,19 @@ codex plugin marketplace add /absolute/path/to/docs-skills
 codex plugin add docs-skills@opendatahub-docs
 ```
 
-Start a new Codex thread after installation so the new skills are loaded.
+After pulling local changes, start a new Codex thread. For a Git marketplace,
+refresh its snapshot before starting a new thread:
+
+```bash
+codex plugin marketplace upgrade opendatahub-docs
+```
+
+To uninstall the plugin and remove its marketplace:
+
+```bash
+codex plugin remove docs-skills@opendatahub-docs
+codex plugin marketplace remove opendatahub-docs
+```
 
 ### Claude Code
 
