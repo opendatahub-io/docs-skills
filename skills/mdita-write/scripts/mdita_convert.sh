@@ -116,6 +116,29 @@ if dita -i "$INPUT" -f dita -o "$OUTPUT_DIR" --temp="$TEMP_DIR/dita-temp" >"$TEM
     exit 1
   fi
 
+  # The lwdita transform serializes whatever structure it built without
+  # reparsing it against the topic's own DOCTYPE, so a positionally-invalid
+  # taskbody (for example two <result> elements) can exit 0 here. Run each
+  # output file back through `dita validate`, which does parse against the
+  # DTD, so the caller finds out now instead of when AEM's editor opens it.
+  DTD_ERRORS=""
+  while IFS= read -r out_file; do
+    [ -z "$out_file" ] && continue
+    if ! VALIDATE_OUT=$(dita validate -i "$out_file" 2>&1); then
+      DTD_ERRORS+="${out_file}:"$'\n'"${VALIDATE_OUT}"$'\n\n'
+    fi
+  done <<<"$FILES"
+
+  if [ -n "$DTD_ERRORS" ]; then
+    jq -n \
+      --arg dita_version "$DITA_VERSION" \
+      --arg input "$INPUT" \
+      --arg output_dir "$OUTPUT_DIR" \
+      --arg dtd_errors "$DTD_ERRORS" \
+      '{status: "error", dita_version: $dita_version, input: $input, output_dir: $output_dir, error: ("Generated DITA is not valid against its DTD. Fix the Markdown source and reconvert:\n\n" + $dtd_errors)}'
+    exit 1
+  fi
+
   jq -n \
     --arg dita_version "$DITA_VERSION" \
     --arg input "$INPUT" \
