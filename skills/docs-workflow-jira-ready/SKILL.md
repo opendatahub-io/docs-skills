@@ -33,7 +33,7 @@ Requires `JIRA_API_TOKEN` (or the backward-compatible alias `JIRA_AUTH_TOKEN`) a
 Run the check script:
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/jira-ready-check.sh \
+bash <skill-dir>/scripts/jira-ready-check.sh \
   --jql "project=PROJ AND labels=docs-needed AND labels != docs-workflow-started" \
   --base-path artifacts \
   --label docs-workflow-started
@@ -69,7 +69,7 @@ The script:
 When `--add-label` is passed, the script adds the tracking label to each ticket in the `ready` list via the JIRA REST API after outputting results. This prevents the same tickets from appearing on the next cron run.
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/jira-ready-check.sh \
+bash <skill-dir>/scripts/jira-ready-check.sh \
   --jql "project=PROJ AND labels=docs-needed" \
   --add-label
 ```

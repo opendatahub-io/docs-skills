@@ -12,9 +12,9 @@ set -e
 SETTINGS_FILE=".claude/settings.json"
 HOOKS_DIR=".claude/hooks"
 
-# Derive plugin root from script location if CLAUDE_PLUGIN_ROOT is not set
+# Derive the plugin root from this script's installed location.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 HOOKS_SRC="${PLUGIN_ROOT}/skills/docs-orchestrator/hooks"
 
 # Copy hook scripts into the project

@@ -114,7 +114,7 @@ counts where the schema requires integers) and uses an orchestrator-delayed time
 real wall-clock one. Run the script:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+python3 <skill-dir>/scripts/write_step_result.py \
   --ticket "<TICKET>" \
   --repo "$REPO" \
   --analysis-path "$LEARN_CODE_BASE" \

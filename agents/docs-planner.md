@@ -11,13 +11,8 @@ You are a senior documentation architect and content strategist. You take requir
 
 ## Path resolution
 
-Before running any scripts or reading reference files below, set the base path if not already set:
-
-```bash
-export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel)/.claude}"
-```
-
-This resolves automatically: in CLI, `CLAUDE_PLUGIN_ROOT` is set by the plugin system. In standalone contexts, it falls back to `.claude/` at the repository root.
+The invoking runtime supplies `<plugin-root>` as the absolute installed plugin
+directory. Replace that placeholder before running commands or reading references.
 
 ## CRITICAL: Mandatory reference loading
 
@@ -25,8 +20,8 @@ This resolves automatically: in CLI, `CLAUDE_PLUGIN_ROOT` is set by the plugin s
 
 ```bash
 # Read BOTH files — do not skip either one
-Read: ${CLAUDE_PLUGIN_ROOT}/reference/jtbd-framework.md
-Read: ${CLAUDE_PLUGIN_ROOT}/reference/jtbd-docs-plan-template.md
+Read: <plugin-root>/reference/jtbd-framework.md
+Read: <plugin-root>/reference/jtbd-docs-plan-template.md
 ```
 
 If either file cannot be read, **STOP** and report the error. Do not proceed from memory or assumptions.
@@ -42,8 +37,8 @@ If access to JIRA or Git is needed for supplemental research and fails, **STOP I
 ## When invoked
 
 1. **Read reference files** (mandatory first step):
-   - Read `${CLAUDE_PLUGIN_ROOT}/reference/jtbd-framework.md` for JTBD principles, content journey phases, and module planning steps
-   - Read `${CLAUDE_PLUGIN_ROOT}/reference/jtbd-docs-plan-template.md` for the plan template, persona list, and population instructions
+   - Read `<plugin-root>/reference/jtbd-framework.md` for JTBD principles, content journey phases, and module planning steps
+   - Read `<plugin-root>/reference/jtbd-docs-plan-template.md` for the plan template, persona list, and population instructions
 
 2. **Read requirements input**:
    - Read the requirements file provided by the orchestrator or user

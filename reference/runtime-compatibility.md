@@ -4,19 +4,22 @@ The plugin uses one set of skills for Claude Code and Codex. Apply the rules in 
 
 ## Bundled paths
 
-Claude Code expands `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PLUGIN_ROOT}` in command examples. Codex does not define those variables. Before running a command in Codex, replace:
+Command examples use runtime-neutral path placeholders. Before running a command
+in either platform, replace:
 
-- `${CLAUDE_SKILL_DIR}` with the absolute directory containing the loaded `SKILL.md`.
-- `${CLAUDE_PLUGIN_ROOT}` with the absolute plugin directory containing `.codex-plugin/plugin.json`.
+- `<skill-dir>` with the absolute directory containing the loaded `SKILL.md`.
+- `<plugin-root>` with the absolute plugin directory containing
+  `.codex-plugin/plugin.json` or `.claude-plugin/plugin.json`.
 
-Do not run a command with an unresolved `CLAUDE_*` variable. Keep the target project as the command's working directory unless the skill explicitly says otherwise.
+Do not pass unresolved placeholders to the shell. Keep the target project as the
+command's working directory unless the skill explicitly says otherwise.
 
 ## Subagents
 
 Instructions that name the Agent tool or a `subagent_type` describe Claude Code's native custom-agent interface.
 
 - In Claude Code, use the fully qualified `docs-skills:<agent-name>` type exactly as shown.
-- In Codex, create a collaboration subagent for the same bounded task. Tell it to read `<plugin-root>/agents/<agent-name>.md` and follow the body as its role instructions, then include the task-specific prompt from the skill. Pass the absolute plugin root and tell the subagent to use it wherever the definition says `${CLAUDE_PLUGIN_ROOT}`.
+- In Codex, create a collaboration subagent for the same bounded task. Tell it to read `<plugin-root>/agents/<agent-name>.md` and follow the body as its role instructions, then include the task-specific prompt from the skill. Pass the absolute plugin root so it can resolve bundled references.
 - Treat Claude model labels as quality tiers: `haiku` means a fast model, `sonnet` a balanced model, and `opus` the strongest reasoning model. Use the closest available Codex model or the current default when no explicit mapping is available.
 - Preserve requested parallelism and isolation. If the runtime cannot create subagents, report that limitation instead of silently skipping the delegated work.
 

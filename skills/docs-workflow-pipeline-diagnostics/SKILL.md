@@ -52,7 +52,7 @@ mkdir -p "$OUTPUT_DIR"
 ### 2. Run the diagnostics script
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/pipeline_diagnostics.py <TICKET> \
+python3 <skill-dir>/scripts/pipeline_diagnostics.py <TICKET> \
   --workspace "$(dirname "${BASE_PATH}")" \
   --format json \
   --emit-sidecar "${OUTPUT_DIR}/step-result.json" > "$DIAGNOSTICS_FILE"
@@ -61,7 +61,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/pipeline_diagnostics.py <TICKET> \
 If a direct progress file path is known, use `--progress-file` instead:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/pipeline_diagnostics.py \
+python3 <skill-dir>/scripts/pipeline_diagnostics.py \
   --progress-file <path-to-progress-json> \
   --format json \
   --emit-sidecar "${OUTPUT_DIR}/step-result.json" > "$DIAGNOSTICS_FILE"

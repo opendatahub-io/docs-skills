@@ -18,27 +18,24 @@ eval/                        Evaluation test cases and harness config
 
 ## Calling scripts from skills
 
-The runtime working directory is the **project root**, not the skill directory. Bare relative paths like `scripts/foo.py` will fail. Always use a substitution variable:
+The runtime working directory is the **project root**, not the skill directory. Bare relative paths like `scripts/foo.py` will fail. Use runtime-neutral placeholders:
 
-### Claude Code
-
-- **`${CLAUDE_SKILL_DIR}`** — the directory containing the skill's `SKILL.md`. Use for scripts bundled with the same skill.
-- **`${CLAUDE_PLUGIN_ROOT}`** — the plugin's installation directory (repo root). Use for cross-skill calls.
+- **`<skill-dir>`** — the directory containing the skill's `SKILL.md`. Use for scripts bundled with the same skill.
+- **`<plugin-root>`** — the plugin's installation directory (repo root). Use for cross-skill calls.
 
 ```bash
 # Same-skill call (stdlib-only script)
-python3 ${CLAUDE_SKILL_DIR}/scripts/detect_language.py --repo /path/to/repo
+python3 <skill-dir>/scripts/detect_language.py --repo /path/to/repo
 
 # Same-skill call (PEP 723 script with external deps)
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --issue PROJ-123
+uv run --script <skill-dir>/scripts/jira_reader.py --issue PROJ-123
 
 # Cross-skill call
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/learn-code/scripts/detect_language.py --repo /path
+python3 <plugin-root>/skills/learn-code/scripts/detect_language.py --repo /path
 ```
 
-### Codex
-
-Codex does not define the Claude path variables. Skills that use them must link to [runtime compatibility](reference/runtime-compatibility.md). Resolve the loaded skill and plugin directories to absolute paths before running bundled scripts.
+Claude Code and Codex must resolve these placeholders to absolute paths before
+running bundled scripts. See [runtime compatibility](reference/runtime-compatibility.md).
 
 ### Cursor
 

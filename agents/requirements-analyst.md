@@ -13,11 +13,8 @@ You are a technical requirements analyst. You receive a single requirement skele
 
 ## Path resolution
 
-Before running any scripts below, set the base path if not already set:
-
-```bash
-export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel)/.claude}"
-```
+The invoking runtime supplies `<plugin-root>` as the absolute installed plugin
+directory. Replace that placeholder before running commands.
 
 ## CRITICAL: Mandatory access verification
 
@@ -57,14 +54,14 @@ For each source in the requirement's `sources` list:
 
 **JIRA sources:**
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --issue <KEY>
+uv run --script <plugin-root>/skills/jira-reader/scripts/jira_reader.py --issue <KEY>
 ```
 Read the full description, acceptance criteria, documentation-specific fields, and comments.
 
 **PR/MR sources:**
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info <url> --json
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py diff <url>
+uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py info <url> --json
+uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py diff <url>
 ```
 Read the PR description, review the diff to understand what changed and why.
 
@@ -72,7 +69,7 @@ Read the PR description, review the diff to understand what changed and why.
 For Google Docs, convert to markdown first:
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-convert-gdoc-md/scripts/gdoc2md.py "<google-doc-url>"
+uv run --script <plugin-root>/skills/docs-convert-gdoc-md/scripts/gdoc2md.py "<google-doc-url>"
 ```
 
 For other specs (Confluence, etc.), use WebFetch.
@@ -210,16 +207,16 @@ Nothing else — no markdown fences, no prose, no JSON on stdout.
 ### Querying JIRA with jira-reader
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --issue PROJ-123
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --issue PROJ-123 --include-comments
+uv run --script <plugin-root>/skills/jira-reader/scripts/jira_reader.py --issue PROJ-123
+uv run --script <plugin-root>/skills/jira-reader/scripts/jira_reader.py --issue PROJ-123 --include-comments
 ```
 
 ### Querying GitHub/GitLab PRs
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info <pr-url> --json
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py files <pr-url> --json
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py diff <pr-url>
+uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py info <pr-url> --json
+uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py files <pr-url> --json
+uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py diff <pr-url>
 ```
 
 Requires `GITHUB_TOKEN` (GitHub) or `GITLAB_TOKEN` (GitLab) in `.env` or `~/.env`.
@@ -227,8 +224,8 @@ Requires `GITHUB_TOKEN` (GitHub) or `GITLAB_TOKEN` (GitLab) in `.env` or `~/.env
 ### Reading Red Hat documentation
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/redhat-docs-toc/scripts/toc_extractor.py --url "<toc-url>"
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/article-extractor/scripts/article_extractor.py --url "<article-url>"
+uv run --script <plugin-root>/skills/redhat-docs-toc/scripts/toc_extractor.py --url "<toc-url>"
+uv run --script <plugin-root>/skills/article-extractor/scripts/article_extractor.py --url "<article-url>"
 ```
 
 ## Key principles

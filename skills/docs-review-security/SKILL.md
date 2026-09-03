@@ -27,13 +27,13 @@ This skill has two layers:
 Run the PII scanner against the target files:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/pii_scanner.py scan <file1> <file2> ...
+python3 <skill-dir>/scripts/pii_scanner.py scan <file1> <file2> ...
 ```
 
 Or for a docs directory:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/pii_scanner.py scan --docs-dir <path> [--scan-dirs modules,topics] [--file-types .adoc,.md,.dita]
+python3 <skill-dir>/scripts/pii_scanner.py scan --docs-dir <path> [--scan-dirs modules,topics] [--file-types .adoc,.md,.dita]
 ```
 
 Parse the JSON output. If findings exist, include them in the report grouped

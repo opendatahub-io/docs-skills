@@ -39,7 +39,7 @@ If the Atlassian MCP is unavailable or unauthenticated, fall back to jira-reader
 
 ```bash
 # Claude Code
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --jql "<JQL>" --fetch-details
+uv run --script <plugin-root>/skills/jira-reader/scripts/jira_reader.py --jql "<JQL>" --fetch-details
 
 # Cursor
 uv run --script skills/jira-reader/scripts/jira_reader.py --jql "<JQL>" --fetch-details

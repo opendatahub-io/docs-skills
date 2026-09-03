@@ -42,7 +42,7 @@ Combined sidecar with commit, push, and MR/PR metadata.
 Run the script, passing through all arguments:
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/create_merge_request.sh <ticket> --base-path <base-path> [--draft] [--repo-path <path>]
+bash <skill-dir>/scripts/create_merge_request.sh <ticket> --base-path <base-path> [--draft] [--repo-path <path>]
 ```
 
 The script handles:

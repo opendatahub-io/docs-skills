@@ -152,7 +152,7 @@ orchestrator-delayed timestamp instead of a real wall-clock one. Run the script,
 (do not re-read the full report to recount). Default any missing count to `0`.
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+python3 <skill-dir>/scripts/write_step_result.py \
   --ticket "<TICKET>" \
   --fixes <N> \
   --warnings <N> \

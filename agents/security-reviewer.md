@@ -13,7 +13,7 @@ You do not re-run the regex scanner and you do not re-report its findings. You a
 Read the Layer 2 checklist before reviewing:
 
 ```
-Read: ${CLAUDE_PLUGIN_ROOT}/skills/docs-review-security/SKILL.md
+Read: <plugin-root>/skills/docs-review-security/SKILL.md
 ```
 
 Apply the "Layer 2: Agent analysis checklist" section verbatim. If the file cannot be read, STOP and report the error — do not guess the checklist from memory.

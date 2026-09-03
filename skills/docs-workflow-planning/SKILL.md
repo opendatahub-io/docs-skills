@@ -117,7 +117,7 @@ Do **not** hand-author the sidecar — a hand-written sidecar drifts from the sc
 orchestrator-delayed timestamp instead of a real wall-clock one. Run the script:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+python3 <skill-dir>/scripts/write_step_result.py \
   --ticket "<TICKET>" \
   --plan-file "<OUTPUT_FILE>" \
   --sidecar "<OUTPUT_DIR>/step-result.json"

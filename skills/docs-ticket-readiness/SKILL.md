@@ -32,19 +32,19 @@ Determine mode:
 Run the readiness script to fetch JIRA data and perform Dimensions 2–4 (PR linkage, metadata, relationships):
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/ticket_readiness.py \
+uv run --script <skill-dir>/scripts/ticket_readiness.py \
   --issue <TICKET_KEY> \
-  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
+  --plugin-root <plugin-root> \
   [--ready-statuses <list>]
 ```
 
 For batch mode:
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/ticket_readiness.py \
+uv run --script <skill-dir>/scripts/ticket_readiness.py \
   --jql "<JQL_QUERY>" \
   --max-results <N> \
-  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
+  --plugin-root <plugin-root> \
   [--ready-statuses <list>]
 ```
 
@@ -63,7 +63,7 @@ If PRs were discovered in Step 1 (i.e., `dimensions.pr_source_linkage.checks.git
 
    a. Run the git PR reader to fetch PR info:
    ```bash
-   uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info <PR_URL>
+   uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py info <PR_URL>
    ```
 
    b. Compare the PR title and description against the JIRA ticket summary and description (from `description_text` in the Step 1 JSON).
@@ -142,7 +142,7 @@ If the user declines, skip comment posting.
 **Post comments:** Pipe the final merged JSON (with description_quality filled in) into the script's `--post-comment` mode:
 
 ```bash
-echo '<MERGED_JSON>' | uv run --script ${CLAUDE_SKILL_DIR}/scripts/ticket_readiness.py --post-comment
+echo '<MERGED_JSON>' | uv run --script <skill-dir>/scripts/ticket_readiness.py --post-comment
 ```
 
 Report the comment posting results to the user.

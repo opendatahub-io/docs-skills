@@ -60,7 +60,7 @@ Set `DRAFTS_DIR="${BASE_PATH}/writing"` and glob for `.adoc`, `.md`, `.dita`, an
 ### 3. Run PII scanner
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-review-security/scripts/pii_scanner.py scan <file1> <file2> ... > "$SCANNER_FILE"
+python3 <plugin-root>/skills/docs-review-security/scripts/pii_scanner.py scan <file1> <file2> ... > "$SCANNER_FILE"
 SCANNER_EXIT=$?
 ```
 
@@ -145,7 +145,7 @@ folder. Pass `--agent-findings` from the `Agent findings: N` line the security-r
 printed (do not read the full report back to recount):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+python3 <skill-dir>/scripts/write_step_result.py \
   --ticket "<TICKET>" \
   --scanner-results "$SCANNER_FILE" \
   --agent-findings <N> \

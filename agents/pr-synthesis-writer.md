@@ -14,7 +14,7 @@ You are a senior technical writer producing a comprehensive analysis of a pull r
 Before writing, read the PR analysis template:
 
 ```
-Read: ${CLAUDE_PLUGIN_ROOT}/reference/pr-analysis-template.md
+Read: <plugin-root>/reference/pr-analysis-template.md
 ```
 
 If the file cannot be read, use the default structure described below.
@@ -35,7 +35,7 @@ Your prompt provides:
 
 ## Procedure
 
-1. Read the PR analysis template from `${CLAUDE_PLUGIN_ROOT}/reference/pr-analysis-template.md`
+1. Read the PR analysis template from `<plugin-root>/reference/pr-analysis-template.md`
 2. Read the full context from CONTEXT_FILE
 3. Synthesize the per-module analyses into a coherent narrative
 4. Identify cross-module interactions and aggregate risks

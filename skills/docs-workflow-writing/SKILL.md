@@ -18,7 +18,7 @@ Step skill for the docs-orchestrator pipeline. Follows the step skill contract: 
 Run the build script to parse arguments, validate inputs, determine mode, and create output directories:
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/build_writing_args.sh <args>
+bash <skill-dir>/scripts/build_writing_args.sh <args>
 ```
 
 Pass through the args **unquoted** so each flag and value is a separate shell word. Do NOT wrap the entire args string in quotes — the script uses positional argument parsing and each `--flag value` pair must be a separate argument. The script emits JSON on stdout:
@@ -84,7 +84,7 @@ orchestrator-delayed timestamp instead of a real wall-clock one. Run the script,
 and `format` from the build script's JSON output:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+python3 <skill-dir>/scripts/write_step_result.py \
   --ticket "<TICKET>" \
   --manifest "<OUTPUT_FILE>" \
   --mode "<mode from script JSON>" \

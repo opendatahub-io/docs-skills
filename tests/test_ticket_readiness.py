@@ -1,5 +1,7 @@
 """Tests for ticket_readiness.py dimension checks."""
 
+from pathlib import Path
+
 from ticket_readiness import (
     assess_ticket,
     build_relationship_map,
@@ -748,3 +750,7 @@ class TestParseArgs:
         )
         assert args.output_dir == "/tmp/reports"
         assert args.max_results == 5
+
+    def test_plugin_root_defaults_to_installed_repository(self):
+        args = parse_args(["--issue", "PROJ-123"])
+        assert Path(args.plugin_root) == Path(__file__).resolve().parent.parent

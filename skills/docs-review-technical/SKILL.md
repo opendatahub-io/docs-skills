@@ -71,8 +71,8 @@ The `--local` and `--pr` modes share the same pipeline. The difference is how fi
 Launch a haiku agent to run pre-flight checks using `git-pr-reader`. Stop if any condition is true (still review Claude-generated PRs):
 
 - **PR/MR is closed or draft**: Check the PR/MR state from the platform API.
-- **No documentation files changed**: Run `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py files "${PR_URL}" --json` and check if any changed files end with `.adoc` or `.md`.
-- **Claude already commented**: Run `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py comments "${PR_URL}" --include-resolved --json` and check if any comment `author` matches Claude's username.
+- **No documentation files changed**: Run `uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py files "${PR_URL}" --json` and check if any changed files end with `.adoc` or `.md`.
+- **Claude already commented**: Run `uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py comments "${PR_URL}" --include-resolved --json` and check if any comment `author` matches Claude's username.
 
 ### For --local mode
 
@@ -108,7 +108,7 @@ DOC_FILES=$(wc -l < /tmp/docs-review-doc-files.txt)
 Use `git-pr-reader` to get changed files:
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py files "${PR_URL}" --json | \
+uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py files "${PR_URL}" --json | \
     python3 -c "import json,sys; files=[f['path'] for f in json.load(sys.stdin) if f['path'].endswith(('.adoc','.md'))]; print('\n'.join(files))" > /tmp/docs-review-doc-files.txt
 ```
 
@@ -124,15 +124,15 @@ Extract the exact changed line ranges so review agents only flag issues in chang
 
 ```bash
 git diff "$BASE_BRANCH"...HEAD -- $(cat /tmp/docs-review-doc-files.txt | tr '\n' ' ') | \
-  python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/extract_changed_ranges.py \
+  python3 <plugin-root>/skills/git-pr-reader/scripts/extract_changed_ranges.py \
     --context 3 -o /tmp/docs-review-changed-ranges.json
 ```
 
 ### For --pr mode
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py diff "${PR_URL}" | \
-  python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/extract_changed_ranges.py \
+uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py diff "${PR_URL}" | \
+  python3 <plugin-root>/skills/git-pr-reader/scripts/extract_changed_ranges.py \
     --context 3 -o /tmp/docs-review-changed-ranges.json
 ```
 
@@ -145,7 +145,7 @@ Launch a sonnet agent to view changes and return a summary noting:
 - Whether files appear to be concepts, procedures, references, or assemblies
 - Any structural patterns (modular docs, release notes)
 
-For `--pr` mode: `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py diff "${PR_URL}"`
+For `--pr` mode: `uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py diff "${PR_URL}"`
 For `--local` mode: `git diff "$BASE_BRANCH"...HEAD -- $(cat /tmp/docs-review-doc-files.txt)`
 
 ## Step 4: Agent 1 — Technical Accuracy and Consistency
@@ -157,7 +157,7 @@ Follow the full technical review process: doc type detection, reviewer persona (
 
 Returns issues with: `file`, `line`, `description`, `reason`, `confidence` (0-100), `severity` (error/warning/suggestion).
 
-For `--pr` mode, use `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py extract` for deterministic line numbers.
+For `--pr` mode, use `uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py extract` for deterministic line numbers.
 
 **Important**: The agent file describes a JIRA-based drafts workflow for standalone use. In this context, ignore JIRA/drafts sections — review changed files from the diff and return issues in the format above.
 
@@ -178,7 +178,7 @@ Workflow:
 1. **Clone repos** to `/tmp/tech-review/<repo-name>/` using full history (needed for `git log` search):
 
    ```bash
-   uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py clone <repo-url> \
+   uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py clone <repo-url> \
      --output-dir /tmp/tech-review/<repo-name>/ --depth 0 [--ref <ref>]
    ```
 
@@ -189,7 +189,7 @@ Workflow:
 2. **Extract references** from doc files:
    ```bash
    mapfile -t DOC_FILES < /tmp/docs-review-doc-files.txt
-   python3 ${CLAUDE_SKILL_DIR}/scripts/extract_refs.py "${DOC_FILES[@]}" --output /tmp/tech-review-refs.json
+   python3 <skill-dir>/scripts/extract_refs.py "${DOC_FILES[@]}" --output /tmp/tech-review-refs.json
    ```
 
 3. **Validate claims against code** — For each cloned repo, check if learn-code analysis exists:
@@ -268,12 +268,12 @@ If issues found, continue to Step 11.
 
 Get deterministic line numbers:
 ```bash
-LINE=$(uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py extract "${PR_URL}" "path/to/file.adoc" "pattern from the issue")
+LINE=$(uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py extract "${PR_URL}" "path/to/file.adoc" "pattern from the issue")
 ```
 
 Build comments JSON and post:
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py post "${PR_URL}" /tmp/docs-review-comments.json --review-type technical
+uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py post "${PR_URL}" /tmp/docs-review-comments.json --review-type technical
 ```
 
 For each comment: brief description with evidence from source code, include corrected values for small fixes, describe larger fixes without inline code. **Only ONE comment per unique issue.**
@@ -290,7 +290,7 @@ See [report template](references/report-template.md) for the fix-mode report sec
 
 # Notes
 
-- Use `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py --` for all Git platform interactions. Use `extract` for deterministic line numbers — never guess
+- Use `uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py --` for all Git platform interactions. Use `extract` for deterministic line numbers — never guess
 - Use Bash with heredoc/cat for /tmp files (not Write). Include source code evidence in each issue's `reason`
 - If learn-code analysis exists (`.code-learner/`), use ONBOARDING.md and module summaries. Otherwise use Read/Grep directly
 - Vale linting is NOT part of this review — use `docs-review-style`

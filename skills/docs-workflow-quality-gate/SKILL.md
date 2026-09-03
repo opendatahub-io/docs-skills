@@ -37,7 +37,7 @@ Extract `TICKET` from `$1` and `BASE_PATH` from `--base-path`.
 ### 2. Prepare judge prompts
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py prepare \
+python3 <skill-dir>/scripts/quality_gate.py prepare \
   --ticket "${TICKET}" \
   --base-path "${BASE_PATH}"
 ```
@@ -53,7 +53,7 @@ A quote-based coverage check before the judge agents. **One agent** reads the do
 #### 3a. Prepare the combined coverage prompt
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py verify \
+python3 <skill-dir>/scripts/quality_gate.py verify \
   --ticket "${TICKET}" \
   --base-path "${BASE_PATH}" \
   --prepare
@@ -73,9 +73,9 @@ Dispatch **one** agent (a single Agent-tool call). Because there is one prompt a
 The coverage prompt instructs the agent to **write its JSON reply itself** to `${BASE_PATH}/quality-gate/coverage-raw.md` (via the Write tool) and reply with only `DONE` — so no heredoc relay is needed. Confirm `coverage-raw.md` exists, then extract and validate the `items` array with the script:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py extract-json \
+python3 <skill-dir>/scripts/quality_gate.py extract-json \
   --raw "${BASE_PATH}/quality-gate/coverage-raw.md" \
-  --schema "${CLAUDE_SKILL_DIR}/schema/coverage.json" \
+  --schema "<skill-dir>/schema/coverage.json" \
   --out "${BASE_PATH}/quality-gate/coverage-results.json" \
   --key items
 ```
@@ -87,7 +87,7 @@ If `coverage-raw.md` is missing or the script exits non-zero (no JSON found, or 
 Determine whether code evidence was expected: check if `${BASE_PATH}/scope-req-audit/` or `${BASE_PATH}/validate/` exists as a directory. If either exists, add `--evidence-expected` to the command.
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py verify \
+python3 <skill-dir>/scripts/quality_gate.py verify \
   --ticket "${TICKET}" \
   --base-path "${BASE_PATH}" \
   --classify \
@@ -113,27 +113,27 @@ Each judge prompt requires the agent to output a JSON object matching its schema
 
 - **Model**: opus
 - **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/dq-prompt.md` and follow the instructions exactly.
-- **Output schema**: `${CLAUDE_SKILL_DIR}/schema/doc-quality.json`
+- **Output schema**: `<skill-dir>/schema/doc-quality.json`
 
 #### intent_alignment agent
 
 - **Model**: opus
 - **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/ia-prompt.md` and follow the instructions exactly.
-- **Output schema**: `${CLAUDE_SKILL_DIR}/schema/intent-alignment.json`
+- **Output schema**: `<skill-dir>/schema/intent-alignment.json`
 
 ### 5. Extract and validate judge results
 
 Each judge prompt instructs the agent to **write its JSON reply itself** to its raw file (`dq-raw.md` / `ia-raw.md`) via the Write tool and reply with only `DONE` — no heredoc relay. Confirm both raw files exist, then extract + validate each against its schema:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py extract-json \
+python3 <skill-dir>/scripts/quality_gate.py extract-json \
   --raw "${BASE_PATH}/quality-gate/dq-raw.md" \
-  --schema "${CLAUDE_SKILL_DIR}/schema/doc-quality.json" \
+  --schema "<skill-dir>/schema/doc-quality.json" \
   --out "${BASE_PATH}/quality-gate/dq-result.json"
 
-python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py extract-json \
+python3 <skill-dir>/scripts/quality_gate.py extract-json \
   --raw "${BASE_PATH}/quality-gate/ia-raw.md" \
-  --schema "${CLAUDE_SKILL_DIR}/schema/intent-alignment.json" \
+  --schema "<skill-dir>/schema/intent-alignment.json" \
   --out "${BASE_PATH}/quality-gate/ia-result.json"
 ```
 
@@ -146,7 +146,7 @@ Determine the iteration number: if `--iteration N` was provided in the step argu
 Determine whether code evidence was expected: check if `${BASE_PATH}/scope-req-audit/` or `${BASE_PATH}/validate/` exists as a directory. If either exists, add `--evidence-expected` to the command.
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py classify \
+python3 <skill-dir>/scripts/quality_gate.py classify \
   --ticket "${TICKET}" \
   --base-path "${BASE_PATH}" \
   --doc-quality "${BASE_PATH}/quality-gate/dq-result.json" \
@@ -171,7 +171,7 @@ The script:
 When `passed` is false, render the feedback brief with the script — do NOT hand-render the template. It reads `step-result.json` (rationales and classified gaps) and `coverage-check.json` (if present) and writes `feedback-brief-<iteration>.md`:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py brief \
+python3 <skill-dir>/scripts/quality_gate.py brief \
   --ticket "${TICKET}" \
   --base-path "${BASE_PATH}" \
   --iteration <N>

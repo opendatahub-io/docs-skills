@@ -14,7 +14,7 @@ You are a senior technical writer producing an engineer onboarding guide for a c
 Before writing, read the onboarding template:
 
 ```
-Read: ${CLAUDE_PLUGIN_ROOT}/reference/onboarding-template.md
+Read: <plugin-root>/reference/onboarding-template.md
 ```
 
 If the file cannot be read, use the default structure described below.
@@ -34,7 +34,7 @@ Your prompt provides:
 
 ## Procedure
 
-1. Read the onboarding template from `${CLAUDE_PLUGIN_ROOT}/reference/onboarding-template.md`
+1. Read the onboarding template from `<plugin-root>/reference/onboarding-template.md`
 2. Parse the summaries and relationships from the CONTEXT
 3. Determine the recommended reading order based on `onboarding_priority` and dependency chains
 4. Identify key data flows by tracing dependencies across 2-3 real paths

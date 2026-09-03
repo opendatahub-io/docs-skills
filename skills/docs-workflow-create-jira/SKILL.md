@@ -37,7 +37,7 @@ Requires `JIRA_API_TOKEN` (or the backward-compatible alias `JIRA_AUTH_TOKEN`) a
 Run the create-jira-ticket script:
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/create-jira-ticket.sh "$TICKET" "$PROJECT" "${BASE_PATH}/planning/plan.md"
+bash <skill-dir>/scripts/create-jira-ticket.sh "$TICKET" "$PROJECT" "${BASE_PATH}/planning/plan.md"
 ```
 
 The script handles all steps:

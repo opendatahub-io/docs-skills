@@ -32,3 +32,7 @@ def test_marketplaces_reference_the_repository_root():
 
 def test_platform_specific_skills_link_runtime_guidance():
     assert check_runtime_compatibility.process(REPO_ROOT / "skills", fix=False) == []
+
+
+def test_shared_runtime_files_use_neutral_paths():
+    assert check_runtime_compatibility.find_legacy_path_references(REPO_ROOT) == []

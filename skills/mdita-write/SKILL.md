@@ -64,7 +64,7 @@ When asked to write Markdown DITA content:
 After writing Markdown DITA files, convert them to DITA XML using the conversion script:
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/mdita_convert.sh <input> [output_dir]
+bash <skill-dir>/scripts/mdita_convert.sh <input> [output_dir]
 ```
 
 Arguments:

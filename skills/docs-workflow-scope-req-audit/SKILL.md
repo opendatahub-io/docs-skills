@@ -207,7 +207,7 @@ The sidecar script in step 10 reads evidence-status.json directly, so no inline 
 After writing evidence-status.json, run the secondary repo extraction script to identify repos referenced in gap classification actions:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-workflow-scope-req-audit/scripts/extract_secondary_repos.py \
+python3 <plugin-root>/skills/docs-workflow-scope-req-audit/scripts/extract_secondary_repos.py \
   --evidence-status "$EVIDENCE_STATUS_FILE" \
   --primary-repo "$REPO_PATH" \
   --fetch-pr-paths \
@@ -249,7 +249,7 @@ Do **not** hand-author the sidecar — a hand-written sidecar drifts from the sc
 orchestrator-delayed timestamp instead of a real wall-clock one. Run the script:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+python3 <skill-dir>/scripts/write_step_result.py \
   --ticket "<TICKET>" \
   --evidence-status "$EVIDENCE_STATUS_FILE" \
   --sidecar "${OUTPUT_DIR}/step-result.json"
