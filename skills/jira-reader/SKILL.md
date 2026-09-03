@@ -7,7 +7,7 @@ allowed-tools: Read, Bash, Grep, Glob
 
 # JIRA Reader Skill
 
-Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
 
 This skill provides read-only access to JIRA issues on Red Hat Issue Tracker (https://redhat.atlassian.net). It uses the Atlassian REST API v3, which returns rich text fields (description, comments) in Atlassian Document Format (ADF). The skill automatically converts ADF to plain text.
 
@@ -49,37 +49,37 @@ The script loads `.env` files automatically — do **not** prepend `source ~/.en
 
 **Fetch a single issue:**
 ```bash
-uv run --script <skill-dir>/scripts/jira_reader.py --issue INFERENG-5233
+uv run --script scripts/jira_reader.py --issue INFERENG-5233
 ```
 
 **Fetch issue with comments:**
 ```bash
-uv run --script <skill-dir>/scripts/jira_reader.py --issue INFERENG-5233 --include-comments
+uv run --script scripts/jira_reader.py --issue INFERENG-5233 --include-comments
 ```
 
 **Fetch multiple issues:**
 ```bash
-uv run --script <skill-dir>/scripts/jira_reader.py --issue INFERENG-5233 --issue INFERENG-5049
+uv run --script scripts/jira_reader.py --issue INFERENG-5233 --issue INFERENG-5049
 ```
 
 **Search issues by JQL (FAST - returns summaries):**
 ```bash
-uv run --script <skill-dir>/scripts/jira_reader.py --jql "project=INFERENG AND status='In Progress'"
+uv run --script scripts/jira_reader.py --jql "project=INFERENG AND status='In Progress'"
 ```
 
 **Search with full details (SLOW - fetches all fields):**
 ```bash
-uv run --script <skill-dir>/scripts/jira_reader.py --jql "project=INFERENG AND status='In Progress'" --fetch-details
+uv run --script scripts/jira_reader.py --jql "project=INFERENG AND status='In Progress'" --fetch-details
 ```
 
 **Traverse the ticket graph:**
 ```bash
-uv run --script <skill-dir>/scripts/jira_reader.py --graph INFERENG-5233
+uv run --script scripts/jira_reader.py --graph INFERENG-5233
 ```
 
 **Graph with custom limits:**
 ```bash
-uv run --script <skill-dir>/scripts/jira_reader.py --graph INFERENG-5233 --max-children 10 --max-siblings 10 --max-links 20
+uv run --script scripts/jira_reader.py --graph INFERENG-5233 --max-children 10 --max-siblings 10 --max-links 20
 ```
 
 ## Performance Modes

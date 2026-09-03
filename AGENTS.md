@@ -18,32 +18,23 @@ eval/                        Evaluation test cases and harness config
 
 ## Calling scripts from skills
 
-The runtime working directory is the **project root**, not the skill directory. Bare relative paths like `scripts/foo.py` will fail. Use runtime-neutral placeholders:
-
-- **`<skill-dir>`** — the directory containing the skill's `SKILL.md`. Use for scripts bundled with the same skill.
-- **`<plugin-root>`** — the plugin's installation directory (repo root). Use for cross-skill calls.
+Paths in `SKILL.md` are relative to that skill's directory. Hosts must resolve
+them against the loaded `SKILL.md` location before invoking the shell; the
+target project remains the working directory.
 
 ```bash
 # Same-skill call (stdlib-only script)
-python3 <skill-dir>/scripts/detect_language.py --repo /path/to/repo
+python3 scripts/detect_language.py --repo /path/to/repo
 
 # Same-skill call (PEP 723 script with external deps)
-uv run --script <skill-dir>/scripts/jira_reader.py --issue PROJ-123
+uv run --script scripts/jira_reader.py --issue PROJ-123
 
 # Cross-skill call
-python3 <plugin-root>/skills/learn-code/scripts/detect_language.py --repo /path
+python3 ../learn-code/scripts/detect_language.py --repo /path
 ```
 
-Claude Code and Codex must resolve these placeholders to absolute paths before
-running bundled scripts. See [runtime compatibility](reference/runtime-compatibility.md).
-
-### Cursor
-
-Use paths relative to the repository root (workspace):
-
-```bash
-python3 skills/learn-code/scripts/detect_language.py --repo /path/to/repo
-```
+Claude Code, Codex, and other Agent Skills hosts use the same convention. See
+[runtime compatibility](reference/runtime-compatibility.md).
 
 ## Skill and agent naming
 

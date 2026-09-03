@@ -7,7 +7,7 @@ allowed-tools: Read, Write, Bash, Glob, Grep, Agent
 
 # Understand-Pull-Request — PR/MR Analysis
 
-Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
 
 Fetches PR/MR metadata, identifies affected modules, analyzes changes in each module via fan-out agents, and produces a structured PR analysis document.
 
@@ -142,7 +142,7 @@ mkdir -p "$OUTPUT_DIR"
 ### 1.2 Fetch PR metadata
 
 ```bash
-GIT_PR_READER="<plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py"
+GIT_PR_READER="../git-pr-reader/scripts/git_pr_reader.py"
 
 python3 "${GIT_PR_READER}" metadata "${PR_URL}" \
   --diff-output "${OUTPUT_DIR}/diff.patch"
@@ -182,7 +182,7 @@ mkdir -p "$OUTPUT_DIR"
 Use the learn-code detection scripts (shared across skills):
 
 ```bash
-LEARN_CODE_SCRIPTS="<plugin-root>/skills/learn-code/scripts"
+LEARN_CODE_SCRIPTS="../learn-code/scripts"
 python3 ${LEARN_CODE_SCRIPTS}/detect_language.py --repo "${REPO_PATH}"
 ```
 
@@ -261,7 +261,7 @@ mkdir -p "$OUTPUT_DIR"
 ### 3.2 Identify affected modules
 
 ```bash
-python3 <skill-dir>/scripts/identify_affected_modules.py \
+python3 scripts/identify_affected_modules.py \
   --metadata "${METADATA_FILE}" \
   --detection "${DETECTION_FILE}"
 ```
@@ -338,7 +338,7 @@ mkdir -p "$OUTPUT_DIR"
 ### 4.2 Build synthesis context
 
 ```bash
-python3 <skill-dir>/scripts/build_pr_context.py \
+python3 scripts/build_pr_context.py \
   --pr-base "${PR_BASE}" \
   --max-size 80000 > "${OUTPUT_DIR}/context.json"
 ```
@@ -349,7 +349,7 @@ Log: `"Synthesis context: <context_size_bytes> bytes (truncated: <yes|no>)"`.
 
 ### 4.3 Dispatch pr-synthesis-writer agent
 
-Dispatch `subagent_type: docs-skills:pr-synthesis-writer`. The context is at `${OUTPUT_DIR}/context.json` — the agent reads it from disk. Tell the agent to write `PR-<PR_NUMBER>-ANALYSIS.md` to OUTPUT_DIR, following `<plugin-root>/reference/pr-analysis-template.md`.
+Dispatch `subagent_type: docs-skills:pr-synthesis-writer`. The context is at `${OUTPUT_DIR}/context.json` — the agent reads it from disk. Tell the agent to write `PR-<PR_NUMBER>-ANALYSIS.md` to OUTPUT_DIR, following `../../reference/pr-analysis-template.md`.
 
 ### 4.4 Verify output
 

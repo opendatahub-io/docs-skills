@@ -1,18 +1,14 @@
 # Runtime compatibility
 
-The plugin uses one set of skills for Claude Code and Codex. Apply the rules in this file only when the current skill uses platform-specific paths or subagents.
+The plugin uses one set of skills for Claude Code and Codex. Apply the rules in this file when the current skill uses bundled resources or platform-specific features.
 
 ## Bundled paths
 
-Command examples use runtime-neutral path placeholders. Before running a command
-in either platform, replace:
-
-- `<skill-dir>` with the absolute directory containing the loaded `SKILL.md`.
-- `<plugin-root>` with the absolute plugin directory containing
-  `.codex-plugin/plugin.json` or `.claude-plugin/plugin.json`.
-
-Do not pass unresolved placeholders to the shell. Keep the target project as the
-command's working directory unless the skill explicitly says otherwise.
+Paths in a `SKILL.md` are relative to the directory containing that file, in
+accordance with the Agent Skills convention. Before invoking the shell, resolve
+paths such as `scripts/tool.py` or `../other-skill/scripts/tool.py` against the
+loaded skill directory. Keep the target project as the command's working
+directory unless the skill explicitly says otherwise.
 
 ## Subagents
 

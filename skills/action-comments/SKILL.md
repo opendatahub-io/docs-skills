@@ -7,7 +7,7 @@ allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Agent, AskUserQuestion
 
 # Action Review Comments
 
-Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
 
 Action review comments on local files: interactive by default, autonomous in CI (auto-detected, or forced with `--ci`).
 
@@ -34,7 +34,7 @@ Action review comments on local files: interactive by default, autonomous in CI 
 Determine whether to run autonomously. Explicit flags win; otherwise CI is auto-detected from the environment (so a CI cron job needs no flag):
 
 ```bash
-python3 <skill-dir>/scripts/action_comments.py resolve-mode ${CI_FLAG}
+python3 scripts/action_comments.py resolve-mode ${CI_FLAG}
 ```
 
 Pass `--ci` or `--no-ci` in `${CI_FLAG}` only if the user supplied one; otherwise pass nothing. The script prints `{"ci_mode": <bool>, "reason": "..."}`. Use `ci_mode` for all later branching.
@@ -43,7 +43,7 @@ Pass `--ci` or `--no-ci` in `${CI_FLAG}` only if the user supplied one; otherwis
 
 If a URL was provided (positional `$1` in standalone mode, or `--pr` in workflow step mode), use it directly. If omitted, auto-detect:
 ```bash
-PR_URL=$(uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py detect 2>/dev/null)
+PR_URL=$(uv run --script ../git-pr-reader/scripts/git_pr_reader.py detect 2>/dev/null)
 ```
 
 If detection fails, stop with:
@@ -53,7 +53,7 @@ If detection fails, stop with:
 **Validate the URL format** — after `PR_URL` is set (whether from direct input or auto-detection), validate it:
 
 ```bash
-python3 <skill-dir>/scripts/action_comments.py validate-url "${PR_URL}"
+python3 scripts/action_comments.py validate-url "${PR_URL}"
 ```
 
 Exit code `0` means valid; non-zero means invalid. If invalid, stop with:
@@ -66,7 +66,7 @@ Resolve the workspace directory and discover which grounding artifacts exist. Th
 
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
-python3 <skill-dir>/scripts/action_comments.py workspace \
+python3 scripts/action_comments.py workspace \
   --repo-root "${REPO_ROOT}" ${BASE_PATH_ARG} --pr "${PR_URL}"
 ```
 
@@ -99,14 +99,14 @@ If no workspace is found, proceed without grounding — the skill works standalo
 Fetch PR metadata:
 
 ```bash
-HEAD_REF=$(uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py info "${PR_URL}" --field head_ref)
-TITLE=$(uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py info "${PR_URL}" --field title)
+HEAD_REF=$(uv run --script ../git-pr-reader/scripts/git_pr_reader.py info "${PR_URL}" --field head_ref)
+TITLE=$(uv run --script ../git-pr-reader/scripts/git_pr_reader.py info "${PR_URL}" --field title)
 ```
 
 **Validate the ref and decide the checkout action** (guards against unsafe refs, reports whether a checkout is needed):
 
 ```bash
-python3 <skill-dir>/scripts/action_comments.py checkout-plan \
+python3 scripts/action_comments.py checkout-plan \
   --head-ref "${HEAD_REF}" --current-branch "$(git branch --show-current)"
 ```
 
@@ -130,7 +130,7 @@ Report: `Checked out {HEAD_REF} for PR: {title}`
 ## Step 4: Fetch review comments
 
 ```bash
-uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py comments "${PR_URL}" --json
+uv run --script ../git-pr-reader/scripts/git_pr_reader.py comments "${PR_URL}" --json
 ```
 
 The script filters bot comments and resolved threads and returns top-level comments with: `id`, `path`, `line`, `body`, `author`, `resolved`, `has_bot_reply`, `position_outdated` (GitLab MRs also carry `discussion_id`).
@@ -157,7 +157,7 @@ Categorize each comment:
 **Outdated detection** — annotate each comment with an `outdated` flag (forge `position_outdated` signal + file-existence check):
 
 ```bash
-python3 <skill-dir>/scripts/action_comments.py classify-outdated \
+python3 scripts/action_comments.py classify-outdated \
   --repo-root "${REPO_ROOT}" --comments-file comments.json
 ```
 
@@ -172,7 +172,7 @@ For each non-outdated comment, read the target file and prepare a suggested chan
 **Edit-path guard** — before applying *any* edit (interactive or CI), validate the comment's target path:
 
 ```bash
-python3 <skill-dir>/scripts/action_comments.py check-edit-path \
+python3 scripts/action_comments.py check-edit-path \
   --path "${COMMENT_PATH}" --repo-root "${REPO_ROOT}"
 ```
 
@@ -275,7 +275,7 @@ After processing each comment (applied, skipped, or answered), post a reply on t
 **Routing flag** (from the Step 4 JSON): GitHub → `--comment-id "${COMMENT_ID}"` (the comment's `id`); GitLab → `--discussion-id "${DISCUSSION_ID}"`. Keep `--signoff` exactly `Claude Code action-comments (CI)` — that string is how `has_bot_reply` detects prior replies for idempotency.
 
 ```bash
-uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py \
+uv run --script ../git-pr-reader/scripts/git_pr_reader.py \
   reply "${PR_URL}" ${ROUTING_FLAG} \
   --body "${REPLY_BODY}" --signoff "Claude Code action-comments (CI)"
 ```
@@ -297,7 +297,7 @@ In **CI** mode the changes were already committed and pushed (Step 6).
 When `--base-path` is provided, write the `step-result.json` sidecar via the script (never hand-author the JSON):
 
 ```bash
-python3 <skill-dir>/scripts/action_comments.py write-result \
+python3 scripts/action_comments.py write-result \
   --base-path "${BASE_PATH}" --ticket "${TICKET}" ${CI_MODE_FLAG} \
   --comments-resolved <applied+edited> \
   --comments-skipped <skipped> \

@@ -7,7 +7,7 @@ allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, WebSearch, Web
 
 # Style Review Step
 
-Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
 
 Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → dispatch agent → write output**.
 
@@ -152,7 +152,7 @@ orchestrator-delayed timestamp instead of a real wall-clock one. Run the script,
 (do not re-read the full report to recount). Default any missing count to `0`.
 
 ```bash
-python3 <skill-dir>/scripts/write_step_result.py \
+python3 scripts/write_step_result.py \
   --ticket "<TICKET>" \
   --fixes <N> \
   --warnings <N> \

@@ -8,7 +8,7 @@ allowed-tools: Read, Write, Bash
 
 # Create JIRA Step
 
-Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
 
 Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → do work → write output**.
 
@@ -37,7 +37,7 @@ Requires `JIRA_API_TOKEN` (or the backward-compatible alias `JIRA_AUTH_TOKEN`) a
 Run the create-jira-ticket script:
 
 ```bash
-bash <skill-dir>/scripts/create-jira-ticket.sh "$TICKET" "$PROJECT" "${BASE_PATH}/planning/plan.md"
+bash scripts/create-jira-ticket.sh "$TICKET" "$PROJECT" "${BASE_PATH}/planning/plan.md"
 ```
 
 The script handles all steps:

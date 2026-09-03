@@ -8,7 +8,7 @@ allowed-tools: Bash, Read
 
 # Create Merge Request Step
 
-Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
 
 Step skill for the docs-orchestrator pipeline. After writing and reviews are complete, this step creates a feature branch (if needed), commits the manifest-listed files, pushes to the remote, and creates an MR/PR via `gh` (GitHub) or `glab` (GitLab).
 
@@ -42,7 +42,7 @@ Combined sidecar with commit, push, and MR/PR metadata.
 Run the script, passing through all arguments:
 
 ```bash
-bash <skill-dir>/scripts/create_merge_request.sh <ticket> --base-path <base-path> [--draft] [--repo-path <path>]
+bash scripts/create_merge_request.sh <ticket> --base-path <base-path> [--draft] [--repo-path <path>]
 ```
 
 The script handles:

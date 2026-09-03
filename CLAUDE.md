@@ -50,17 +50,16 @@ The test: every changed line should trace directly to the user's request.
 
 ## Script calls in skills
 
-The runtime working directory is the **project root**, not the skill directory. Bare relative paths like `scripts/foo.py` will fail. Resolve the runtime-neutral placeholders before running commands:
-
-- **`<skill-dir>`** — the directory containing the skill's `SKILL.md`. Use for scripts bundled with the same skill.
-- **`<plugin-root>`** — the plugin's installation directory (repo root). Use for cross-skill calls, reference files, and hook/MCP/LSP subprocess contexts.
+Paths in `SKILL.md` are relative to that skill's directory. Resolve them against
+the loaded `SKILL.md` location before invoking the shell; keep the target project
+as the working directory.
 
 ### PEP 723 scripts (external dependencies)
 
 Scripts with external dependencies use PEP 723 inline metadata and must be invoked via `uv run --script`:
 
 ```bash
-uv run --script <skill-dir>/scripts/jira_reader.py --issue PROJ-123
+uv run --script scripts/jira_reader.py --issue PROJ-123
 ```
 
 Do **not** insert a `--` separator between the script path and its arguments. With `uv run --script <path>`, uv passes everything after the path straight to the script, so a `--` ends up in the script's `argv`. Subcommand-first scripts (e.g. `git_pr_reader resolve`) tolerate it, but flag-first scripts like `jira_reader --issue` fail with `error: unrecognized arguments: --`. The lint workflow rejects any `uv run --script <path> -- …` invocation.
@@ -70,14 +69,14 @@ Do **not** insert a `--` separator between the script path and its arguments. Wi
 Scripts with no external dependencies use plain `python3`:
 
 ```bash
-python3 <skill-dir>/scripts/detect_language.py --repo /path/to/repo
+python3 scripts/detect_language.py --repo /path/to/repo
 ```
 
 ### Cross-skill calls
 
 ```bash
-uv run --script <plugin-root>/skills/jira-reader/scripts/jira_reader.py --issue PROJ-123
-python3 <plugin-root>/skills/learn-code/scripts/detect_language.py --repo /path
+uv run --script ../jira-reader/scripts/jira_reader.py --issue PROJ-123
+python3 ../learn-code/scripts/detect_language.py --repo /path
 ```
 
 ## Referencing files from agents and skills
@@ -206,5 +205,5 @@ When investigating issues in this repo:
 
 - **Wrong workflow output**: Read the relevant skill's `SKILL.md` for expected behavior. Check the step skill's `schema/<step-name>.json` for the output schema (index at `skills/docs-orchestrator/schema/step-result-schema.md`). Verify `step-result.json` was written correctly.
 - **Orchestrator stuck or skipping steps**: Check the workflow progress JSON in `.agent_workspace/<TICKET>/workflow/`. Verify step dependencies and `when:` conditions in the workflow YAML.
-- **Script failures**: Check that PEP 723 scripts are invoked with `uv run --script`, not `python3`. Check that `<skill-dir>` and `<plugin-root>` resolve correctly.
+- **Script failures**: Check that PEP 723 scripts are invoked with `uv run --script`, not `python3`. Check that relative paths were resolved from the loaded skill directory.
 - **Agent missing context**: Agents must explicitly Read reference files — they are not auto-injected. Check the agent's Read instructions point to valid `<plugin-root>/reference/` paths.

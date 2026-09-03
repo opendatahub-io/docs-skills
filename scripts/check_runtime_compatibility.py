@@ -4,32 +4,46 @@
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 COMPATIBILITY_LINE = (
-    "Codex: read [runtime compatibility](../../reference/runtime-compatibility.md)."
+    "Resolve relative paths against this skill's directory. For platform mappings, "
+    "read [runtime compatibility](../../reference/runtime-compatibility.md)."
 )
-LEGACY_COMPATIBILITY_LINE = (
-    "For Codex, read [runtime compatibility](../../reference/runtime-compatibility.md) "
-    "before using platform-specific paths or subagents. Claude Code can follow the "
-    "commands as written."
+LEGACY_COMPATIBILITY_LINES = (
+    "Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).",
+    (
+        "For Codex, read [runtime compatibility](../../reference/runtime-compatibility.md) "
+        "before using platform-specific paths or subagents. Claude Code can follow the "
+        "commands as written."
+    ),
 )
-PLATFORM_MARKERS = ("<skill-dir>", "<plugin-root>", "subagent_type", "Agent tool")
+PLATFORM_MARKERS = ("subagent_type", "Agent tool")
 PLATFORM_MARKERS += ("AskUserQuestion", "Skill tool", "WebSearch", "WebFetch")
 LEGACY_PATH_VARIABLES = tuple(
     "CLAUDE_" + suffix for suffix in ("SKILL_DIR", "PLUGIN_ROOT", "PLUGIN_DIR")
 )
+SKILL_PATH_PLACEHOLDERS = ("<skill-dir>", "<plugin-root>")
+SCRIPT_REFERENCE_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_./-])"
+    r"(?P<path>(?:\.\./)*(?:[a-z0-9][a-z0-9-]*/)*scripts/"
+    r"[A-Za-z0-9_.-]+\.(?:py|sh))"
+)
 
 
 def needs_guidance(contents: str) -> bool:
-    return any(marker in contents for marker in PLATFORM_MARKERS)
+    return bool(SCRIPT_REFERENCE_PATTERN.search(contents)) or any(
+        marker in contents for marker in PLATFORM_MARKERS
+    )
 
 
 def add_guidance(contents: str) -> str:
     if COMPATIBILITY_LINE in contents or not needs_guidance(contents):
         return contents
-    if LEGACY_COMPATIBILITY_LINE in contents:
-        return contents.replace(LEGACY_COMPATIBILITY_LINE, COMPATIBILITY_LINE)
+    for legacy_line in LEGACY_COMPATIBILITY_LINES:
+        if legacy_line in contents:
+            return contents.replace(legacy_line, COMPATIBILITY_LINE)
     frontmatter_end = contents.find("\n---\n", 4)
     if frontmatter_end == -1:
         raise ValueError("SKILL.md has no closing frontmatter delimiter")
@@ -70,6 +84,30 @@ def find_legacy_path_references(repo_root: Path) -> list[Path]:
     )
 
 
+def find_skill_path_placeholders(skills_root: Path) -> list[Path]:
+    """Find skill instructions that have not adopted relative resource paths."""
+    return [
+        path
+        for path in sorted(skills_root.glob("*/SKILL.md"))
+        if any(
+            placeholder in path.read_text(encoding="utf-8")
+            for placeholder in SKILL_PATH_PLACEHOLDERS
+        )
+    ]
+
+
+def find_missing_script_references(skills_root: Path) -> list[tuple[Path, str]]:
+    """Find concrete relative script references whose targets do not exist."""
+    missing: set[tuple[Path, str]] = set()
+    for skill_path in sorted(skills_root.glob("*/SKILL.md")):
+        contents = skill_path.read_text(encoding="utf-8")
+        for match in SCRIPT_REFERENCE_PATTERN.finditer(contents):
+            reference = match.group("path")
+            if not (skill_path.parent / reference).resolve().is_file():
+                missing.add((skill_path, reference))
+    return sorted(missing, key=lambda item: (str(item[0]), item[1]))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fix", action="store_true", help="Insert missing guidance.")
@@ -81,12 +119,22 @@ def main() -> None:
     repo_root = Path(__file__).resolve().parent.parent
     missing = process(repo_root / "skills", fix=args.fix)
     legacy_paths = find_legacy_path_references(repo_root)
+    placeholder_paths = find_skill_path_placeholders(repo_root / "skills")
+    missing_scripts = find_missing_script_references(repo_root / "skills")
     if missing and not args.fix:
         rendered = "\n".join(f"- {path.relative_to(repo_root)}" for path in missing)
         raise SystemExit(f"Skills missing runtime compatibility guidance:\n{rendered}")
     if legacy_paths:
         rendered = "\n".join(f"- {path.relative_to(repo_root)}" for path in legacy_paths)
         raise SystemExit(f"Shared files use legacy Claude path variables:\n{rendered}")
+    if placeholder_paths:
+        rendered = "\n".join(f"- {path.relative_to(repo_root)}" for path in placeholder_paths)
+        raise SystemExit(f"Skills use nonstandard path placeholders:\n{rendered}")
+    if missing_scripts:
+        rendered = "\n".join(
+            f"- {path.relative_to(repo_root)}: {reference}" for path, reference in missing_scripts
+        )
+        raise SystemExit(f"Skills reference missing scripts:\n{rendered}")
     if missing:
         print(f"Updated {len(missing)} skill files.")
     else:

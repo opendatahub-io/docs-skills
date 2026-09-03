@@ -7,7 +7,7 @@ allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent
 
 # Security Review Step
 
-Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
 
 Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → run scanner → apply checklist → write output**.
 
@@ -60,7 +60,7 @@ Set `DRAFTS_DIR="${BASE_PATH}/writing"` and glob for `.adoc`, `.md`, `.dita`, an
 ### 3. Run PII scanner
 
 ```bash
-python3 <plugin-root>/skills/docs-review-security/scripts/pii_scanner.py scan <file1> <file2> ... > "$SCANNER_FILE"
+python3 ../docs-review-security/scripts/pii_scanner.py scan <file1> <file2> ... > "$SCANNER_FILE"
 SCANNER_EXIT=$?
 ```
 
@@ -145,7 +145,7 @@ folder. Pass `--agent-findings` from the `Agent findings: N` line the security-r
 printed (do not read the full report back to recount):
 
 ```bash
-python3 <skill-dir>/scripts/write_step_result.py \
+python3 scripts/write_step_result.py \
   --ticket "<TICKET>" \
   --scanner-results "$SCANNER_FILE" \
   --agent-findings <N> \

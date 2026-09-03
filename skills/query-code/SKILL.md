@@ -7,7 +7,7 @@ allowed-tools: Read, Write, Bash, Glob, Grep, Skill, Agent
 
 # Query-Code — Ask Questions About an Analyzed Codebase
 
-Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
 
 Takes a natural-language question about a codebase, loads the analysis data produced by `learn-code`, and dispatches an agent that answers the question with evidence grounded in actual source files and line numbers.
 
@@ -53,7 +53,7 @@ CLONE_DIR="${BASE_PATH}/_clone"
 5. If neither the clone nor analysis exists, clone:
 
 ```bash
-uv run --script <plugin-root>/skills/git-pr-reader/scripts/git_pr_reader.py clone "<URL>" --output-dir "${CLONE_DIR}"
+uv run --script ../git-pr-reader/scripts/git_pr_reader.py clone "<URL>" --output-dir "${CLONE_DIR}"
 ```
 
 Then offer to run `learn-code` (see step 3 below).

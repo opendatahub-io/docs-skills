@@ -7,7 +7,7 @@ allowed-tools: Read, Write, Glob, Grep, Bash, Skill, AskUserQuestion
 
 # Docs Workflow Start
 
-Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
 
 Interactive entry point for the documentation workflow.
 
@@ -242,7 +242,7 @@ if [[ -n "$WORKFLOW_NAME" && -f ".agent_workspace/docs-${WORKFLOW_NAME}.yaml" ]]
 elif [[ -f ".agent_workspace/docs-workflow.yaml" ]]; then
   YAML_PATH=".agent_workspace/docs-workflow.yaml"
 else
-  YAML_PATH="<plugin-root>/skills/docs-orchestrator/defaults/docs-workflow.yaml"
+  YAML_PATH="../docs-orchestrator/defaults/docs-workflow.yaml"
 fi
 ```
 
@@ -251,7 +251,7 @@ fi
 Run the dependency resolver:
 
 ```bash
-python3 <skill-dir>/scripts/resolve_steps.py \
+python3 scripts/resolve_steps.py \
   --yaml "$YAML_PATH" \
   --steps <selected-step-names...> \
   --base-path "$BASE_PATH"

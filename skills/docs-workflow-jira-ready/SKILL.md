@@ -8,7 +8,7 @@ allowed-tools: Read, Bash, Glob, Grep
 
 # JIRA Ready Check
 
-Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
 
 This skill is a **check-and-return** gate — it does not dispatch the orchestrator. The caller (cron script, CI workflow, or human) decides what to do with the returned ticket list.
 Unlike other step skills, this skill does **not** dispatch an agent. 
@@ -33,7 +33,7 @@ Requires `JIRA_API_TOKEN` (or the backward-compatible alias `JIRA_AUTH_TOKEN`) a
 Run the check script:
 
 ```bash
-bash <skill-dir>/scripts/jira-ready-check.sh \
+bash scripts/jira-ready-check.sh \
   --jql "project=PROJ AND labels=docs-needed AND labels != docs-workflow-started" \
   --base-path artifacts \
   --label docs-workflow-started
@@ -69,7 +69,7 @@ The script:
 When `--add-label` is passed, the script adds the tracking label to each ticket in the `ready` list via the JIRA REST API after outputting results. This prevents the same tickets from appearing on the next cron run.
 
 ```bash
-bash <skill-dir>/scripts/jira-ready-check.sh \
+bash scripts/jira-ready-check.sh \
   --jql "project=PROJ AND labels=docs-needed" \
   --add-label
 ```

@@ -7,7 +7,7 @@ allowed-tools: Bash, Read, Write
 
 # Convert Google Docs, Slides, or Sheets
 
-Codex: read [runtime compatibility](../../reference/runtime-compatibility.md).
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
 
 Export Google content using `gcloud` CLI or Google Application Default Credentials for authentication:
 
@@ -31,12 +31,12 @@ Export Google content using `gcloud` CLI or Google Application Default Credentia
 
 ### Run the script
 
-The script is at `<skill-dir>/scripts/gdoc2md.py`.
+The script is at `scripts/gdoc2md.py`.
 
 Always quote the URL and output file arguments:
 
 ```bash
-uv run --script <skill-dir>/scripts/gdoc2md.py [--comments] [--include-resolved] "<url>" ["<output_file>"]
+uv run --script scripts/gdoc2md.py [--comments] [--include-resolved] "<url>" ["<output_file>"]
 ```
 
 - The script auto-detects the URL type:
@@ -50,7 +50,7 @@ uv run --script <skill-dir>/scripts/gdoc2md.py [--comments] [--include-resolved]
 Use `--comments` to pull comment threads from the document and insert them as Markdown footnotes:
 
 ```bash
-uv run --script <skill-dir>/scripts/gdoc2md.py --comments "<google-doc-url>"
+uv run --script scripts/gdoc2md.py --comments "<google-doc-url>"
 ```
 
 - Each comment with a highlighted text anchor becomes a footnote reference placed after the quoted text in the Markdown body.
