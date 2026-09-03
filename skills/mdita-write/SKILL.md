@@ -21,7 +21,7 @@ To verify the download before installing, check its SHA-256 against the expected
 
 ```bash
 curl -sL https://github.com/aireilly/org.lwdita/releases/download/v6.0.0/org.lwdita-6.0.0.zip | sha256sum
-# expected: c8da500aa8a5b7b34fba60b9cc42f1b8d445770710d550b5f8281cce0c3bd036
+# expected: bcec1d72dfc2597107a8a937c27a2ac5b32bb9833a2ef17813c22f7722b501db
 ```
 
 The conversion script checks for Java, DITA-OT, and the plugin, and reports what to install if anything is missing.
