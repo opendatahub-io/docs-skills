@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Bash, Glob, Grep
 
 # Pipeline Diagnostics Step
 
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → run diagnostics script → analyze results → write output**.
 
 ## Arguments
@@ -50,7 +52,7 @@ mkdir -p "$OUTPUT_DIR"
 ### 2. Run the diagnostics script
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/pipeline_diagnostics.py <TICKET> \
+python3 scripts/pipeline_diagnostics.py <TICKET> \
   --workspace "$(dirname "${BASE_PATH}")" \
   --format json \
   --emit-sidecar "${OUTPUT_DIR}/step-result.json" > "$DIAGNOSTICS_FILE"
@@ -59,7 +61,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/pipeline_diagnostics.py <TICKET> \
 If a direct progress file path is known, use `--progress-file` instead:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/pipeline_diagnostics.py \
+python3 scripts/pipeline_diagnostics.py \
   --progress-file <path-to-progress-json> \
   --format json \
   --emit-sidecar "${OUTPUT_DIR}/step-result.json" > "$DIAGNOSTICS_FILE"

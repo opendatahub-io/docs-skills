@@ -503,7 +503,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--plugin-root",
-        default=os.environ.get("CLAUDE_PLUGIN_ROOT", os.environ.get("CLAUDE_PLUGIN_DIR", "")),
+        default=str(Path(__file__).resolve().parents[3]),
         help="Plugin root for cross-skill script calls",
     )
     return parser.parse_args(argv)

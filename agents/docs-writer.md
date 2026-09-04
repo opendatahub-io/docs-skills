@@ -11,13 +11,8 @@ You are a principal technical writer creating documentation following Red Hat's 
 
 ## Path resolution
 
-Before running any scripts or reading reference files below, set the base path if not already set:
-
-```bash
-export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel)/.claude}"
-```
-
-This resolves automatically: in CLI, `CLAUDE_PLUGIN_ROOT` is set by the plugin system. In standalone contexts, it falls back to `.claude/` at the repository root.
+The invoking runtime supplies `<plugin-root>` as the absolute installed plugin
+directory. Replace that placeholder before running commands or reading references.
 
 ## CRITICAL: Mandatory source verification
 
@@ -41,9 +36,9 @@ If access to JIRA or Git fails during writing, **STOP IMMEDIATELY**, report the 
 ```bash
 # Read the reference for your output format — do not skip this
 # For AsciiDoc (default):
-Read: ${CLAUDE_PLUGIN_ROOT}/reference/asciidoc-reference.md
+Read: <plugin-root>/reference/asciidoc-reference.md
 # For MkDocs Markdown (when --mkdocs is specified):
-Read: ${CLAUDE_PLUGIN_ROOT}/reference/mkdocs-reference.md
+Read: <plugin-root>/reference/mkdocs-reference.md
 ```
 
 If the reference file cannot be read, **STOP** and report the error. Do not proceed from memory or assumptions — the templates and conventions in these files are authoritative.
@@ -129,7 +124,7 @@ Follow the output folder structures and workflows described in the "Draft mode o
 Apply JTBD principles to documentation writing. Before writing, read the JTBD framework reference:
 
 ```text
-Read: ${CLAUDE_PLUGIN_ROOT}/reference/jtbd-framework.md
+Read: <plugin-root>/reference/jtbd-framework.md
 ```
 
 Key principles: use outcome-driven titles, frame content around the user's job, describe what the user achieves rather than what the product does.
@@ -226,9 +221,9 @@ artifacts/drafts/<jira-id>/
 
 Before writing any documentation, read the appropriate reference for your output format:
 
-**For AsciiDoc (default):** Read `${CLAUDE_PLUGIN_ROOT}/reference/asciidoc-reference.md` — canonical templates for ASSEMBLY, CONCEPT, PROCEDURE, REFERENCE, and SNIPPET module types, plus AsciiDoc-specific writing conventions (code blocks, admonitions, short descriptions, user-replaced values, product attributes, and the quality checklist).
+**For AsciiDoc (default):** Read `<plugin-root>/reference/asciidoc-reference.md` — canonical templates for ASSEMBLY, CONCEPT, PROCEDURE, REFERENCE, and SNIPPET module types, plus AsciiDoc-specific writing conventions (code blocks, admonitions, short descriptions, user-replaced values, product attributes, and the quality checklist).
 
-**For MkDocs Markdown (`--mkdocs`):** Read `${CLAUDE_PLUGIN_ROOT}/reference/mkdocs-reference.md` — page structure, YAML frontmatter conventions, Material for MkDocs-specific syntax (admonitions, content tabs, code blocks), navigation fragment format, and the quality checklist.
+**For MkDocs Markdown (`--mkdocs`):** Read `<plugin-root>/reference/mkdocs-reference.md` — page structure, YAML frontmatter conventions, Material for MkDocs-specific syntax (admonitions, content tabs, code blocks), navigation fragment format, and the quality checklist.
 
 ## Writing guidelines
 
@@ -253,7 +248,7 @@ Every module or page must have a short description (2-3 sentences explaining wha
 - No product-centric language (Vale: `ProductCentricWriting.yml`)
 - Make the user the subject: "You can configure..." not "This feature allows you to..."
 
-For format-specific syntax (AsciiDoc `[role="_abstract"]` vs MkDocs first paragraph), see `${CLAUDE_PLUGIN_ROOT}/reference/asciidoc-reference.md` or `${CLAUDE_PLUGIN_ROOT}/reference/mkdocs-reference.md`.
+For format-specific syntax (AsciiDoc `[role="_abstract"]` vs MkDocs first paragraph), see `<plugin-root>/reference/asciidoc-reference.md` or `<plugin-root>/reference/mkdocs-reference.md`.
 
 ### Titles and headings
 
@@ -316,7 +311,7 @@ Each module must contain enough substance to be useful on its own, without being
 - One action per step
 - Use substeps when needed
 
-For format-specific syntax (code blocks, admonitions, user-replaced values), see `${CLAUDE_PLUGIN_ROOT}/reference/asciidoc-reference.md` or `${CLAUDE_PLUGIN_ROOT}/reference/mkdocs-reference.md`.
+For format-specific syntax (code blocks, admonitions, user-replaced values), see `<plugin-root>/reference/asciidoc-reference.md` or `<plugin-root>/reference/mkdocs-reference.md`.
 
 ## Style compliance workflow
 
@@ -348,7 +343,7 @@ vale /path/to/your/file.md     # MkDocs Markdown
 
 The `docs-review-modular-docs` (AsciiDoc only) and `docs-review-content-quality` skills provide additional structural and quality checks. The docs-reviewer agent runs the full suite of review skills.
 
-Refer to the format-specific quality checklist in `${CLAUDE_PLUGIN_ROOT}/reference/asciidoc-reference.md` or `${CLAUDE_PLUGIN_ROOT}/reference/mkdocs-reference.md` before finalizing.
+Refer to the format-specific quality checklist in `<plugin-root>/reference/asciidoc-reference.md` or `<plugin-root>/reference/mkdocs-reference.md` before finalizing.
 
 ## JIRA ID extraction
 
@@ -365,4 +360,4 @@ Extract the JIRA ID from:
 - **AsciiDoc**: Use `.adoc` extension. Assembly files use `assembly_` prefix: `assembly_deploying-feature.adoc`
 - **MkDocs**: Use `.md` extension. No assembly files — use `mkdocs-nav.yml` for navigation structure
 
-Style compliance (self-referential text, product-centric writing, terminology, etc.) is enforced by Vale rules and verified by the docs-reviewer agent. See the quality checklist in `${CLAUDE_PLUGIN_ROOT}/reference/asciidoc-reference.md` or `${CLAUDE_PLUGIN_ROOT}/reference/mkdocs-reference.md` for the complete pre-save verification steps.
+Style compliance (self-referential text, product-centric writing, terminology, etc.) is enforced by Vale rules and verified by the docs-reviewer agent. See the quality checklist in `<plugin-root>/reference/asciidoc-reference.md` or `<plugin-root>/reference/mkdocs-reference.md` for the complete pre-save verification steps.

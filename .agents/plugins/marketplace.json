@@ -1,0 +1,20 @@
+{
+  "name": "opendatahub-docs",
+  "interface": {
+    "displayName": "OpenDataHub Documentation"
+  },
+  "plugins": [
+    {
+      "name": "docs-skills",
+      "source": {
+        "source": "local",
+        "path": "."
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

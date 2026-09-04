@@ -11,6 +11,8 @@ description: >-
 
 # Security and PII review skill
 
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Scan documentation for sensitive data that must not appear in published content:
 real IP addresses, credentials, internal hostnames, customer-identifying
 information, and other PII.
@@ -25,13 +27,13 @@ This skill has two layers:
 Run the PII scanner against the target files:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/pii_scanner.py scan <file1> <file2> ...
+python3 scripts/pii_scanner.py scan <file1> <file2> ...
 ```
 
 Or for a docs directory:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/pii_scanner.py scan --docs-dir <path> [--scan-dirs modules,topics] [--file-types .adoc,.md,.dita]
+python3 scripts/pii_scanner.py scan --docs-dir <path> [--scan-dirs modules,topics] [--file-types .adoc,.md,.dita]
 ```
 
 Parse the JSON output. If findings exist, include them in the report grouped

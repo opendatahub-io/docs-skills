@@ -5,10 +5,12 @@ description: Check that all environment variables and CLI tools required by the 
 
 # Validate plugin prerequisites
 
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Run the prerequisite checker:
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/validate_prereqs.sh
+bash scripts/validate_prereqs.sh
 ```
 
 The script loads `~/.env` and `./.env`, then checks all required and optional environment variables and CLI tools. It prints a human-readable table and exits with code 0 (all required items present) or 1 (something missing).

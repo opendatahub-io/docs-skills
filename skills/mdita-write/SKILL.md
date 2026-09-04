@@ -7,6 +7,8 @@ argument-hint: "[topic-type] [description]"
 
 # Markdown DITA writing and conversion skill
 
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Write Markdown DITA topics and maps, then convert them to DITA XML using DITA-OT with the `org.lwdita` plugin.
 
 ## Prerequisites
@@ -62,7 +64,7 @@ When asked to write Markdown DITA content:
 After writing Markdown DITA files, convert them to DITA XML using the conversion script:
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/mdita_convert.sh <input> [output_dir]
+bash scripts/mdita_convert.sh <input> [output_dir]
 ```
 
 Arguments:

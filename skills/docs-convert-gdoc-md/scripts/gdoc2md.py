@@ -6,7 +6,7 @@ Markdown footnotes.
 Authenticates via gcloud CLI (preferred) or Google Application Default
 Credentials (ADC).  Requires python-pptx for Slides export.
 
-python3 ${CLAUDE_SKILL_DIR}/scripts/gdoc2md.py [--comments] [--include-resolved] <url> [output]
+python3 scripts/gdoc2md.py [--comments] [--include-resolved] <url> [output]
 """
 
 # /// script

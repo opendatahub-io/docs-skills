@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Bash, Agent, Glob, Grep
 
 # docs-workflow-code-analysis
 
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Orchestrator step skill that wraps `learn-code` to analyze a source repository and produce structured code understanding for downstream documentation steps.
 
 ## Arguments
@@ -112,7 +114,7 @@ counts where the schema requires integers) and uses an orchestrator-delayed time
 real wall-clock one. Run the script:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+python3 scripts/write_step_result.py \
   --ticket "<TICKET>" \
   --repo "$REPO" \
   --analysis-path "$LEARN_CODE_BASE" \

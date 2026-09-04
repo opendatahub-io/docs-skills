@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, WebSearch, Web
 
 # Technical Review Step
 
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Step skill for the docs-orchestrator pipeline. Performs a single review pass; the iteration loop is driven by the orchestrator.
 
 ## Execution
@@ -14,7 +16,7 @@ Step skill for the docs-orchestrator pipeline. Performs a single review pass; th
 ### 1. Prepare
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/prepare_review.py <args>
+python3 scripts/prepare_review.py <args>
 ```
 
 Pass args **unquoted**. The script emits JSON on stdout. Key fields used below: `ticket`, `output_dir`, `output_file`, `claims_file`, `code_analysis_dir`, `repo_path`, `additional_repo_paths`, `additional_code_analysis_dirs`, `has_repo`, `has_code_analysis`, `source_files_block`, `prior_findings_file`. Stop on non-zero exit.
@@ -30,7 +32,7 @@ last iteration keep their prior claims verbatim, so the reviewer sees a stable
 set of claims across the run and their verdicts carry forward.
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/plan_extraction.py \
+python3 scripts/plan_extraction.py \
   --base-path <base_path> --output-dir <output_dir> \
   --iteration <iteration> \
   [--repo <repo_path>]...
@@ -75,7 +77,7 @@ Merge the fresh claims with the carried ones. This assigns final claim ids and
 refreshes the manifest:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/merge_extraction.py \
+python3 scripts/merge_extraction.py \
   --base-path <base_path> --output-dir <output_dir> \
   [--repo <repo_path>]...
 ```
@@ -89,7 +91,7 @@ file's claims.
 After the merge, prepare claims for validation:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/prepare_claims.py \
+python3 scripts/prepare_claims.py \
   --claims-list <output_dir>/claims-list.json \
   --output-dir <output_dir> \
   --prior-validation <claims_file>
@@ -140,7 +142,7 @@ echo "Batch verdicts: ${ACTUAL_BATCHES}/${EXPECTED_BATCHES}"
 #### 2c. Merge verdicts — set `HAS_CLAIMS=true` after this completes
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/merge_verdicts.py \
+python3 scripts/merge_verdicts.py \
   --claims-list <output_dir>/claims-list.json --output-dir <output_dir> \
   --claims-file <claims_file> --summary-file <output_dir>/validation-summary.md \
   --code-analysis-dir <code_analysis_dir>
@@ -199,7 +201,7 @@ rm -f <output_file>
 Verify `<output_file>` exists and contains an `Overall technical confidence:` line. If missing, treat as step failure.
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+python3 scripts/write_step_result.py \
   --ticket "<ticket>" \
   --review-file "<output_file>" \
   --sidecar "<output_dir>/step-result.json" \

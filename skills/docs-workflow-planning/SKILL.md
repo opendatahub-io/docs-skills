@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent
 
 # Documentation Planning Step
 
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → dispatch agent → write output**.
 
 ## Arguments
@@ -115,7 +117,7 @@ Do **not** hand-author the sidecar — a hand-written sidecar drifts from the sc
 orchestrator-delayed timestamp instead of a real wall-clock one. Run the script:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+python3 scripts/write_step_result.py \
   --ticket "<TICKET>" \
   --plan-file "<OUTPUT_FILE>" \
   --sidecar "<OUTPUT_DIR>/step-result.json"

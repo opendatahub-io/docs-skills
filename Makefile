@@ -23,6 +23,8 @@ skillsaw-fix: ## Auto-fix fixable skillsaw issues
 
 .PHONY: lint
 lint: ## Run skillsaw, ruff syntax checker and formatter, and shellcheck
+	@python3 scripts/sync_plugin_manifests.py --check
+	@python3 scripts/check_runtime_compatibility.py
 	@$(MAKE) skillsaw
 	@echo "Running ruff syntax checker on Python scripts..."
 	@if command -v ruff >/dev/null 2>&1; then \

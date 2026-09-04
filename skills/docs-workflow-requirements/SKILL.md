@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, WebSearch, Web
 
 # Requirements Analysis Step
 
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → discover → fan out → merge → write output**.
 
 This skill uses a two-pass architecture to analyze documentation requirements:
@@ -113,9 +115,9 @@ After the discoverer agent completes, extract repo/PR URLs from the JIRA graph d
 
 ```bash
 if [ ! -f "$OUTPUT_DIR/discovered_repos.json" ]; then
-  JIRA_READER="${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py"
+  JIRA_READER="../jira-reader/scripts/jira_reader.py"
   python3 "$JIRA_READER" --graph <TICKET> | \
-    python3 ${CLAUDE_SKILL_DIR}/scripts/extract_discovered_repos.py \
+    python3 scripts/extract_discovered_repos.py \
       --output-dir "$OUTPUT_DIR" \
       --traverse-links "$JIRA_READER" \
       --repo-discovery "$DISCOVERY_FILE"
@@ -336,7 +338,7 @@ orchestrator-delayed timestamp instead of a real wall-clock one. Run the script,
 `requirement_count` from the discovery output parsed in step 4:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+python3 scripts/write_step_result.py \
   --ticket "<TICKET>" \
   --output-file "<OUTPUT_FILE>" \
   --requirement-count <count from step 4> \

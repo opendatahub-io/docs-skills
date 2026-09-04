@@ -1,6 +1,6 @@
 ---
 name: docs-orchestrator
-description: Documentation workflow orchestrator. Reads the step list from .agent_workspace/docs-workflow.yaml (or the plugin default). Runs steps sequentially, manages progress state, handles iteration and confirmation gates. Claude is the orchestrator — the YAML is a step list, not a workflow engine.
+description: Documentation workflow orchestrator. Reads the step list from .agent_workspace/docs-workflow.yaml (or the plugin default). Runs steps sequentially, manages progress state, handles iteration and confirmation gates. The active agent is the orchestrator; the YAML is a step list, not a workflow engine.
 
 argument-hint: <ticket> [--workflow <name>] [--pr <url>...] [--source-code-repo <url-or-path>...] [--no-source-repo] [--auto-discover-repos] [--max-secondary-repos <N>] [--mkdocs] [--draft] [--docs-repo-path <path>] [--create-jira <PROJECT>] [--create-merge-request]
 
@@ -9,17 +9,21 @@ allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, AskUserQuestio
 
 # Docs Orchestrator
 
-**When the user invokes `/docs-orchestrator`, run THIS skill directly. Do NOT redirect to `docs-workflow-start` or any other skill.**
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
 
-The Python state machine driver owns all orchestrator logic. Claude calls the driver, parses JSON actions, and executes them.
+**When the user invokes `/docs-orchestrator` or `$docs-orchestrator`, run THIS skill directly. Do NOT redirect to `docs-workflow-start` or any other skill.**
+
+The Python state machine driver owns all orchestrator logic. The active agent calls the driver, parses JSON actions, and executes them.
 
 ## Pre-flight
 
-Install the workflow completion Stop hook (safe to re-run):
+In Claude Code, install the workflow completion Stop hook (safe to re-run):
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/setup-hooks.sh
+bash scripts/setup-hooks.sh
 ```
+
+In Codex, do not run this Claude-specific hook installer. Continue the action loop in the active thread until the driver returns `complete` or `fail`; the driver performs post-requirements source resolution itself.
 
 Do not source `.env` files or check for tokens/CLIs — downstream scripts handle their own prerequisites.
 
@@ -28,7 +32,7 @@ Do not source `.env` files or check for tokens/CLIs — downstream scripts handl
 If the ticket argument is missing, STOP and ask the user.
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py init <TICKET> \
+python3 ../../scripts/docs_orchestrator.py init <TICKET> \
   [--workflow <name>] \
   [--pr <url>...] \
   [--source-code-repo <url-or-path>...] \
@@ -39,8 +43,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py init <TICKET> \
   [--draft] \
   [--docs-repo-path <path>] \
   [--create-merge-request] \
-  [--create-jira <PROJECT>] \
-  [--plugin-root ${CLAUDE_PLUGIN_ROOT}]
+  [--create-jira <PROJECT>]
 ```
 
 The script handles argument parsing, source resolution, workflow YAML loading, progress file creation or resume, and step classification. It emits a single JSON action to stdout. Parse it and enter the action loop.
@@ -58,13 +61,13 @@ The response contains `skill`, `args`, `step`, `message`, and optional `warnings
 3. After the skill completes, report the result:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py step-done <TICKET> <step>
+python3 ../../scripts/docs_orchestrator.py step-done <TICKET> <step>
 ```
 
 If the skill failed (threw an error, produced no output), add `--failed`:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py step-done <TICKET> <step> --failed
+python3 ../../scripts/docs_orchestrator.py step-done <TICKET> <step> --failed
 ```
 
 4. Parse the new JSON response and loop back to the action check.
@@ -84,7 +87,7 @@ The response contains `step`, `message`, `prepare` (a shell command), and option
 6. Report the result:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py step-done <TICKET> <step>
+python3 ../../scripts/docs_orchestrator.py step-done <TICKET> <step>
 ```
 
 Add `--failed` if verification failed in step 4, or if a dispatched primary agent errored or produced no output.
@@ -104,13 +107,13 @@ Display `message` and `reason`. Display any `warnings`. Stop.
 To check workflow status without advancing it:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py status <TICKET>
+python3 ../../scripts/docs_orchestrator.py status <TICKET>
 ```
 
 To get the next action without recording a step-done:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py next <TICKET>
+python3 ../../scripts/docs_orchestrator.py next <TICKET>
 ```
 
 ## Recovery
@@ -118,14 +121,14 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py next <TICKET>
 If a step is marked `failed` (halting the workflow) but the underlying cause has been fixed — or a step is stuck in a non-runnable state — reset and retry it without hand-editing the progress JSON:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/docs_orchestrator.py retry-step <TICKET> <step>
+python3 ../../scripts/docs_orchestrator.py retry-step <TICKET> <step>
 ```
 
 This resets the step to `in_progress`, un-fails the workflow, restores the active marker, and emits that step's action so the loop re-runs it. Handle the emitted action exactly as in the action loop above.
 
 ## Guardrails
 
-Rules the script cannot enforce — Claude must follow these during execution:
+Rules the script cannot enforce—the active agent must follow these during execution:
 
 1. **Synchronous primary agents.** When a step skill instructs you to dispatch an Agent, pass `run_in_background: false` for the step's primary agent (the one whose output file the step verifies). Fan-out agents within a step may remain background.
 

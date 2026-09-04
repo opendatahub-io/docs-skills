@@ -6,6 +6,8 @@ allowed-tools: Read, Bash, Grep, Glob
 
 # Release Notes: Known Issue Audit
 
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Audit known issues for a release version. Produces a categorized report showing which known issues remain open and which have been resolved since the previous release.
 
 ## Arguments
@@ -36,11 +38,7 @@ Run these JQL queries via the Atlassian MCP (`searchJiraIssuesUsingJql`) with `c
 If the Atlassian MCP is unavailable or unauthenticated, fall back to jira-reader:
 
 ```bash
-# Claude Code
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --jql "<JQL>" --fetch-details
-
-# Cursor
-uv run --script skills/jira-reader/scripts/jira_reader.py --jql "<JQL>" --fetch-details
+uv run --script ../jira-reader/scripts/jira_reader.py --jql "<JQL>" --fetch-details
 ```
 
 ### Query 1: New known issues in the target version (still open)

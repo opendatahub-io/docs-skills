@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Bash, Glob, Grep, Agent
 
 # Learn-Code — Codebase Analysis for Onboarding
 
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Single-skill pipeline that detects language, maps modules, analyzes each module in parallel via fan-out agents, discovers cross-module relationships, and produces a structured onboarding guide.
 
 ## Usage
@@ -70,7 +72,7 @@ mkdir -p "$OUTPUT_DIR"
 ### 1.2 Detect language
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/detect_language.py --repo <REPO_PATH>
+python3 scripts/detect_language.py --repo <REPO_PATH>
 ```
 
 Capture the JSON output. If it contains an `error` field, STOP and report the error.
@@ -80,7 +82,7 @@ Extract `primary_language` from the result.
 ### 1.3 Build module map
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/build_module_map.py --repo <REPO_PATH> --lang <PRIMARY_LANGUAGE> [--exclude <PATTERNS>...]
+python3 scripts/build_module_map.py --repo <REPO_PATH> --lang <PRIMARY_LANGUAGE> [--exclude <PATTERNS>...]
 ```
 
 Capture the JSON output. If it contains an `error` field, STOP and report the error.
@@ -177,7 +179,7 @@ Extract `primary_language`, module file lists from `detection.modules`, and regi
 ### 3.3 Classify modules into tiers
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/classify_modules.py \
+python3 scripts/classify_modules.py \
   --detection "${DETECTION_FILE}" \
   --registry "${REGISTRY_FILE}"
 ```
@@ -194,7 +196,7 @@ Log: `"Module tiers: <full_count> full, <api_guided_count> api-guided, <api_only
 
 ### 3.4 Pre-extract public API (AST-aware)
 
-For each module, run the language-appropriate AST extraction: Python uses `extract_public_api.py --files <files> --lang python --module <name>`. Go/JS/TS use `uv run --script ${CLAUDE_SKILL_DIR}/scripts/extract_public_api_treesitter.py --files <files> --lang <lang> --module <name>`. Log warning and continue if extraction fails for a module.
+For each module, run the language-appropriate AST extraction: Python uses `extract_public_api.py --files <files> --lang python --module <name>`. Go/JS/TS use `uv run --script scripts/extract_public_api_treesitter.py --files <files> --lang <lang> --module <name>`. Log warning and continue if extraction fails for a module.
 
 ### 3.5 Generate api-only entries (no agent dispatch)
 
@@ -257,7 +259,7 @@ Read `${SUMMARY_FILE}`, `${DETECTION_FILE}`, and `${REGISTRY_FILE}`.
 ### 4.3 Build dependency pairs
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/build_dep_pairs.py \
+python3 scripts/build_dep_pairs.py \
   --summaries "${SUMMARY_FILE}" \
   --registry "${REGISTRY_FILE}"
 ```
@@ -274,7 +276,7 @@ For each pair `(module_a, module_b)`: **Module A**: if ≤3000 lines, concatenat
 
 ### 4.6 Read language guidance
 
-Read language-specific relationship analysis guidance from `${CLAUDE_PLUGIN_ROOT}/reference/language-configs.md`.
+Read language-specific relationship analysis guidance from `../../reference/language-configs.md`.
 
 ### 4.7 Batch dispatch relationship-analyzer agents
 
@@ -326,7 +328,7 @@ mkdir -p "$OUTPUT_DIR"
 ### 5.2 Build synthesis context
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/build_synthesis_context.py \
+python3 scripts/build_synthesis_context.py \
   --base-path "${BASE_PATH}" \
   --max-size 80000 > "${OUTPUT_DIR}/context.json"
 ```
@@ -339,7 +341,7 @@ Log: `"Synthesis context: <context_size_bytes> bytes (truncated: <truncated or '
 
 ### 5.3 Dispatch synthesis-writer agent
 
-Dispatch `subagent_type: docs-skills:synthesis-writer`. The context is written to `${OUTPUT_DIR}/context.json` — the agent reads it from disk. Tell the agent to write ONBOARDING.md (and dependency-graph.json if relationships exist) to OUTPUT_DIR, following the template from `${CLAUDE_PLUGIN_ROOT}/reference/onboarding-template.md`.
+Dispatch `subagent_type: docs-skills:synthesis-writer`. The context is written to `${OUTPUT_DIR}/context.json` — the agent reads it from disk. Tell the agent to write ONBOARDING.md (and dependency-graph.json if relationships exist) to OUTPUT_DIR, following the template from `../../reference/onboarding-template.md`.
 
 ### 5.4 Verify output
 

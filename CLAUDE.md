@@ -1,6 +1,6 @@
-# docs-skills
+# docs-skills for Claude Code
 
-Follow the shared project conventions in @AGENTS.md for repository structure, skill naming, contributing rules, and general script invocation patterns. The instructions below apply only to Claude Code.
+Follow the shared, cross-platform project conventions in @AGENTS.md for repository structure, skill naming, contributing rules, and general script invocation patterns. The instructions below apply only to Claude Code.
 
 ## Repository structure
 
@@ -50,17 +50,16 @@ The test: every changed line should trace directly to the user's request.
 
 ## Script calls in skills
 
-The runtime working directory is the **project root**, not the skill directory. Bare relative paths like `scripts/foo.py` will fail. Use the appropriate substitution variable:
-
-- **`${CLAUDE_SKILL_DIR}`** — resolves to the directory containing the skill's `SKILL.md`. Use for scripts bundled with the same skill.
-- **`${CLAUDE_PLUGIN_ROOT}`** — resolves to the plugin's installation directory (repo root). Use for cross-skill calls, reference files, and hook/MCP/LSP subprocess contexts.
+Paths in `SKILL.md` are relative to that skill's directory. Resolve them against
+the loaded `SKILL.md` location before invoking the shell; keep the target project
+as the working directory.
 
 ### PEP 723 scripts (external dependencies)
 
 Scripts with external dependencies use PEP 723 inline metadata and must be invoked via `uv run --script`:
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --issue PROJ-123
+uv run --script scripts/jira_reader.py --issue PROJ-123
 ```
 
 Do **not** insert a `--` separator between the script path and its arguments. With `uv run --script <path>`, uv passes everything after the path straight to the script, so a `--` ends up in the script's `argv`. Subcommand-first scripts (e.g. `git_pr_reader resolve`) tolerate it, but flag-first scripts like `jira_reader --issue` fail with `error: unrecognized arguments: --`. The lint workflow rejects any `uv run --script <path> -- …` invocation.
@@ -70,14 +69,14 @@ Do **not** insert a `--` separator between the script path and its arguments. Wi
 Scripts with no external dependencies use plain `python3`:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/detect_language.py --repo /path/to/repo
+python3 scripts/detect_language.py --repo /path/to/repo
 ```
 
 ### Cross-skill calls
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --issue PROJ-123
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/learn-code/scripts/detect_language.py --repo /path
+uv run --script ../jira-reader/scripts/jira_reader.py --issue PROJ-123
+python3 ../learn-code/scripts/detect_language.py --repo /path
 ```
 
 ## Referencing files from agents and skills
@@ -90,13 +89,13 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/learn-code/scripts/detect_language.py --rep
 See [reference/asciidoc-reference.md](../../reference/asciidoc-reference.md)
 ```
 
-**In agents (subagents):** Use `${CLAUDE_PLUGIN_ROOT}` paths with explicit Read instructions. Agent bodies become system prompts where markdown links are not auto-resolved:
+**In agents (subagents):** Use `<plugin-root>` paths with explicit Read instructions. Agent bodies become system prompts where markdown links are not auto-resolved:
 
 ```markdown
 ## CRITICAL: Mandatory reference loading
 
-Read: ${CLAUDE_PLUGIN_ROOT}/reference/jtbd-framework.md
-Read: ${CLAUDE_PLUGIN_ROOT}/reference/asciidoc-reference.md
+Read: <plugin-root>/reference/jtbd-framework.md
+Read: <plugin-root>/reference/asciidoc-reference.md
 
 If either file cannot be read, STOP and report the error.
 ```
@@ -192,7 +191,7 @@ New skills must use the directory-based format: `skills/<skill-name>/SKILL.md`. 
 
 Key constraints:
 - The markdown body becomes the agent's system prompt — agents do NOT receive the full Claude Code system prompt
-- `@` references in agent body text are NOT resolved — use `${CLAUDE_PLUGIN_ROOT}` paths with explicit Read instructions
+- `@` references in agent body text are NOT resolved — use `<plugin-root>` paths with explicit Read instructions
 - Plugin agents cannot use `hooks`, `mcpServers`, or `permissionMode` frontmatter fields
 - Subagents cannot spawn other subagents
 
@@ -206,5 +205,5 @@ When investigating issues in this repo:
 
 - **Wrong workflow output**: Read the relevant skill's `SKILL.md` for expected behavior. Check the step skill's `schema/<step-name>.json` for the output schema (index at `skills/docs-orchestrator/schema/step-result-schema.md`). Verify `step-result.json` was written correctly.
 - **Orchestrator stuck or skipping steps**: Check the workflow progress JSON in `.agent_workspace/<TICKET>/workflow/`. Verify step dependencies and `when:` conditions in the workflow YAML.
-- **Script failures**: Check that PEP 723 scripts are invoked with `uv run --script`, not `python3`. Check that `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PLUGIN_ROOT}` resolve correctly.
-- **Agent missing context**: Agents must explicitly Read reference files — they are not auto-injected. Check the agent's Read instructions point to valid `${CLAUDE_PLUGIN_ROOT}/reference/` paths.
+- **Script failures**: Check that PEP 723 scripts are invoked with `uv run --script`, not `python3`. Check that relative paths were resolved from the loaded skill directory.
+- **Agent missing context**: Agents must explicitly Read reference files — they are not auto-injected. Check the agent's Read instructions point to valid `<plugin-root>/reference/` paths.

@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Glob, Grep, Bash, Agent, Skill
 
 # Scope Requirements Audit Step
 
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → fan out → merge → write output**.
 
 This skill classifies each JIRA requirement from the requirements step as grounded, partial, or absent by dispatching one subagent per requirement. Each subagent receives learn-code analysis context (module registry, summaries, onboarding guide) and can inspect the actual source code with Read/Grep/Glob. The planning step then uses these classifications to scope documentation modules — grounded requirements get full specs, partial ones are flagged for SME review, and absent ones are deferred to prevent documenting unimplemented features.
@@ -205,7 +207,7 @@ The sidecar script in step 10 reads evidence-status.json directly, so no inline 
 After writing evidence-status.json, run the secondary repo extraction script to identify repos referenced in gap classification actions:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-workflow-scope-req-audit/scripts/extract_secondary_repos.py \
+python3 scripts/extract_secondary_repos.py \
   --evidence-status "$EVIDENCE_STATUS_FILE" \
   --primary-repo "$REPO_PATH" \
   --fetch-pr-paths \
@@ -247,7 +249,7 @@ Do **not** hand-author the sidecar — a hand-written sidecar drifts from the sc
 orchestrator-delayed timestamp instead of a real wall-clock one. Run the script:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/write_step_result.py \
+python3 scripts/write_step_result.py \
   --ticket "<TICKET>" \
   --evidence-status "$EVIDENCE_STATUS_FILE" \
   --sidecar "${OUTPUT_DIR}/step-result.json"

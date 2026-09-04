@@ -10,10 +10,10 @@ Uses Atlassian REST API v3. Description and comment fields are returned in
 Atlassian Document Format (ADF) and automatically converted to plain text.
 
 Usage:
-    python3 ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --issue INFERENG-5233
-    python3 ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --issue INFERENG-5233 --include-comments
-    python3 ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --jql "project=INFERENG AND fixVersion='3.4'"
-    python3 ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --graph INFERENG-5233
+    python3 scripts/jira_reader.py --issue INFERENG-5233
+    python3 scripts/jira_reader.py --issue INFERENG-5233 --include-comments
+    python3 scripts/jira_reader.py --jql "project=INFERENG AND fixVersion='3.4'"
+    python3 scripts/jira_reader.py --graph INFERENG-5233
 """
 
 # /// script

@@ -7,6 +7,8 @@ allowed-tools: Read, Write, Bash, Agent, Glob, Grep
 
 # docs-workflow-pr-analysis
 
+Resolve relative paths against this skill's directory. For platform mappings, read [runtime compatibility](../../reference/runtime-compatibility.md).
+
 Orchestrator step skill that wraps `understand-pull-request` to analyze a specific PR/MR and produce change-specific documentation context.
 
 ## Arguments
