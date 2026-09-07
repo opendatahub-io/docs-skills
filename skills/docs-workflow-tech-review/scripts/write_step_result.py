@@ -14,8 +14,8 @@ missing the script exits non-zero — the orchestrator treats a missing confiden
 as a step failure.
 
 Usage:
-  write_step_result.py --ticket <id> --review-file <review.md> \
-      --sidecar <step-result.json> --code-grounded <true|false>
+  write_step_result.py --ticket <id> --base-path <workflow-dir> \
+      --code-grounded <true|false>
 """
 
 import argparse
@@ -81,8 +81,11 @@ def read_claim_cache(plan_path):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ticket", required=True)
-    parser.add_argument("--review-file", required=True, help="The reviewer's review.md report")
-    parser.add_argument("--sidecar", required=True, help="Path to write step-result.json")
+    parser.add_argument(
+        "--base-path",
+        required=True,
+        help="Workflow workspace; technical-review files are derived",
+    )
     parser.add_argument(
         "--code-grounded",
         required=True,
@@ -107,7 +110,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    review_path = Path(args.review_file)
+    output_dir = Path(args.base_path) / "technical-review"
+    review_path = output_dir / "review.md"
+    sidecar_path = output_dir / "step-result.json"
+    default_extraction_plan = output_dir / "extraction-plan.json"
+
     if not review_path.is_file():
         print(f"ERROR: review file not found: {review_path}", file=sys.stderr)
         return 1
@@ -128,7 +135,6 @@ def main() -> int:
     else:
         critical = significant = minor = sme = 0
 
-    sidecar_path = Path(args.sidecar)
     iteration = args.iteration if args.iteration is not None else detect_iteration(sidecar_path)
 
     sidecar = {
@@ -152,7 +158,8 @@ def main() -> int:
     # step sidecars. Measuring it after the fact is otherwise impossible: the
     # pipeline overwrites claims-list.json each iteration and only terminal
     # state survives a run.
-    cache = read_claim_cache(args.extraction_plan)
+    extraction_plan = args.extraction_plan or str(default_extraction_plan or "")
+    cache = read_claim_cache(extraction_plan)
     if cache:
         sidecar["claim_cache"] = cache
     sidecar_path.parent.mkdir(parents=True, exist_ok=True)

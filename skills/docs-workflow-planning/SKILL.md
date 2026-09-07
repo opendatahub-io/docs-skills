@@ -18,14 +18,16 @@ Step skill for the docs-orchestrator pipeline. Follows the step skill contract: 
 
 ## Input
 
+Paths below are relative to the workflow workspace supplied with `--base-path`.
+
 ```
-<base-path>/requirements/requirements.md
+requirements/requirements.md
 ```
 
 ## Output
 
 ```
-<base-path>/planning/plan.md
+planning/plan.md
 ```
 
 ## Execution
@@ -78,7 +80,8 @@ mkdir -p "$OUTPUT_DIR"
 >
 > Where TYPE is CONCEPT, PROCEDURE, REFERENCE, or ASSEMBLY. This section is machine-parsed to count modules — the pipeline will fail if it is missing or uses a different format. Place it before the detailed module descriptions. You may organize detailed descriptions however you like (implementation groups, priority sections, etc.) — only this summary list has a format requirement.
 >
-> Save the complete plan to: `<OUTPUT_FILE>`
+> Save the complete plan to `<OUTPUT_FILE>`. This is the planning step's
+> canonical output location.
 
 **[Include only if `<BASE_PATH>/code-analysis/ONBOARDING.md` exists]** Append the following paragraph to the prompt:
 
@@ -119,8 +122,7 @@ orchestrator-delayed timestamp instead of a real wall-clock one. Run the script:
 ```bash
 python3 scripts/write_step_result.py \
   --ticket "<TICKET>" \
-  --plan-file "<OUTPUT_FILE>" \
-  --sidecar "<OUTPUT_DIR>/step-result.json"
+  --base-path "$BASE_PATH"
 ```
 
 The script counts module specifications in the plan (list items starting with `- Module:` or

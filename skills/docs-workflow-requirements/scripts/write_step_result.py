@@ -6,8 +6,8 @@ when the step actually finished, not when the orchestrator got around to
 recording it.
 
 Usage:
-  write_step_result.py --ticket <id> --output-file <requirements.md> \
-      --requirement-count <N> --sidecar <step-result.json>
+  write_step_result.py --ticket <id> --base-path <workflow-dir> \
+      --requirement-count <N>
 """
 
 import argparse
@@ -33,12 +33,17 @@ def extract_title(path):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ticket", required=True)
-    parser.add_argument("--output-file", required=True, help="Path to requirements.md")
+    parser.add_argument(
+        "--base-path", required=True, help="Workflow workspace; requirements files are derived"
+    )
     parser.add_argument("--requirement-count", type=int, required=True)
-    parser.add_argument("--sidecar", required=True, help="Path to write step-result.json")
     args = parser.parse_args()
 
-    title = extract_title(args.output_file) or "Requirements Analysis"
+    output_dir = Path(args.base_path) / "requirements"
+    output_file = output_dir / "requirements.md"
+    sidecar_path = output_dir / "step-result.json"
+
+    title = extract_title(str(output_file)) or "Requirements Analysis"
 
     sidecar = {
         "schema_version": 1,
@@ -49,7 +54,6 @@ def main() -> int:
         "requirement_count": args.requirement_count,
     }
 
-    sidecar_path = Path(args.sidecar)
     sidecar_path.parent.mkdir(parents=True, exist_ok=True)
     sidecar_path.write_text(json.dumps(sidecar, indent=2))
 

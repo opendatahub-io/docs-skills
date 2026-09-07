@@ -26,10 +26,12 @@ This skill uses a two-pass architecture to analyze documentation requirements:
 
 ## Output
 
+Paths below are relative to the workflow workspace supplied with `--base-path`.
+
 ```
-<base-path>/requirements/requirements.md
-<base-path>/requirements/step-result.json
-<base-path>/requirements/discovered_repos.json     (produced by repo extraction, consumed by resolve_source.py)
+requirements/requirements.md
+requirements/step-result.json
+requirements/discovered_repos.json     (produced by repo extraction, consumed by resolve_source.py)
 ```
 
 ## Execution
@@ -340,9 +342,8 @@ orchestrator-delayed timestamp instead of a real wall-clock one. Run the script,
 ```bash
 python3 scripts/write_step_result.py \
   --ticket "<TICKET>" \
-  --output-file "<OUTPUT_FILE>" \
-  --requirement-count <count from step 4> \
-  --sidecar "<OUTPUT_DIR>/step-result.json"
+  --base-path "$BASE_PATH" \
+  --requirement-count <count from step 4>
 ```
 
 The script extracts the title from `<OUTPUT_FILE>`, writes the conformant `step-result.json` with a

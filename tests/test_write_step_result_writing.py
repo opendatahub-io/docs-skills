@@ -11,6 +11,9 @@ sys.path.insert(
 
 from write_step_result import main
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from schema_helpers import validate_sidecar  # noqa: E402
+
 
 def _make_manifest(tmp_path, files=None):
     """Create a minimal _index.md manifest."""
@@ -27,8 +30,33 @@ def _make_manifest(tmp_path, files=None):
 
 
 class TestIterationField:
+    def test_base_path_derives_manifest_and_sidecar(self, tmp_path, monkeypatch):
+        _make_manifest(tmp_path)
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "prog",
+                "--ticket",
+                "T-1",
+                "--base-path",
+                str(tmp_path),
+                "--mode",
+                "draft",
+                "--format",
+                "adoc",
+            ],
+        )
+
+        main()
+        data = json.loads((tmp_path / "writing" / "step-result.json").read_text())
+        assert data["step"] == "writing"
+        assert data["mode"] == "draft"
+        assert data["format"] == "adoc"
+        assert data["files"] == []
+        validate_sidecar("writing", data)
+
     def test_default_iteration_is_1(self, tmp_path, monkeypatch):
-        manifest = _make_manifest(tmp_path)
+        _make_manifest(tmp_path)
         sidecar = str(tmp_path / "writing" / "step-result.json")
         monkeypatch.setattr(
             "sys.argv",
@@ -36,14 +64,12 @@ class TestIterationField:
                 "prog",
                 "--ticket",
                 "T-1",
-                "--manifest",
-                manifest,
+                "--base-path",
+                str(tmp_path),
                 "--mode",
                 "update-in-place",
                 "--format",
                 "adoc",
-                "--sidecar",
-                sidecar,
             ],
         )
         main()
@@ -51,7 +77,7 @@ class TestIterationField:
         assert data["iteration"] == 1
 
     def test_explicit_iteration_arg(self, tmp_path, monkeypatch):
-        manifest = _make_manifest(tmp_path)
+        _make_manifest(tmp_path)
         sidecar = str(tmp_path / "writing" / "step-result.json")
         monkeypatch.setattr(
             "sys.argv",
@@ -59,14 +85,12 @@ class TestIterationField:
                 "prog",
                 "--ticket",
                 "T-1",
-                "--manifest",
-                manifest,
+                "--base-path",
+                str(tmp_path),
                 "--mode",
                 "update-in-place",
                 "--format",
                 "adoc",
-                "--sidecar",
-                sidecar,
                 "--iteration",
                 "3",
             ],
@@ -76,7 +100,7 @@ class TestIterationField:
         assert data["iteration"] == 3
 
     def test_fix_mode_auto_increments_from_prior(self, tmp_path, monkeypatch):
-        manifest = _make_manifest(tmp_path)
+        _make_manifest(tmp_path)
         sidecar_path = tmp_path / "writing" / "step-result.json"
         # Write a prior sidecar with iteration 1
         sidecar_path.parent.mkdir(parents=True, exist_ok=True)
@@ -100,14 +124,12 @@ class TestIterationField:
                 "prog",
                 "--ticket",
                 "T-1",
-                "--manifest",
-                manifest,
+                "--base-path",
+                str(tmp_path),
                 "--mode",
                 "fix",
                 "--format",
                 "adoc",
-                "--sidecar",
-                str(sidecar_path),
             ],
         )
         main()
@@ -116,7 +138,7 @@ class TestIterationField:
         assert data["mode"] == "update-in-place"  # carried forward
 
     def test_fix_mode_no_prior_defaults_to_2(self, tmp_path, monkeypatch):
-        manifest = _make_manifest(tmp_path)
+        _make_manifest(tmp_path)
         sidecar = str(tmp_path / "writing" / "step-result.json")
         monkeypatch.setattr(
             "sys.argv",
@@ -124,14 +146,12 @@ class TestIterationField:
                 "prog",
                 "--ticket",
                 "T-1",
-                "--manifest",
-                manifest,
+                "--base-path",
+                str(tmp_path),
                 "--mode",
                 "fix",
                 "--format",
                 "adoc",
-                "--sidecar",
-                sidecar,
             ],
         )
         main()
@@ -139,7 +159,7 @@ class TestIterationField:
         assert data["iteration"] == 2
 
     def test_fix_mode_explicit_iteration_overrides_auto(self, tmp_path, monkeypatch):
-        manifest = _make_manifest(tmp_path)
+        _make_manifest(tmp_path)
         sidecar_path = tmp_path / "writing" / "step-result.json"
         sidecar_path.parent.mkdir(parents=True, exist_ok=True)
         sidecar_path.write_text(
@@ -162,14 +182,12 @@ class TestIterationField:
                 "prog",
                 "--ticket",
                 "T-1",
-                "--manifest",
-                manifest,
+                "--base-path",
+                str(tmp_path),
                 "--mode",
                 "fix",
                 "--format",
                 "adoc",
-                "--sidecar",
-                str(sidecar_path),
                 "--iteration",
                 "5",
             ],

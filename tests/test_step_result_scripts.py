@@ -31,6 +31,21 @@ planning_wsr = _load("skills/docs-workflow-planning/scripts/write_step_result.py
 code_analysis_wsr = _load(
     "skills/docs-workflow-code-analysis/scripts/write_step_result.py", "code_analysis_wsr"
 )
+requirements_wsr = _load(
+    "skills/docs-workflow-requirements/scripts/write_step_result.py", "requirements_wsr"
+)
+scope_req_audit_wsr = _load(
+    "skills/docs-workflow-scope-req-audit/scripts/write_step_result.py", "scope_req_audit_wsr"
+)
+security_review_wsr = _load(
+    "skills/docs-workflow-security-review/scripts/write_step_result.py", "security_review_wsr"
+)
+style_review_wsr = _load(
+    "skills/docs-workflow-style-review/scripts/write_step_result.py", "style_review_wsr"
+)
+tech_review_wsr = _load(
+    "skills/docs-workflow-tech-review/scripts/write_step_result.py", "tech_review_wsr"
+)
 
 
 def _make_analysis(base):
@@ -78,7 +93,8 @@ class TestCodeAnalysisMetrics:
         _make_analysis(analysis)
         repo = tmp_path / "repo"
         repo.mkdir()
-        sidecar = tmp_path / "out" / "step-result.json"
+        output_dir = tmp_path / "out"
+        sidecar = output_dir / "step-result.json"
 
         monkeypatch.setattr(
             "sys.argv",
@@ -90,8 +106,8 @@ class TestCodeAnalysisMetrics:
                 str(repo),
                 "--analysis-path",
                 str(analysis),
-                "--sidecar",
-                str(sidecar),
+                "--output-dir",
+                str(output_dir),
             ],
         )
         assert code_analysis_wsr.main() == 0
@@ -102,6 +118,41 @@ class TestCodeAnalysisMetrics:
         assert data["relationship_count"] == 2
         assert isinstance(data["module_count"], int)
         validate_sidecar("code-analysis", data)
+
+    def test_secondary_repo_output_dir_does_not_collide(self, tmp_path, monkeypatch):
+        """Each additional repo gets its own --output-dir; sidecars must not collide."""
+        analysis_a = tmp_path / "analysis-a"
+        analysis_a.mkdir()
+        _make_analysis(analysis_a)
+        analysis_b = tmp_path / "analysis-b"
+        analysis_b.mkdir()
+        (analysis_b / "module-registry").mkdir(parents=True)
+        (analysis_b / "module-registry" / "registry.json").write_text(json.dumps([{"m": 1}]))
+
+        output_a = tmp_path / "code-analysis"
+        output_b = tmp_path / "code-analysis-1-other-repo"
+
+        for analysis, output_dir in ((analysis_a, output_a), (analysis_b, output_b)):
+            monkeypatch.setattr(
+                "sys.argv",
+                [
+                    "write_step_result.py",
+                    "--ticket",
+                    "TEST-1",
+                    "--repo",
+                    str(tmp_path),
+                    "--analysis-path",
+                    str(analysis),
+                    "--output-dir",
+                    str(output_dir),
+                ],
+            )
+            assert code_analysis_wsr.main() == 0
+
+        data_a = json.loads((output_a / "step-result.json").read_text())
+        data_b = json.loads((output_b / "step-result.json").read_text())
+        assert data_a["module_count"] == 2
+        assert data_b["module_count"] == 1
 
 
 class TestWritingExtractFiles:
@@ -134,21 +185,21 @@ class TestWritingFixMode:
     def _run(self, tmp_path, mode, fmt):
         real = tmp_path / "master.adoc"
         real.write_text("= Doc")
-        manifest = tmp_path / "_index.md"
+        output_dir = tmp_path / "writing"
+        output_dir.mkdir(exist_ok=True)
+        manifest = output_dir / "_index.md"
         manifest.write_text(f"| File | Status |\n| {real} | updated |\n")
-        sidecar = tmp_path / "step-result.json"
+        sidecar = output_dir / "step-result.json"
         argv = [
             "write_step_result.py",
             "--ticket",
             "TEST-1",
-            "--manifest",
-            str(manifest),
+            "--base-path",
+            str(tmp_path),
             "--mode",
             mode,
             "--format",
             fmt,
-            "--sidecar",
-            str(sidecar),
         ]
         import sys as _sys
 
@@ -162,7 +213,8 @@ class TestWritingFixMode:
 
     def test_fix_mode_preserves_prior_mode_and_format(self, tmp_path):
         # Iteration 1 sidecar: update-in-place / mkdocs.
-        sidecar = tmp_path / "step-result.json"
+        sidecar = tmp_path / "writing" / "step-result.json"
+        sidecar.parent.mkdir(parents=True)
         sidecar.write_text(
             json.dumps(
                 {
@@ -185,7 +237,8 @@ class TestWritingFixMode:
         validate_sidecar("writing", data)
 
     def test_fix_mode_refreshes_completed_at(self, tmp_path):
-        sidecar = tmp_path / "step-result.json"
+        sidecar = tmp_path / "writing" / "step-result.json"
+        sidecar.parent.mkdir(parents=True)
         sidecar.write_text(
             json.dumps(
                 {
@@ -215,6 +268,20 @@ class TestWritingFixMode:
 
 
 class TestPlanningCountModules:
+    def test_base_path_derives_plan_and_sidecar(self, tmp_path, monkeypatch):
+        planning = tmp_path / "planning"
+        planning.mkdir()
+        (planning / "plan.md").write_text("## Module Specifications\n\n- Module: one\n")
+        monkeypatch.setattr(
+            "sys.argv",
+            ["write_step_result.py", "--ticket", "TEST-1", "--base-path", str(tmp_path)],
+        )
+
+        assert planning_wsr.main() == 0
+        sidecar = json.loads((planning / "step-result.json").read_text())
+        assert sidecar["module_count"] == 1
+        validate_sidecar("planning", sidecar)
+
     def test_counts_module_and_update_headings(self, tmp_path):
         plan = tmp_path / "plan.md"
         plan.write_text(
@@ -229,3 +296,152 @@ class TestPlanningCountModules:
         plan = tmp_path / "plan.md"
         plan.write_text("### Update 1: real\n\n```\n### Update 2: fake\n```\n")
         assert planning_wsr.count_modules(str(plan)) == 1
+
+
+class TestRequirementsBasePath:
+    def test_base_path_derives_output_file_and_sidecar(self, tmp_path, monkeypatch):
+        req_dir = tmp_path / "requirements"
+        req_dir.mkdir()
+        (req_dir / "requirements.md").write_text("# PROJ-123: My Great Feature\n\nBody text.\n")
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "write_step_result.py",
+                "--ticket",
+                "PROJ-123",
+                "--base-path",
+                str(tmp_path),
+                "--requirement-count",
+                "5",
+            ],
+        )
+        assert requirements_wsr.main() == 0
+        data = json.loads((req_dir / "step-result.json").read_text())
+        assert data["title"] == "My Great Feature"
+        assert data["requirement_count"] == 5
+        validate_sidecar("requirements", data)
+
+
+class TestScopeReqAuditBasePath:
+    def test_base_path_derives_evidence_status_and_sidecar(self, tmp_path, monkeypatch):
+        audit_dir = tmp_path / "scope-req-audit"
+        audit_dir.mkdir()
+        (audit_dir / "evidence-status.json").write_text(
+            json.dumps(
+                {
+                    "recommendation": "proceed",
+                    "summary": {"grounded": 3, "partial": 1, "absent": 0, "total": 4},
+                    "discovered_repos": ["repo-a"],
+                    "secondary_repos": [],
+                }
+            )
+        )
+        monkeypatch.setattr(
+            "sys.argv",
+            ["write_step_result.py", "--ticket", "PROJ-123", "--base-path", str(tmp_path)],
+        )
+        assert scope_req_audit_wsr.main() == 0
+        data = json.loads((audit_dir / "step-result.json").read_text())
+        assert data["recommendation"] == "proceed"
+        assert data["grounded"] == 3
+        assert data["discovered_repos_count"] == 1
+        validate_sidecar("scope-req-audit", data)
+
+
+class TestSecurityReviewBasePath:
+    def test_base_path_derives_scanner_results_and_sidecar(self, tmp_path, monkeypatch):
+        sr_dir = tmp_path / "security-review"
+        sr_dir.mkdir()
+        (sr_dir / "scanner-results.json").write_text(
+            json.dumps(
+                {
+                    "summary": {
+                        "total_findings": 4,
+                        "by_severity": {"critical": 1},
+                        "by_category": {"ip": 2, "email": 2},
+                    }
+                }
+            )
+        )
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "write_step_result.py",
+                "--ticket",
+                "PROJ-123",
+                "--agent-findings",
+                "2",
+                "--base-path",
+                str(tmp_path),
+            ],
+        )
+        assert security_review_wsr.main() == 0
+        data = json.loads((sr_dir / "step-result.json").read_text())
+        assert data["scanner_findings"] == 4
+        assert data["critical_findings"] == 1
+        assert data["agent_findings"] == 2
+        assert data["categories"] == {
+            "ip": 2,
+            "email": 2,
+            "credential": 0,
+            "url": 0,
+            "mac": 0,
+            "internal_hostname": 0,
+        }
+        assert data["context_size_bytes"] > 0
+        validate_sidecar("security-review", data)
+
+
+class TestStyleReviewBasePath:
+    def test_base_path_derives_sidecar(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "write_step_result.py",
+                "--ticket",
+                "PROJ-123",
+                "--fixes",
+                "3",
+                "--warnings",
+                "1",
+                "--suggestions",
+                "2",
+                "--base-path",
+                str(tmp_path),
+            ],
+        )
+        assert style_review_wsr.main() == 0
+        data = json.loads((tmp_path / "style-review" / "step-result.json").read_text())
+        assert data["fixes_applied"] == 3
+        assert data["warnings"] == 1
+        assert data["suggestions"] == 2
+        validate_sidecar("style-review", data)
+
+
+class TestTechReviewBasePath:
+    def test_base_path_derives_review_file_and_sidecar(self, tmp_path, monkeypatch):
+        tr_dir = tmp_path / "technical-review"
+        tr_dir.mkdir()
+        (tr_dir / "review.md").write_text(
+            "Overall technical confidence: HIGH\n"
+            "Severity counts: critical=0 significant=1 minor=2 sme=0\n"
+        )
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "write_step_result.py",
+                "--ticket",
+                "PROJ-123",
+                "--base-path",
+                str(tmp_path),
+                "--code-grounded",
+                "true",
+            ],
+        )
+        assert tech_review_wsr.main() == 0
+        data = json.loads((tr_dir / "step-result.json").read_text())
+        assert data["confidence"] == "HIGH"
+        assert data["severity_counts"]["significant"] == 1
+        assert data["iteration"] == 1
+        assert data["code_grounded"] is True
+        validate_sidecar("tech-review", data)

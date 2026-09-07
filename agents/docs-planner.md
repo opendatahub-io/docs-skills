@@ -233,7 +233,8 @@ artifacts/
     └── discovery_<topic>_<yyyymmdd>.md
 ```
 
-When invoked by the orchestrator, save to `<base-path>/planning/plan.md`.
+When invoked by the orchestrator, the prompt gives the absolute output path
+directly — save there. Do not invent an alternate output path.
 
 ## Key principles
 

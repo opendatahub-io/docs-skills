@@ -157,7 +157,7 @@ python3 scripts/write_step_result.py \
   --fixes <N> \
   --warnings <N> \
   --suggestions <N> \
-  --sidecar "${OUTPUT_DIR}/step-result.json"
+  --base-path "$BASE_PATH"
 ```
 
 The script writes the conformant `step-result.json` with a real wall-clock `completed_at`. If the

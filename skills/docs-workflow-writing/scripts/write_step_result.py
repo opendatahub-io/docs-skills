@@ -5,8 +5,8 @@ Parses the _index.md manifest to extract file paths, stamps a real wall-clock
 ``completed_at``.
 
 Usage:
-  write_step_result.py --ticket <id> --manifest <_index.md> \
-      --mode <mode> --format <fmt> --sidecar <path>
+  write_step_result.py --ticket <id> --base-path <workflow-dir> \
+      --mode <mode> --format <fmt>
 """
 
 import argparse
@@ -44,10 +44,11 @@ def extract_files(manifest_path):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ticket", required=True)
-    parser.add_argument("--manifest", required=True, help="Path to _index.md")
+    parser.add_argument(
+        "--base-path", required=True, help="Workflow workspace; writing files are derived"
+    )
     parser.add_argument("--mode", required=True, help="Writing mode (update-in-place, draft)")
     parser.add_argument("--format", required=True, dest="fmt", help="Doc format (adoc, mkdocs)")
-    parser.add_argument("--sidecar", required=True, help="Path to write step-result.json")
     parser.add_argument(
         "--iteration",
         type=int,
@@ -56,16 +57,17 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    manifest_path = Path(args.manifest)
+    output_dir = Path(args.base_path) / "writing"
+    manifest_path = output_dir / "_index.md"
+    sidecar_path = output_dir / "step-result.json"
+
     if not manifest_path.is_file():
         print(f"ERROR: manifest not found: {manifest_path}", file=sys.stderr)
         return 1
 
-    files = extract_files(args.manifest)
+    files = extract_files(str(manifest_path))
     if not files:
         print(f"WARNING: no file paths found in manifest: {manifest_path}", file=sys.stderr)
-
-    sidecar_path = Path(args.sidecar)
 
     mode = args.mode
     fmt = args.fmt

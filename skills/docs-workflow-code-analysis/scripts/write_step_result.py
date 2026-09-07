@@ -7,7 +7,7 @@ the sidecar cannot drift from its schema.
 
 Usage:
   write_step_result.py --ticket <id> --repo <path> \
-      --analysis-path <learn-code base> --sidecar <path>
+      --analysis-path <learn-code base> --output-dir <path>
 """
 
 import argparse
@@ -56,8 +56,10 @@ def main() -> int:
     parser.add_argument("--ticket", required=True)
     parser.add_argument("--repo", required=True, help="Path to the analyzed source repo")
     parser.add_argument("--analysis-path", required=True, help="learn-code analysis base directory")
-    parser.add_argument("--sidecar", required=True, help="Path to write step-result.json")
+    parser.add_argument("--output-dir", required=True, help="Step output directory")
     args = parser.parse_args()
+
+    sidecar_path = Path(args.output_dir) / "step-result.json"
 
     analysis_path = Path(args.analysis_path)
     if not analysis_path.is_dir():
@@ -80,7 +82,6 @@ def main() -> int:
         "repo_analysis_path": str(analysis_path.resolve()),
     }
 
-    sidecar_path = Path(args.sidecar)
     sidecar_path.parent.mkdir(parents=True, exist_ok=True)
     sidecar_path.write_text(json.dumps(sidecar, indent=2))
 

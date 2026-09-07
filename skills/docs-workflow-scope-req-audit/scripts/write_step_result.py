@@ -5,7 +5,7 @@ Reads evidence-status.json to extract summary counts, so the orchestrator
 does not need to parse the file itself.
 
 Usage:
-  write_step_result.py --ticket <id> --evidence-status <path> --sidecar <path>
+  write_step_result.py --ticket <id> --base-path <workflow-dir>
 """
 
 import argparse
@@ -18,11 +18,15 @@ from pathlib import Path
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ticket", required=True)
-    parser.add_argument("--evidence-status", required=True, help="Path to evidence-status.json")
-    parser.add_argument("--sidecar", required=True, help="Path to write step-result.json")
+    parser.add_argument(
+        "--base-path", required=True, help="Workflow workspace; audit files are derived"
+    )
     args = parser.parse_args()
 
-    es_path = Path(args.evidence_status)
+    output_dir = Path(args.base_path) / "scope-req-audit"
+    es_path = output_dir / "evidence-status.json"
+    sidecar_path = output_dir / "step-result.json"
+
     if not es_path.is_file():
         print(f"ERROR: evidence-status.json not found: {es_path}", file=sys.stderr)
         return 1
@@ -51,7 +55,6 @@ def main() -> int:
         "secondary_repos_count": len(secondary_repos),
     }
 
-    sidecar_path = Path(args.sidecar)
     sidecar_path.parent.mkdir(parents=True, exist_ok=True)
     sidecar_path.write_text(json.dumps(sidecar, indent=2))
 

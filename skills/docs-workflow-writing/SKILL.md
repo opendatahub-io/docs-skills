@@ -23,11 +23,14 @@ bash scripts/build_writing_args.sh <args>
 
 Pass through the args **unquoted** so each flag and value is a separate shell word. Do NOT wrap the entire args string in quotes — the script uses positional argument parsing and each `--flag value` pair must be a separate argument. The script emits JSON on stdout:
 
+All paths below are absolute, joined from `--base-path`.
+
 ```json
 {
   "mode":                "update-in-place | draft | fix",
   "ticket":              "PROJ-123",
   "format":              "adoc | mkdocs",
+  "base_path":           "<base-path>",
   "input_file":          "<base-path>/planning/plan.md",
   "code_analysis_dir":   "<base-path>/code-analysis/ | null",
   "has_code_analysis":   true | false,
@@ -80,16 +83,15 @@ If `verify_output` is `false` (fix mode), no verification is needed — files ar
 Skip this step if `mode` is `"fix"` (fixes edit files in place — no new manifest to parse).
 
 Do **not** hand-author the sidecar — a hand-written sidecar drifts from the schema and uses an
-orchestrator-delayed timestamp instead of a real wall-clock one. Run the script, passing `mode`
-and `format` from the build script's JSON output:
+orchestrator-delayed timestamp instead of a real wall-clock one. Run the script, passing
+`base_path`, `mode`, and `format` from the build script's JSON output:
 
 ```bash
 python3 scripts/write_step_result.py \
   --ticket "<TICKET>" \
-  --manifest "<OUTPUT_FILE>" \
+  --base-path "<base_path from script JSON>" \
   --mode "<mode from script JSON>" \
-  --format "<format from script JSON>" \
-  --sidecar "<OUTPUT_DIR>/step-result.json"
+  --format "<format from script JSON>"
 ```
 
 The script parses absolute file paths from the manifest's table rows and writes the conformant

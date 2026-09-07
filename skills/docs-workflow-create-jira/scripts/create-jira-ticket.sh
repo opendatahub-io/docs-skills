@@ -13,7 +13,7 @@ TICKET="${1:?Usage: create-jira-ticket.sh <TICKET> <PROJECT> <PLAN_FILE>}"
 PROJECT="${2:?Missing PROJECT argument}"
 PLAN_FILE="${3:?Missing PLAN_FILE argument}"
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Load local overrides first, then global defaults (resolve .env from project root)
 # Safe key/value parser: only reads KEY=VALUE lines, skips shell commands

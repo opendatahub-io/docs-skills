@@ -136,7 +136,7 @@ Key principles: use outcome-driven titles, frame content around the user's job, 
    - Convert to lowercase for folder naming: `jira-123`, `rhaistrat-248`
    - This ID determines the manifest folder and (in draft mode) the output folder
 
-2. **Read the documentation plan** from the path specified in the workflow prompt (when invoked by the orchestrator, this is `<base-path>/planning/plan.md`; when invoked by the legacy command, this is `artifacts/plans/plan_*.md`)
+2. **Read the documentation plan** from the path specified in the workflow prompt. In orchestrated runs, the planning step's default is `planning/plan.md` within the workflow workspace; legacy runs use `artifacts/plans/plan_*.md`.
 
 3. **Understand the documentation request:**
    - Read existing documentation for context

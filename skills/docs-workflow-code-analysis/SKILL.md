@@ -118,7 +118,7 @@ python3 scripts/write_step_result.py \
   --ticket "<TICKET>" \
   --repo "$REPO" \
   --analysis-path "$LEARN_CODE_BASE" \
-  --sidecar "${OUTPUT_DIR}/step-result.json"
+  --output-dir "$OUTPUT_DIR"
 ```
 
 The script reads the analysis files at `LEARN_CODE_BASE` (not `OUTPUT_DIR` — the analysis files are

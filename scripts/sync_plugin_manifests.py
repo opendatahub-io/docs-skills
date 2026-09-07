@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 PLUGIN_NAME = "docs-skills"
-PLUGIN_VERSION = "0.4.0"
+PLUGIN_VERSION = "0.4.1"
 MARKETPLACE_NAME = "opendatahub-docs"
 DESCRIPTION = (
     "Documentation review, writing, and workflow tools for AsciiDoc and Markdown documentation"

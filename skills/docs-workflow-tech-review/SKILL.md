@@ -203,10 +203,8 @@ Verify `<output_file>` exists and contains an `Overall technical confidence:` li
 ```bash
 python3 scripts/write_step_result.py \
   --ticket "<ticket>" \
-  --review-file "<output_file>" \
-  --sidecar "<output_dir>/step-result.json" \
+  --base-path "<base_path>" \
   --code-grounded <true if HAS_CLAIMS, else false> \
   --missing-batches "<comma-separated missing batch names from 2b-verify, or empty string if none>" \
-  --iteration <iteration number from prepare_review.py output> \
-  --extraction-plan "<output_dir>/extraction-plan.json"
+  --iteration <iteration number from prepare_review.py output>
 ```

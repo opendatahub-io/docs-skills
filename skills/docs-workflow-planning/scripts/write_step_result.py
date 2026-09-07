@@ -5,7 +5,7 @@ Counts module specifications in plan.md and stamps a real wall-clock
 ``completed_at``.
 
 Usage:
-  write_step_result.py --ticket <id> --plan-file <plan.md> --sidecar <path>
+  write_step_result.py --ticket <id> --base-path <workflow-dir>
 """
 
 import argparse
@@ -67,16 +67,20 @@ def count_modules(path):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ticket", required=True)
-    parser.add_argument("--plan-file", required=True, help="Path to plan.md")
-    parser.add_argument("--sidecar", required=True, help="Path to write step-result.json")
+    parser.add_argument(
+        "--base-path", required=True, help="Workflow workspace; planning files are derived"
+    )
     args = parser.parse_args()
 
-    plan_path = Path(args.plan_file)
+    output_dir = Path(args.base_path) / "planning"
+    plan_path = output_dir / "plan.md"
+    sidecar_path = output_dir / "step-result.json"
+
     if not plan_path.is_file():
         print(f"ERROR: plan file not found: {plan_path}", file=sys.stderr)
         return 1
 
-    module_count = count_modules(args.plan_file)
+    module_count = count_modules(str(plan_path))
 
     sidecar = {
         "schema_version": 1,
@@ -86,7 +90,6 @@ def main() -> int:
         "module_count": module_count,
     }
 
-    sidecar_path = Path(args.sidecar)
     sidecar_path.parent.mkdir(parents=True, exist_ok=True)
     sidecar_path.write_text(json.dumps(sidecar, indent=2))
 

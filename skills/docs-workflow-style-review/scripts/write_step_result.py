@@ -7,7 +7,7 @@ recording it.
 
 Usage:
   write_step_result.py --ticket <id> --fixes <N> --warnings <N> \
-      --suggestions <N> --sidecar <step-result.json>
+      --suggestions <N> --base-path <workflow-dir>
 """
 
 import argparse
@@ -31,8 +31,12 @@ def main() -> int:
     parser.add_argument("--fixes", type=_nonneg_int, default=0, help="Number of fixes applied")
     parser.add_argument("--warnings", type=_nonneg_int, default=0, help="Number of warnings")
     parser.add_argument("--suggestions", type=_nonneg_int, default=0, help="Number of suggestions")
-    parser.add_argument("--sidecar", required=True, help="Path to write step-result.json")
+    parser.add_argument(
+        "--base-path", required=True, help="Workflow workspace; style-review files are derived"
+    )
     args = parser.parse_args()
+
+    sidecar_path = Path(args.base_path) / "style-review" / "step-result.json"
 
     sidecar = {
         "schema_version": 1,
@@ -44,7 +48,6 @@ def main() -> int:
         "suggestions": args.suggestions,
     }
 
-    sidecar_path = Path(args.sidecar)
     sidecar_path.parent.mkdir(parents=True, exist_ok=True)
     sidecar_path.write_text(json.dumps(sidecar, indent=2))
 

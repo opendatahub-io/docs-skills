@@ -255,6 +255,7 @@ jq -n \
   --arg mode              "$MODE" \
   --arg ticket            "$TICKET" \
   --arg format            "$FORMAT" \
+  --arg base_path         "$BASE_PATH" \
   --arg input_file        "$INPUT_FILE" \
   --arg code_analysis_dir "$CODE_ANALYSIS_DIR" \
   --argjson has_code_analysis "$HAS_CODE_ANALYSIS" \
@@ -272,6 +273,7 @@ jq -n \
     mode:              $mode,
     ticket:            $ticket,
     format:            $format,
+    base_path:         $base_path,
     input_file:        $input_file,
     code_analysis_dir: (if $code_analysis_dir == "" then null else $code_analysis_dir end),
     has_code_analysis: $has_code_analysis,

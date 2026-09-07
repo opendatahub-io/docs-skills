@@ -147,13 +147,12 @@ printed (do not read the full report back to recount):
 ```bash
 python3 scripts/write_step_result.py \
   --ticket "<TICKET>" \
-  --scanner-results "$SCANNER_FILE" \
   --agent-findings <N> \
-  --output-dir "$OUTPUT_DIR" \
-  --sidecar "${OUTPUT_DIR}/step-result.json"
+  --base-path "$BASE_PATH"
 ```
 
 The script writes the conformant `step-result.json` with `scanner_findings`, `critical_findings`,
 `agent_findings`, per-category counts, `context_size_bytes`, and a real wall-clock `completed_at`.
-If the script exits non-zero, the sidecar was not written — fix the scanner-results path and re-run;
-do not substitute a stub.
+If the script exits non-zero because `$SCANNER_FILE` is missing, re-run the pii_scanner so it
+writes the scanner results at the derived location, then re-run this script; do not substitute a
+stub.

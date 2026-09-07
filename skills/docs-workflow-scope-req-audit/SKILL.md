@@ -251,8 +251,7 @@ orchestrator-delayed timestamp instead of a real wall-clock one. Run the script:
 ```bash
 python3 scripts/write_step_result.py \
   --ticket "<TICKET>" \
-  --evidence-status "$EVIDENCE_STATUS_FILE" \
-  --sidecar "${OUTPUT_DIR}/step-result.json"
+  --base-path "$BASE_PATH"
 ```
 
 The script reads evidence-status.json to extract recommendation, summary counts,
