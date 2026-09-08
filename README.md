@@ -149,10 +149,8 @@ for base in (here.parent, *here.parents):
 ```
 
 One walk resolves `skills/docs-engine/` in a checkout and
-`<skills-dir>/docs-engine/` after an install, so there is no build step and no
-duplicated copy. [agentic-ci#397](https://github.com/opendatahub-io/agentic-ci/pull/397)
-proposes an `x-shared-paths` frontmatter key that would let the installer carry
-a repository-root `lib/` instead; if it lands, `docs-engine` folds away.
+`<skills-dir>/docs-engine/` after an install, so there is no build step, no
+duplicated copy, and nothing to keep in sync.
 
 ### Configuration
 
