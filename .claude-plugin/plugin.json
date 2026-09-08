@@ -1,7 +1,7 @@
 {
   "name": "docs-skills",
-  "version": "0.3.25",
-  "description": "Documentation review, writing, and workflow tools for AsciiDoc and Markdown documentation",
+  "version": "0.5.0",
+  "description": "Turns a code repository into developer documentation in plain Markdown and keeps it current from CI, alongside the JIRA-driven AsciiDoc workflow",
   "author": {
     "name": "opendatahub-io"
   },

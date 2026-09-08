@@ -6,3 +6,16 @@ __pycache__/
 .agent_workspace/
 tmp/
 .claude
+
+# Vendored copies of the shared trees, written by `make vendor`.
+# A skill installer copies one skill directory and drops symlinks, so a shared
+# lib/ does not survive the copy. Vendoring is a packaging step, not source:
+# committing five copies of lib/ would put the same diff in five places.
+skills/*/scripts/lib/
+skills/*/scripts/prompts/
+skills/*/scripts/schemas/
+skills/*/scripts/languages/
+skills/*/scripts/config/
+
+# Artifact directory, when the generator is run against this repository itself.
+.docs-gen/

@@ -1,0 +1,10 @@
+# Append to the .gitignore of the repository being documented.
+#
+# The durable artifacts are committed. A registry_hash match skips module
+# analysis, which presumes the registry and the API snapshot are already on
+# disk, and the grounding check reads api-surface.json on every run. Under CI
+# caching a cold cache produces a matching hash with nothing behind it.
+.docs-gen/*
+!.docs-gen/registry.json
+!.docs-gen/api/
+!.docs-gen/api-surface.json

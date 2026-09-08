@@ -1,0 +1,64 @@
+# Copy into the repository being documented, as .github/workflows/docs.yml.
+# This file is an example and does not run against docs-skills itself.
+name: docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bootstrap:
+        description: First run. Queues every module
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # git-context deepens a shallow checkout on its own, but starting
+          # deep saves the fetch.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install docs-skills
+        run: |
+          git clone --depth 1 https://github.com/opendatahub-io/docs-skills .docs-skills
+          pip install -r .docs-skills/requirements.txt
+
+      - name: Sync docs
+        id: sync
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.DOCS_LLM_KEY }}
+        run: |
+          set +e
+          python3 .docs-skills/skills/docs-sync/scripts/sync.py \
+            --repo . \
+            --since-watermark .docs-state.json \
+            --llm-cmd "${{ vars.DOCS_LLM_CMD || 'claude -p' }}" \
+            ${{ inputs.bootstrap && '--bootstrap' || '' }}
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          # 1 means nothing to do, which is the normal outcome on most pushes.
+          [ "$code" -eq 1 ] && exit 0
+          exit "$code"
+
+      - name: Open PR
+        if: steps.sync.outputs.code == '0'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: docs/sync-${{ github.sha }}
+          title: "docs: sync for ${{ github.sha }}"
+          body-path: .docs-gen/pr-body.md
+          labels: documentation, automated
+          commit-message: "docs: sync for ${{ github.sha }}"
+          author: docs-bot <docs-bot@example.com>

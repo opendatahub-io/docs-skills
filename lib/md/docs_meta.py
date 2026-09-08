@@ -1,0 +1,502 @@
+#!/usr/bin/env python3
+"""Frontmatter metadata for generated documentation.
+
+Reads, fills, validates, and indexes YAML frontmatter across a Markdown corpus,
+carrying the provenance fields the relevance engine needs to tell a document
+that its subject moved.
+
+Writing is deliberately not PyYAML's dumper: keys are emitted in a fixed order
+with predictable quoting, and the body is preserved byte for byte. Two runs over
+an unchanged corpus produce an unchanged corpus.
+
+Usage:
+    python3 docs_meta.py mark     --repo . [--source file,git,context] [--force] [--write]
+    python3 docs_meta.py validate --repo . [--strict]
+    python3 docs_meta.py index    --repo . --out AGENTS.md
+    python3 docs_meta.py show     <file>
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
+# ------------------------------------------------------------------ schema
+
+TYPES = ("concept", "task", "reference", "changelog", "overview")
+MANAGED = ("generated", "assisted", "manual")
+
+# Emission order. Anything not listed follows, sorted, so custom keys survive.
+ORDER = (
+    "id",
+    "title",
+    "description",
+    "type",
+    "owner",
+    "tags",
+    "lastUpdated",
+    "managed",
+    "source_modules",
+    "source_sha",
+    "generator",
+)
+
+REQUIRED = ("title", "description", "type", "managed")
+SHA = re.compile(r"^[0-9a-f]{7,40}$")
+
+# Files that are agent instructions rather than documentation. Marking or
+# indexing these corrupts the very files an agent reads to orient itself.
+SKIP_NAMES = {"AGENTS.md", "CLAUDE.md", "GEMINI.md", "SKILL.md", "README.md"}
+SKIP_DIRS = {
+    ".claude",
+    ".cursor",
+    ".github",
+    "node_modules",
+    "vendor",
+    ".git",
+    ".agent_workspace",
+    ".docs-gen",
+    "site",
+    "_build",
+}
+
+INDEX_BEGIN = "<!-- docs-gen:index:begin -->"
+INDEX_END = "<!-- docs-gen:index:end -->"
+
+
+class MetaError(RuntimeError):
+    pass
+
+
+# ------------------------------------------------------------- parse / render
+
+
+def parse(text):
+    """Split a document into (frontmatter dict, body, had_frontmatter)."""
+    if not text.startswith("---"):
+        return {}, text, False
+    lines = text.split("\n")
+    for index in range(1, len(lines)):
+        if lines[index].strip() == "---":
+            block = "\n".join(lines[1:index])
+            body = "\n".join(lines[index + 1 :])
+            if yaml is None:
+                raise MetaError("PyYAML is required to read frontmatter")
+            data = yaml.safe_load(block) or {}
+            if not isinstance(data, dict):
+                raise MetaError("Frontmatter is not a mapping")
+            return data, body, True
+    return {}, text, False
+
+
+def _scalar(value):
+    """Quote only when a bare scalar would be ambiguous to a YAML reader."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    text = str(value)
+    risky = text == "" or text[0] in "#&*!|>%@`[{'\"" or text[-1] in " :"
+    risky = (
+        risky or ":" in text or text.lower() in ("true", "false", "null", "yes", "no", "on", "off")
+    )
+    risky = risky or (text.replace(".", "", 1).isdigit())
+    if risky:
+        return "'" + text.replace("'", "''") + "'"
+    return text
+
+
+def render(front, body):
+    """Serialize deterministically. Same input, same bytes, every time."""
+    keys = [k for k in ORDER if k in front] + sorted(k for k in front if k not in ORDER)
+    lines = ["---"]
+    for key in keys:
+        value = front[key]
+        if isinstance(value, (list, tuple)):
+            if not value:
+                lines.append(f"{key}: []")
+            else:
+                lines.append(f"{key}:")
+                lines.extend(f"  - {_scalar(item)}" for item in value)
+        else:
+            lines.append(f"{key}: {_scalar(value)}")
+    lines.append("---")
+    return "\n".join(lines) + "\n" + body.lstrip("\n")
+
+
+# -------------------------------------------------------------------- walking
+
+
+def walk(root, docs_dir=None):
+    base = Path(root) / docs_dir if docs_dir else Path(root)
+    if not base.exists():
+        return
+    for dirpath, dirnames, filenames in os.walk(base):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
+        for name in sorted(filenames):
+            if name.endswith(".md") and name not in SKIP_NAMES:
+                yield Path(dirpath) / name
+
+
+# -------------------------------------------------------------------- sources
+
+
+def from_file(path, root, front):
+    """Everything derivable from the document itself."""
+    out = {}
+    text = path.read_text(encoding="utf-8", errors="replace")
+    _, body, _ = parse(text)
+
+    heading = next(
+        (line[2:].strip() for line in body.splitlines() if line.startswith("# ")),
+        None,
+    )
+    out["title"] = heading or path.stem.replace("-", " ").replace("_", " ").title()
+
+    rel = path.relative_to(root)
+    out["id"] = str(rel.with_suffix("")).replace(os.sep, "/")
+
+    lowered = f"{rel} {out['title']}".lower()
+    if "changelog" in lowered or "release" in lowered:
+        out["type"] = "changelog"
+    elif any(
+        word in lowered for word in ("how-to", "howto", "guide", "tutorial", "getting-started")
+    ):
+        out["type"] = "task"
+    elif any(word in lowered for word in ("api", "reference", "cli", "config")):
+        out["type"] = "reference"
+    elif rel.name in ("index.md", "overview.md"):
+        out["type"] = "overview"
+    else:
+        out["type"] = "concept"
+
+    out["managed"] = "manual"  # only the writer promotes a file to generated
+    return out
+
+
+def _git(root, *args):
+    proc = subprocess.run(
+        ["git", "-C", str(root), *args], capture_output=True, text=True, check=False
+    )
+    return proc.stdout if proc.returncode == 0 else ""
+
+
+def from_git(path, root, front):
+    """Last touched date, and an owner guess when nothing better exists."""
+    rel = str(path.relative_to(root))
+    out = {}
+    date = _git(root, "log", "-1", "--format=%aI", "--", rel).strip()
+    if date:
+        out["lastUpdated"] = date[:10]
+    if not front.get("owner"):
+        authors = _git(root, "shortlog", "-sne", "HEAD", "--", rel).strip().splitlines()
+        if authors:
+            match = re.search(r"<([^>]+)>", authors[0])
+            if match:
+                out["owner"] = match.group(1)
+    return out
+
+
+def from_context(path, root, front, context):
+    """Provenance from the git-context and relevance artifacts.
+
+    This is the field set that lets a document be told its subject moved:
+    `source_modules` joined against the relevance verdict is the whole
+    staleness mechanism.
+    """
+    if not context:
+        return {}
+    out = {"generator": context.get("generator", "docs-gen/0.1")}
+    head = context.get("head")
+    if head:
+        out["source_sha"] = head[:12]
+
+    declared = front.get("source_modules")
+    if declared:
+        return out
+
+    rel = str(path.relative_to(root))
+    inferred = [
+        module for module, entry in context.get("modules", {}).items() if entry.get("doc") == rel
+    ]
+    if inferred:
+        out["source_modules"] = sorted(inferred)
+    return out
+
+
+# ----------------------------------------------------------------------- mark
+
+
+def mark(root, sources, force=False, write=False, docs_dir=None, context=None):
+    changed, unchanged = [], 0
+    for path in walk(root, docs_dir):
+        original = path.read_text(encoding="utf-8", errors="replace")
+        front, body, _ = parse(original)
+        merged = dict(front)
+
+        derived = {}
+        if "file" in sources:
+            derived.update(from_file(path, root, front))
+        if "git" in sources:
+            derived.update(from_git(path, root, front))
+        if "context" in sources:
+            derived.update(from_context(path, root, front, context))
+
+        for key, value in derived.items():
+            # Fill-when-absent is what keeps descriptions and tags from churning
+            # across runs. --force is the deliberate override.
+            if force or key not in merged or merged[key] in (None, "", []):
+                merged[key] = value
+
+        updated = render(merged, body)
+        if updated == original:
+            unchanged += 1
+            continue
+        changed.append(str(path.relative_to(root)))
+        if write:
+            path.write_text(updated, encoding="utf-8")
+
+    return {"changed": changed, "unchanged": unchanged, "written": write}
+
+
+# ------------------------------------------------------------------- validate
+
+
+def validate(root, strict=False, docs_dir=None):
+    errors, warnings = [], []
+    seen_ids = {}
+
+    for path in walk(root, docs_dir):
+        rel = str(path.relative_to(root))
+        try:
+            front, _, had = parse(path.read_text(encoding="utf-8", errors="replace"))
+        except MetaError as exc:
+            errors.append(f"{rel}: {exc}")
+            continue
+        if not had:
+            errors.append(f"{rel}: no frontmatter")
+            continue
+
+        for field in REQUIRED:
+            if not front.get(field):
+                errors.append(f"{rel}: missing required field '{field}'")
+
+        if front.get("type") and front["type"] not in TYPES:
+            errors.append(f"{rel}: type '{front['type']}' not in {list(TYPES)}")
+        if front.get("managed") and front["managed"] not in MANAGED:
+            errors.append(f"{rel}: managed '{front['managed']}' not in {list(MANAGED)}")
+        if front.get("source_sha") and not SHA.match(str(front["source_sha"])):
+            errors.append(f"{rel}: source_sha is not a hex SHA")
+
+        if front.get("managed") in ("generated", "assisted"):
+            if not front.get("source_modules"):
+                warnings.append(
+                    f"{rel}: {front['managed']} without source_modules; "
+                    "staleness cannot be detected"
+                )
+            if not front.get("source_sha"):
+                warnings.append(f"{rel}: {front['managed']} without source_sha")
+
+        doc_id = front.get("id")
+        if doc_id:
+            if doc_id in seen_ids:
+                errors.append(f"{rel}: duplicate id, also in {seen_ids[doc_id]}")
+            seen_ids[doc_id] = rel
+
+        description = front.get("description") or ""
+        if description and len(description) > 300:
+            warnings.append(f"{rel}: description over 300 characters")
+
+    if strict:
+        errors.extend(warnings)
+        warnings = []
+    return {"errors": errors, "warnings": warnings, "checked": len(seen_ids)}
+
+
+# ---------------------------------------------------------------------- index
+
+
+def build_index(root, docs_dir=None):
+    entries = []
+    for path in walk(root, docs_dir):
+        front, _, had = parse(path.read_text(encoding="utf-8", errors="replace"))
+        if not had:
+            continue
+        entries.append(
+            {
+                "path": str(path.relative_to(root)),
+                "title": front.get("title", path.stem),
+                "description": front.get("description", ""),
+                "type": front.get("type", "concept"),
+                "managed": front.get("managed", "manual"),
+            }
+        )
+    return sorted(entries, key=lambda e: (e["type"], e["path"]))
+
+
+def render_index(entries):
+    lines = [INDEX_BEGIN, "", "## Documentation index", ""]
+    for kind in TYPES:
+        group = [e for e in entries if e["type"] == kind]
+        if not group:
+            continue
+        lines.append(f"### {kind.title()}")
+        lines.append("")
+        for entry in group:
+            summary = f" — {entry['description']}" if entry["description"] else ""
+            lines.append(f"- [{entry['title']}]({entry['path']}){summary}")
+        lines.append("")
+    lines.append(INDEX_END)
+    return "\n".join(lines)
+
+
+def write_index(root, out_path, docs_dir=None):
+    """Replace only the marked region, so hand-written surroundings survive."""
+    entries = build_index(root, docs_dir)
+    block = render_index(entries)
+    target = Path(root) / out_path
+
+    if target.exists():
+        existing = target.read_text(encoding="utf-8")
+        if INDEX_BEGIN in existing and INDEX_END in existing:
+            start = existing.index(INDEX_BEGIN)
+            end = existing.index(INDEX_END) + len(INDEX_END)
+            updated = existing[:start] + block + existing[end:]
+        else:
+            updated = existing.rstrip("\n") + "\n\n" + block + "\n"
+    else:
+        updated = block + "\n"
+
+    changed = not target.exists() or target.read_text(encoding="utf-8") != updated
+    if changed:
+        target.write_text(updated, encoding="utf-8")
+    return {"path": str(out_path), "entries": len(entries), "changed": changed}
+
+
+# -------------------------------------------------------------------- staleness
+
+
+def stale(root, relevance, docs_dir=None):
+    """Join source_modules against the relevance verdict.
+
+    Generated documents whose modules moved are queued for rewrite. Manual
+    documents whose modules moved are a finding for a human, never a write.
+    """
+    rebuild = set(relevance.get("rebuild", []))
+    queued, flagged = [], []
+    for path in walk(root, docs_dir):
+        front, _, had = parse(path.read_text(encoding="utf-8", errors="replace"))
+        if not had:
+            continue
+        modules = set(front.get("source_modules") or [])
+        if not modules & rebuild:
+            continue
+        record = {
+            "doc": str(path.relative_to(root)),
+            "modules": sorted(modules & rebuild),
+            "managed": front.get("managed", "manual"),
+        }
+        (queued if record["managed"] in ("generated", "assisted") else flagged).append(record)
+    return {"queued": queued, "flagged": flagged}
+
+
+# ------------------------------------------------------------------- commands
+
+
+def emit(payload, out=None):
+    text = json.dumps(payload, indent=2)
+    if out:
+        Path(out).write_text(text + "\n")
+        print(json.dumps({"written": out}, indent=2))
+    else:
+        print(text)
+
+
+def cmd_mark(args):
+    context = json.loads(Path(args.context).read_text()) if args.context else None
+    result = mark(
+        args.repo, set(args.source.split(",")), args.force, args.write, args.docs_dir, context
+    )
+    emit(result, args.out)
+    return 0
+
+
+def cmd_validate(args):
+    result = validate(args.repo, args.strict, args.docs_dir)
+    emit(result, args.out)
+    return 3 if result["errors"] else 0
+
+
+def cmd_index(args):
+    emit(write_index(args.repo, args.out_file, args.docs_dir))
+    return 0
+
+
+def cmd_stale(args):
+    relevance = json.loads(Path(args.relevance).read_text())
+    emit(stale(args.repo, relevance, args.docs_dir), args.out)
+    return 0
+
+
+def cmd_show(args):
+    front, body, had = parse(Path(args.file).read_text(encoding="utf-8"))
+    emit({"had_frontmatter": had, "frontmatter": front, "body_lines": len(body.splitlines())})
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--docs-dir", help="Limit the walk to this subdirectory")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("mark", help="Fill absent metadata fields")
+    p.add_argument("--repo", default=".")
+    p.add_argument("--source", default="file,git", help="Comma-separated: file, git, context")
+    p.add_argument("--context", help="git-context.json, required for the context source")
+    p.add_argument("--force", action="store_true", help="Overwrite fields that already exist")
+    p.add_argument("--write", action="store_true", help="Apply changes; otherwise dry run")
+    p.add_argument("--out")
+    p.set_defaults(func=cmd_mark)
+
+    p = sub.add_parser("validate", help="Check the corpus against the schema")
+    p.add_argument("--repo", default=".")
+    p.add_argument("--strict", action="store_true", help="Treat warnings as errors")
+    p.add_argument("--out")
+    p.set_defaults(func=cmd_validate)
+
+    p = sub.add_parser("index", help="Write the documentation index")
+    p.add_argument("--repo", default=".")
+    p.add_argument("--out", dest="out_file", default="AGENTS.md")
+    p.set_defaults(func=cmd_index)
+
+    p = sub.add_parser("stale", help="Join source_modules against a relevance verdict")
+    p.add_argument("--repo", default=".")
+    p.add_argument("--relevance", required=True)
+    p.add_argument("--out")
+    p.set_defaults(func=cmd_stale)
+
+    p = sub.add_parser("show", help="Print one file's frontmatter")
+    p.add_argument("file")
+    p.set_defaults(func=cmd_show)
+
+    args = parser.parse_args()
+    if yaml is None:
+        print(json.dumps({"error": "PyYAML is required"}))
+        return 1
+    try:
+        return args.func(args)
+    except (MetaError, OSError, json.JSONDecodeError) as exc:
+        print(json.dumps({"error": str(exc)}))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

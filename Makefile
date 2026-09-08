@@ -45,4 +45,16 @@ lint: ## Run skillsaw, ruff syntax checker and formatter, and shellcheck
 test: ## Run pytest test suite
 	python3 -m pytest tests/ -v
 
+.PHONY: vendor
+vendor: ## Copy lib/, prompts/, schemas/, languages/, config/ into generator skills
+	@python3 scripts/vendor_lib.py
+
+.PHONY: vendor-check
+vendor-check: ## Fail if a vendored copy has drifted from its source
+	@python3 scripts/vendor_lib.py --check
+
+.PHONY: vendor-clean
+vendor-clean: ## Remove every vendored copy
+	@python3 scripts/vendor_lib.py --clean
+
 .DEFAULT_GOAL := help

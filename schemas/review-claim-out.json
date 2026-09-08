@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Claim review output",
+  "description": "Verdicts on behavioural claims a document makes that no symbol name settles.",
+  "type": "object",
+  "required": ["verdicts"],
+  "properties": {
+    "verdicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim", "supported"],
+        "properties": {
+          "claim": {"type": "string", "minLength": 5},
+          "supported": {"type": "boolean"},
+          "reason": {"type": "string"},
+          "evidence": {"type": "string"}
+        }
+      }
+    }
+  }
+}
