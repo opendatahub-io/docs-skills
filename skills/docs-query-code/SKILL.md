@@ -1,194 +1,59 @@
 ---
 name: docs-query-code
-description: Answer questions about a previously analyzed codebase. Reads docs-learn-code output and dispatches an agent that can also Read/Grep the actual source code to provide file:line-grounded answers.
-argument-hint: <question> [--repo <path|url>]
-allowed-tools: Read, Write, Bash, Glob, Grep, Skill, Agent
+description: Answer a question about a repository the generator has already analyzed. Reads the registry, module summaries, and dependency graph, greps the source for the question's terms, and answers once with file:line citations.
+argument-hint: "<question> [--repo PATH] [--write PATH]"
+allowed-tools: Bash, Read, Write
 ---
 
-# Query-Code — Ask Questions About an Analyzed Codebase
+# docs-query-code
 
-Takes a natural-language question about a codebase, loads the analysis data produced by `docs-learn-code`, and dispatches an agent that answers the question with evidence grounded in actual source files and line numbers.
+Ask a question, get an answer with line numbers behind it.
 
-## Usage
-
-```
-/docs-skills:docs-query-code "How does authentication work?" --repo /path/to/repo
-/docs-skills:docs-query-code "How does authentication work?" --repo https://github.com/user/repo
-/docs-skills:docs-query-code "What modules depend on the database layer?"
-/docs-skills:docs-query-code "Where is the HTTP routing configured?" --repo /path/to/my-api
-```
-
-## Arguments
-
-- `$1` — The question to answer (required, can be a quoted string)
-- `--repo <path|url>` — Path or URL of the repository (optional if only one analysis exists). Accepts a local filesystem path or a git remote URL (`https://`, `git@`, `git://`). Git URLs are cloned to `.agent_workspace/<repo-name>/_clone/`.
-
-## Execution
-
-### 1. Parse arguments
-
-Extract the question (first positional argument or quoted string) and optional `--repo` path.
-
-If the question is empty, STOP and report: `"Please provide a question about the codebase."`.
-
-### 2. Resolve analysis data
-
-**If `--repo` is provided:**
-
-**If the value is a git URL** (matches `https://`, `http://`, `git@`, or `git://`):
-
-1. Derive `REPO_NAME` from the URL: strip any trailing `.git`, then take the last path segment (e.g., `https://github.com/user/my-project.git` → `my-project`).
-2. Set paths:
+## Quick start
 
 ```bash
-GIT_ROOT="$(cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" && pwd)"
-BASE_PATH="${GIT_ROOT}/.agent_workspace/${REPO_NAME}"
-CLONE_DIR="${BASE_PATH}/_clone"
+QUERY="$(dirname "$0")/scripts/query.py"
+
+python3 "$QUERY" "How does the scheduler decide to retry?" --repo /path/to/code
+python3 "$QUERY" "What calls into the storage layer?" --repo . --write docs/answers/
 ```
 
-3. If `${CLONE_DIR}` already exists and is a git repo, use it as the repo path.
-4. If `${CLONE_DIR}` does not exist and an analysis already exists at `${BASE_PATH}`, proceed without a clone (the analysis data is sufficient for querying, though file:line inspection will be limited).
-5. If neither the clone nor analysis exists, clone:
+Requires an earlier `docs-repo-analyze` run, whose artifacts it reads from
+`.docs-gen/`. Without one it exits 1 and says so.
 
-```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/git_pr_reader.py clone "<URL>" --output-dir "${CLONE_DIR}"
-```
+## What it reads
 
-Then offer to run `docs-learn-code` (see step 3 below).
+| Source | What it contributes |
+|---|---|
+| `registry.json` | Which modules exist, their paths and kind |
+| `modules/<slug>.json` | Per-module purpose, responsibilities, gotchas |
+| `dep-pairs.json` | What depends on what |
+| `ONBOARDING.md` | The synthesized overview, when one was written |
+| the source tree | Lines matching the question's terms, with line numbers |
 
-**If the value is a local path:**
+Search terms come from the question. Anything backticked, CamelCase, or
+snake_case is treated as an identifier and ranked above the plain words, because
+that is the part of a question that actually narrows a search.
 
-Resolve to absolute path. Derive `REPO_NAME` from basename. Set:
+## One call, no dispatch
 
-```bash
-GIT_ROOT="$(cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" && pwd)"
-BASE_PATH="${GIT_ROOT}/.agent_workspace/${REPO_NAME}"
-```
+The answer is a single `lib/run/step.py` invocation, the same runner every other
+model step in this plugin uses. Nothing here dispatches a subagent, so the skill
+behaves identically under Claude Code, Codex, or a bare shell.
 
-**If `--repo` is NOT provided:**
+## Grounding
 
-Scan `.agent_workspace/` for subdirectories containing `synthesis/ONBOARDING.md`.
+The prompt gets real source lines with real line numbers and is told to cite
+them. A claim it cannot attach to a line is asked for separately, under
+`uncertain`, rather than being folded into the answer.
 
-- If exactly one exists: use it. Derive `REPO_NAME` and `BASE_PATH`.
-- If multiple exist: list them and ask the user to specify `--repo`.
-- If none exist: report that no analysis data is available.
+Where the module summaries and the source disagree, the source wins and the
+answer says the summary is stale. Summaries are generated from an earlier commit
+and go out of date; the lines do not.
 
-### 3. Verify analysis exists
+## Output
 
-Check that `${BASE_PATH}/synthesis/ONBOARDING.md` exists.
-
-**If it does not exist:**
-
-Check if `${BASE_PATH}/workflow/` contains a progress file.
-
-- If a progress file exists with `status: "in_progress"`: report that the analysis is incomplete and offer to resume it.
-- If no progress file exists: ask the user if they want to run docs-learn-code first.
-
-If the user agrees to run docs-learn-code:
-
-```
-Skill: docs-skills:docs-learn-code
-args: <repo-path>
-```
-
-Wait for it to complete, then proceed to step 4.
-
-### 4. Load analysis context
-
-Read the following files from `${BASE_PATH}/`:
-
-| File | Content |
-|------|---------|
-| `detection/detection.json` | Language, module map, config info |
-| `module-registry/registry.json` | Module purposes and complexity |
-| `module-analysis/summary.json` | Detailed per-module analysis |
-| `relationships/relationships.json` | Cross-module coupling data |
-| `synthesis/ONBOARDING.md` | Full onboarding guide |
-
-If any file is missing (except relationships, which may not exist for older analyses), log a warning but continue with available data.
-
-Assemble the context into a JSON object:
-
-```json
-{
-  "repo_name": "<REPO_NAME>",
-  "primary_language": "<from detection>",
-  "detection": "<detection.json contents>",
-  "registry": "<registry.json contents>",
-  "summaries": "<summary.json contents>",
-  "relationships": "<relationships.json contents or []>"
-}
-```
-
-### 5. Determine repo path
-
-The repo path is needed so the agent can inspect actual source files. Determine it from:
-
-1. The `--repo` argument if provided
-2. The `repo_path` field in the progress file at `${BASE_PATH}/workflow/learn-code_${REPO_NAME}.json`
-3. The `repo_root` field in `detection.json`
-
-If none of these yield a valid path, warn the user that file:line references may not be available.
-
-### 6. Set output path
-
-```bash
-OUTPUT_DIR="${BASE_PATH}/queries"
-mkdir -p "$OUTPUT_DIR"
-```
-
-Generate a filename slug from the question:
-1. Lowercase the question
-2. Replace spaces and non-alphanumeric characters (except hyphens) with hyphens
-3. Collapse consecutive hyphens into one
-4. Strip leading and trailing hyphens
-5. Truncate to 60 characters
-6. Append `_<YYYYMMDD-HHMMSS>.md` using the current UTC time
-
-Example: `"How do the Tekton PipelineRuns get triggered?"` → `how-do-the-tekton-pipelineruns-get-triggered_20260524-180000.md`
-
-Set `OUTPUT_FILE="${OUTPUT_DIR}/<slug>.md"`.
-
-### 7. Dispatch code-questioner agent
-
-```
-Agent:
-  subagent_type: docs-skills:code-questioner
-  description: "Answer: <question truncated to 60 chars>"
-  prompt: |
-    Answer this question about the <REPO_NAME> codebase:
-
-    QUESTION: <user's full question>
-
-    ANALYSIS_CONTEXT:
-    <JSON context object from step 4>
-
-    ONBOARDING_GUIDE:
-    <full contents of ONBOARDING.md>
-
-    REPO_PATH: <absolute path to the repository>
-    OUTPUT_FILE: <OUTPUT_FILE>
-
-    You may Read and Grep files in REPO_PATH to find specific code evidence.
-    Always include file:line references when citing specific code.
-    Write your answer as markdown (with YAML frontmatter) to OUTPUT_FILE.
-```
-
-### 8. Verify and present answer
-
-After the agent completes:
-
-1. Verify `${OUTPUT_FILE}` was written. If the agent failed to write it, write the agent's response yourself to `${OUTPUT_FILE}` with YAML frontmatter:
-
-```markdown
----
-question: "<original question>"
-repo: "<REPO_NAME>"
-date: "<current ISO 8601 UTC>"
----
-
-<agent's response>
-```
-
-2. Display the answer to the user.
-3. Log: `"Answer saved to <OUTPUT_FILE>"`.
+Markdown with YAML frontmatter, carrying `managed: generated` so the metadata
+layer treats it like any other generated page. Prints to stdout by default.
+`--write` takes a file, or a directory, in which case the filename is a slug of
+the question plus a UTC timestamp.

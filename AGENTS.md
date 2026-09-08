@@ -7,10 +7,7 @@ A Claude Code plugin providing documentation review, writing, and workflow tools
 ```text
 .claude-plugin/plugin.json   Plugin packaging metadata (name, version, description)
 skills/<skill>/SKILL.md      Skill definitions with frontmatter
-agents/<agent>.md            Subagent definitions with frontmatter
-reference/                   Shared domain knowledge (frameworks, templates, guides)
-hooks/hooks.json             Plugin-level Claude Code event hooks
-eval/                        Evaluation test cases and harness config
+tests/                       pytest suite and the synthetic fixture repository
 
 skills/docs-engine/          Shared runtime for the generator. Not invoked directly
   scripts/lib/git/           git_context.py, api_surface.py
@@ -23,44 +20,36 @@ skills/docs-engine/          Shared runtime for the generator. Not invoked direc
   config/                    Path filters, example .docs-gen.yaml, gitignore fragment
 ```
 
-The generator's shared code lives inside `skills/docs-engine/` rather than at the
-repository root. An installer copies each skill directory on its own and drops
-symlinks on the way, so a tree above the skills does not survive installation. It
-does place every skill as a flat sibling, which is what the generator skills use
-to reach the engine. The rules for doing that differ from the sections below.
+The shared code lives inside `skills/docs-engine/` rather than at the repository
+root. An installer copies each skill directory on its own and drops symlinks on
+the way, so a tree above the skills does not survive installation. It does place
+every skill as a flat sibling, which is what the other skills use to reach the
+engine.
+
+There are no `agents/`, `hooks/`, `reference/`, or `eval/` directories. Subagent
+definitions went with the ticket-driven pipeline they served.
 
 ## Calling scripts from skills
 
-The runtime working directory is the **project root**, not the skill directory. Bare relative paths like `scripts/foo.py` will fail. Always use a substitution variable:
-
-### Claude Code
-
-- **`${CLAUDE_SKILL_DIR}`** — the directory containing the skill's `SKILL.md`. Use for scripts bundled with the same skill.
-- **`${CLAUDE_PLUGIN_ROOT}`** — the plugin's installation directory (repo root). Use for cross-skill calls.
+The runtime working directory is the project root, not the skill directory, so a
+bare `scripts/foo.py` fails. Resolve from the file doing the calling.
 
 ```bash
-# Same-skill call (stdlib-only script)
-python3 ${CLAUDE_SKILL_DIR}/scripts/detect_language.py --repo /path/to/repo
+# Same-skill script
+python3 "$(dirname "$0")/scripts/write.py" --repo .
 
-# Same-skill call (PEP 723 script with external deps)
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --issue PROJ-123
+# The shared runtime, a sibling skill
+python3 "$(dirname "$0")/../docs-engine/scripts/lib/git/git_context.py" context --repo .
 
-# Cross-skill call
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-learn-code/scripts/detect_language.py --repo /path
+# A PEP 723 script, for the tree-sitter extractor's dependencies
+uv run --script "$(dirname "$0")/../docs-engine/scripts/lib/ast/extract_public_api_treesitter.py" \
+  --module pkg/queue --lang go --files pkg/queue/queue.go
 ```
 
-### Cursor
+The same paths work from a checkout and from an installed copy, because both put
+the skills side by side.
 
-Use paths relative to the repository root (workspace):
-
-```bash
-python3 skills/docs-learn-code/scripts/detect_language.py --repo /path/to/repo
-```
-
-## The documentation generator
-
-Its skills follow different rules from the ticket-driven pipeline, and the
-difference is deliberate.
+## Conventions
 
 **No harness variables.** Nothing reads `${CLAUDE_PLUGIN_ROOT}` or
 `${CLAUDE_SKILL_DIR}`, because no harness sets a plugin root. Python scripts
@@ -105,11 +94,12 @@ which bytes may move, and whether doc comments reach source are decided by
 `docs-write`'s script. A prompt instruction is a request; a function that never
 receives the surrounding text is a guarantee.
 
-## Skill and agent naming
+## Skill naming
 
-**Skills** (invoked via the Skill tool) use bare names: `docs-workflow-requirements`, `docs-jira-reader`, `docs-learn-code`. Qualified names (`docs-skills:docs-workflow-requirements`) also work. Use bare names in workflow YAML step lists and skill-to-skill invocations.
+**Skills** (invoked via the Skill tool) use bare names: `docs-sync`, `docs-write`, `docs-query-code`. Qualified names (`docs-skills:docs-sync`) also work.
 
-**Agents** (invoked via the Agent tool's `subagent_type`) require fully-qualified names with the plugin prefix: `docs-skills:technical-reviewer`, `docs-skills:docs-writer`. Bare names like `technical-reviewer` will fail with "Agent type not found".
+There are no agents to name. Every model step is a `step.py` invocation rather
+than a subagent dispatch.
 
 ## Contributing rules
 

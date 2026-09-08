@@ -21,7 +21,8 @@ import sys
 from pathlib import Path
 
 SCRIPT = (
-    Path(__file__).parent.parent / "skills/docs-learn-code/scripts/extract_public_api_treesitter.py"
+    Path(__file__).parent.parent
+    / "skills/docs-engine/scripts/lib/ast/extract_public_api_treesitter.py"
 )
 FIXTURES = Path(__file__).parent / "fixtures/treesitter"
 

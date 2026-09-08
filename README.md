@@ -1,55 +1,10 @@
 # docs-skills
 
-Documentation tooling for Claude Code, Codex, and a plain shell.
+Point it at a code repository, get developer documentation in plain Markdown.
+Merge to main, get the delta.
 
-The repository carries two tracks.
-
-**[Documentation generator](#documentation-generator).** Point it at a code
-repository and get developer documentation in plain Markdown. Merge to main and
-get the delta. Deterministic where it can be, harness-agnostic throughout, and
-built to run unattended in CI. This is where the project is going.
-
-**[Ticket-driven pipeline](#ticket-driven-pipeline).** The JIRA-anchored
-workflow for a publishing team, producing AsciiDoc against the IBM and Red Hat
-style guides. Still supported, and slated for removal once the generator has run
-against a real repository. Nothing in it changed in this release.
-
-## Breaking change: every skill is now `docs-` prefixed
-
-Skills install into one flat directory shared with every other plugin, and a
-destination-path collision makes the installer skip the **whole plugin** rather
-than the colliding skill. One generic name like `changelog` could take all 59
-skills here down with it, with nothing but a warning.
-
-Every skill now carries the prefix. Slash commands change accordingly:
-`/learn-code` becomes `/docs-learn-code`.
-
-| Old | New |
-|---|---|
-| `action-comments` | `docs-action-comments` |
-| `article-extractor` | `docs-article-extractor` |
-| `git-pr-reader` | `docs-git-pr-reader` |
-| `jira-reader` | `docs-jira-reader` |
-| `jira-writer` | `docs-jira-writer` |
-| `learn-code` | `docs-learn-code` |
-| `lint-with-vale` | `docs-lint-with-vale` |
-| `mdita-write` | `docs-mdita-write` |
-| `query-code` | `docs-query-code` |
-| `redhat-docs-toc` | `docs-redhat-docs-toc` |
-| `rn-known-issues` | `docs-rn-known-issues` |
-| `understand-pull-request` | `docs-understand-pull-request` |
-| `validate-plugin-prereqs` | `docs-validate-plugin-prereqs` |
-
-The `ibm-sg-*` and `rh-ssg-*` skills keep their own prefixes, which already
-namespace them well enough to make a collision implausible.
-
-Script filenames are unchanged, so `jira_reader.py` and `git_pr_reader.py` are
-still where they were inside their skill directories.
-
-## Documentation generator
-
-Seven skills. No subagent dispatch, no forge token, and no assumption that a
-documentation ticket exists before work begins.
+Deterministic where it can be, harness-agnostic throughout, and built to run
+unattended in CI. Runs under Claude Code, Codex, or a plain shell.
 
 ```bash
 # First run on a repository with no documentation state
@@ -61,7 +16,7 @@ python3 skills/docs-sync/scripts/sync.py --repo /path/to/code \
     --since-watermark .docs-state.json --llm-cmd "claude -p"
 ```
 
-### The skills
+## The skills
 
 | Skill | Model calls | What it does |
 |---|---|---|
@@ -71,10 +26,10 @@ python3 skills/docs-sync/scripts/sync.py --repo /path/to/code \
 | [`docs-review`](skills/docs-review/) | zero on most runs | Grounding, staleness, fence freshness, frontmatter |
 | [`docs-sync`](skills/docs-sync/) | none directly | The CI entry point. Composes the rest |
 | [`docs-changelog`](skills/docs-changelog/) | zero above ratio 0.7 | Release notes from commit history |
-| [`docs-engine`](skills/docs-engine/) | none | Shared runtime the six above read. Not invoked directly |
-| [`docs-query-code`](skills/docs-query-code/) | one | Questions about an analyzed codebase |
+| [`docs-query-code`](skills/docs-query-code/) | one | Answers a question about an analyzed codebase, with file:line citations |
+| [`docs-engine`](skills/docs-engine/) | none | Shared runtime the others read. Not invoked directly |
 
-### How it decides what to rewrite
+## How it decides what to rewrite
 
 Every public symbol is fingerprinted as a hash of its kind, name, and
 whitespace-normalized signature. Two snapshots diff into a verdict per module.
@@ -91,7 +46,7 @@ A reformat produces an identical fingerprint and triggers nothing. A
 `BREAKING CHANGE:` trailer never escalates a module whose fingerprint held
 still, because the fingerprint is the stronger evidence.
 
-### Ownership
+## Ownership
 
 Generated documentation is worth having only if it never eats a hand-written
 paragraph. The `managed` field in a document's frontmatter decides what happens
@@ -111,7 +66,7 @@ prose is never sent to the model at all. No prompt wording moves either one.
 Marking sets `manual` by default, so pointing this at an existing documentation
 tree protects every file on first contact.
 
-### Harness agnosticism
+## Harness agnosticism
 
 Every model call goes through `docs-engine`'s `lib/run/step.py`, which renders a prompt, pipes it
 to a command on stdin, recovers JSON from whatever the CLI printed around it,
@@ -152,7 +107,7 @@ One walk resolves `skills/docs-engine/` in a checkout and
 `<skills-dir>/docs-engine/` after an install, so there is no build step, no
 duplicated copy, and nothing to keep in sync.
 
-### Configuration
+## Configuration
 
 One file at the root of the repository being documented. Copy
 [`config/docs-gen.example.yaml`](skills/docs-engine/config/docs-gen.example.yaml) to
@@ -167,7 +122,7 @@ generate:
   issue_prefixes: [RHOAIENG]
 ```
 
-### Artifacts
+## Artifacts
 
 Pipeline state lives under `.docs-gen/` in the documented repository.
 `registry.json`, `api/`, and `api-surface.json` are committed; everything else
@@ -179,7 +134,7 @@ skips module analysis, which presumes the registry is already on disk, and the
 grounding check reads `api-surface.json` on every run. A cold CI cache would
 produce a matching hash with nothing behind it.
 
-### Per-language knowledge
+## Per-language knowledge
 
 Two files per language, kept apart because they have different consumers.
 
@@ -194,7 +149,7 @@ YAML frontmatter carries the values a script executes.
 
 Adding a language is adding a file. Python and Go ship today.
 
-### CI
+## CI
 
 [`.github/workflows/docs-sync.yml.example`](.github/workflows/docs-sync.yml.example)
 is a workflow to copy into the repository being documented. It opens a pull
@@ -209,209 +164,101 @@ The loop guard stops a docs pull request from retriggering the workflow when it
 merges: HEAD authored by the configured `bot_author`, a change set confined to
 paths this tool writes, or a watermark already level with HEAD.
 
-## Ticket-driven pipeline
-
-The JIRA-anchored workflow, unchanged in this release.
-
-### Skills
-
-| Category | Skills | Description |
-|----------|--------|-------------|
-| **Workflow** | `docs-orchestrator`, `docs-workflow-start`, `docs-workflow-requirements`, `docs-workflow-planning`, `docs-workflow-writing`, `docs-workflow-code-analysis`, `docs-workflow-pr-analysis`, `docs-workflow-scope-req-audit`, `docs-workflow-style-review`, `docs-workflow-tech-review`, `docs-workflow-create-merge-request`, `docs-workflow-create-jira`, `docs-workflow-jira-ready` | End-to-end documentation pipeline with YAML-defined step lists, conditional execution, and resume capability |
-| **Code Analysis** | `docs-learn-code`, `docs-query-code`, `docs-understand-pull-request` | Tree-sitter AST parsing, module registry, cross-module relationships, PR impact analysis |
-| **Generator** | `docs-engine`, `docs-git-context`, `docs-repo-analyze`, `docs-write`, `docs-review`, `docs-sync`, `docs-changelog` | See [Documentation generator](#documentation-generator) |
-| **Review** | `docs-review-style`, `docs-review-technical`, `docs-review-content-quality`, `docs-review-modular-docs` | Multi-agent style and technical review with confidence scoring and claim validation |
-| **Style Guides** | `ibm-sg-*` (8 skills), `rh-ssg-*` (8 skills) | IBM Style Guide and Red Hat Supplementary Style Guide compliance |
-| **Integration** | `docs-jira-reader`, `docs-jira-writer`, `docs-git-pr-reader`, `docs-article-extractor`, `docs-convert-gdoc-md`, `docs-redhat-docs-toc` | JIRA, GitHub/GitLab, Google Docs, and web content integration |
-| **Other** | `docs-rn-known-issues` | Release notes known issues audit |
-
-### Agents
-
-| Agent | Description |
-|-------|-------------|
-| `docs-planner` | Documentation architecture using JTBD framework |
-| `docs-writer` | Content creation (CONCEPT/PROCEDURE/REFERENCE/ASSEMBLY) |
-| `docs-reviewer` | Style and modular docs compliance review |
-| `technical-reviewer` | Technical accuracy review with code-aware validation |
-| `repo-mapper` | Codebase module detection and registry creation |
-| `module-analyzer` | Deep analysis of single codebase module |
-| `relationship-analyzer` | Cross-module coupling and dependency analysis |
-| `synthesis-writer` | Combine module analyses into ONBOARDING.md |
-| `code-questioner` | Answer questions about analyzed codebases |
-| `requirements-discoverer` | Lightweight JIRA/PR/spec requirement enumeration |
-| `requirements-analyst` | Deep per-requirement analysis with acceptance criteria |
-| `requirement-classifier` | Classify requirements by code evidence status |
-| `pr-repo-summarizer` | Quick repository overview for PR context |
-| `pr-change-analyzer` | Analyze PR changes against module registry |
-| `pr-synthesis-writer` | Combine PR data into PR-ANALYSIS.md |
 
 ## Installation
 
 ### From GitHub (marketplace)
-
-Add the repo as a marketplace, then install the plugin:
 
 ```bash
 claude plugin marketplace add opendatahub-io/docs-skills
 claude plugin install docs-skills@opendatahub-docs
 ```
 
-### From local clone
+### From a local clone
 
 ```bash
 git clone git@github.com:opendatahub-io/docs-skills.git
 claude --plugin-dir ./docs-skills
 ```
 
-### For development
+`--plugin-dir` loads the plugin without installing it, which is the way to work
+on it. Run `/reload-plugins` after a change.
 
-Use `--plugin-dir` to load the plugin without installing. Run `/reload-plugins` after making changes:
+### Without a harness
+
+Nothing here needs one. Clone the repository and call the scripts directly; the
+only requirement is a command that reads a prompt on stdin and writes JSON to
+stdout.
 
 ```bash
-claude --plugin-dir /path/to/docs-skills
+python3 skills/docs-sync/scripts/sync.py --repo /path/to/code \
+    --bootstrap --llm-cmd "claude -p"
 ```
 
 ## Prerequisites
 
-### Environment variables
+| Tool | Version | Needed for |
+|---|---|---|
+| Python | 3.10+ | Everything |
+| git | 2.0+ | History, fingerprints, watermarks |
+| PyYAML | any | Frontmatter and `.docs-gen.yaml` |
+| [uv](https://docs.astral.sh/uv/) | any | The tree-sitter extractor's PEP 723 dependencies |
 
-Create an `.env` file with your tokens. Use either `~/.env` (global) or `.env` in the project root (overrides global):
+The runtime is otherwise standard library. There is no forge token, no JIRA
+credential, and no network call outside the model command you choose.
 
-```bash
-JIRA_API_TOKEN=your_jira_api_token
-JIRA_EMAIL=you@example.com
-# Optional: defaults to https://redhat.atlassian.net
-JIRA_URL=https://your-jira-instance.atlassian.net
-# Required scopes: "repo" for private repos, "public_repo" for public repos
-GITHUB_TOKEN=your_github_pat
-# Required scope: "api"
-GITLAB_TOKEN=your_gitlab_pat
-```
+Tree-sitter grammars come in through `uv run --script` for Go, JavaScript, and
+TypeScript. Python is fingerprinted natively through the standard library's
+`ast`, so a Python-only repository needs neither uv nor tree-sitter.
 
-### Software dependencies
-
-#### Required
-
-| Tool | Min version | Install | Purpose |
-|------|-------------|---------|---------|
-| Python | 3.10+ | [python.org](https://www.python.org/) | Script execution |
-| [uv](https://docs.astral.sh/uv/) | — | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | Runs PEP 723 scripts with auto-managed deps |
-| git | 2.0+ | System package manager | Version control |
-| jq | — | System package manager | JSON processing in shell scripts |
-| curl | — | System package manager | HTTP requests |
-
-#### Conditional (per-feature)
-
-| Tool | Install | Required for |
-|------|---------|--------------|
-| `gh` | `dnf install gh` / [cli.github.com](https://cli.github.com/) | GitHub PR/issue workflows |
-| `glab` | `dnf install glab` / [gitlab.com](https://gitlab.com/gitlab-org/cli) | GitLab MR workflows |
-| `gcloud` | [cloud.google.com/sdk](https://cloud.google.com/sdk/docs/install) | Google Docs export (`docs-convert-gdoc-md`) — alternative: configure [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials) |
-| [Vale](https://vale.sh/) | `dnf copr enable mczernek/vale && dnf install vale` / `brew install vale` | `docs-lint-with-vale` style linting |
-
-#### Development / linting
-
-| Tool | Install | Used by |
-|------|---------|---------|
-| [ruff](https://docs.astral.sh/ruff/) | `uv tool install ruff` | `make lint` |
-| [shellcheck](https://www.shellcheck.net/) | `dnf install shellcheck` | `make lint` |
-
-#### Python packages (auto-managed by uv)
-
-These are declared as PEP 723 inline metadata in their scripts and installed automatically by `uv run --script` — no manual `pip install` needed:
-
-| Script | Packages |
-|--------|----------|
-| `docs-jira-reader/scripts/jira_reader.py` | `jira`, `urllib3`, `ratelimit` |
-| `docs-jira-writer/scripts/jira_writer.py` | `jira`, `ratelimit` |
-| `docs-git-pr-reader/scripts/git_pr_reader.py` | `PyGithub`, `python-gitlab`, `pyyaml` |
-| `docs-article-extractor/scripts/article_extractor.py` | `requests`, `beautifulsoup4`, `html2text` |
-| `docs-redhat-docs-toc/scripts/toc_extractor.py` | `requests`, `beautifulsoup4` |
-| `docs-learn-code/scripts/extract_public_api_treesitter.py` | `tree-sitter`, `tree-sitter-go`, `tree-sitter-javascript`, `tree-sitter-python`, `tree-sitter-typescript` |
-| `docs-convert-gdoc-md/scripts/gdoc2md.py` | `google-auth`, `python-pptx` |
-
-## Quick Start
-
-Run the docs orchestrator from the root of your documentation repository. For the
-code-documentation generator, see [Documentation generator](#documentation-generator).
-
-```bash
-# Basic workflow from a JIRA ticket
-/docs-orchestrator PROJ-123
-
-# With source code analysis
-/docs-orchestrator PROJ-123 --repo https://github.com/org/repo
-
-# With PR context
-/docs-orchestrator PROJ-123 --pr https://github.com/org/repo/pull/456
-
-# Interactive guided start
-/docs-workflow-start PROJ-123
-```
-
-## Workflow Customization
-
-The orchestrator runs a YAML-defined step list. Customize per-repo by placing a workflow YAML in `.agent_workspace/`:
-
-```bash
-mkdir -p .agent_workspace
-# Copy the default workflow and edit it
-cp $(claude plugin path docs-skills)/skills/docs-orchestrator/defaults/docs-workflow.yaml \
-   .agent_workspace/docs-workflow.yaml
-```
-
-See the workflow YAML for available steps, conditional execution (`when:` field), and dependency graph (`inputs:` field).
-
-### Key flags
-
-| Flag | Description |
-|------|-------------|
-| `--repo <url-or-path>` | Source code repository for docs-learn-code analysis |
-| `--pr <url>` | PR/MR URL to include in requirements analysis (repeatable) |
-| `--no-source-repo` | Skip source resolution and all source-dependent steps |
-| `--auto-discover-repos` | Skip confirmation when secondary repos are discovered |
-| `--max-secondary-repos <N>` | Maximum secondary repos to clone (default: 3) |
-| `--mkdocs` | Generate Material for MkDocs Markdown instead of AsciiDoc |
-| `--create-merge-request` | Create branch, commit, push, and open MR/PR |
-| `--workflow <name>` | Use a named workflow variant |
-| `--draft` | Write output to `artifacts/` staging area |
+For development, add [ruff](https://docs.astral.sh/ruff/) and
+[shellcheck](https://www.shellcheck.net/), both used by `make lint`.
 
 ## Development
-
-### Validate changes
 
 ```bash
 make lint       # skillsaw, ruff, shellcheck
 make test       # pytest
 ```
 
-The generator's tests run against a synthetic repository with a scripted
-history, so every relevance verdict has one right answer. No model is involved:
-the writer's `--llm-cmd` is a script returning a fixed document, which is what
-makes the ownership guards testable.
+The tests run against a synthetic repository with a scripted history, so every
+relevance verdict has one right answer. No model is involved: the writer's
+`--llm-cmd` is a script returning a fixed document, which is what makes the
+ownership guards testable.
 
 ```bash
-python3 -m pytest tests/test_pipeline.py tests/test_ownership.py \
-    tests/test_step_runner.py -v
+python3 -m pytest tests/ -v
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow.
+One test copies every skill the way an installer does, flat and with symlinks
+dropped, then runs the whole pipeline from the result. That is what keeps the
+`docs-engine` lookup honest.
 
-### Prerequisites
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, and
+[AGENTS.md](AGENTS.md) for architecture and conventions.
 
-See [Software dependencies](#software-dependencies) above. For linting, also install `ruff` and `shellcheck`.
+## Migrating from the ticket-driven pipeline
 
-## Evaluation
+Releases before 0.5.0 carried a JIRA-anchored workflow for a publishing team,
+producing AsciiDoc against the IBM and Red Hat style guides. That pipeline is
+gone: 51 skills, 16 subagents, the JTBD apparatus, the AsciiDoc reference, the
+style guide skills, the evaluation harness, and the hooks.
 
-The `eval/` directory contains test cases for evaluating skill quality using the [agent-eval-harness](https://github.com/opendatahub-io/agent-eval-harness).
+Pin `v0.4.1` if you depend on it.
 
-## Architecture
+Everything that survived is listed above. `docs-learn-code`'s extractors live on
+inside `docs-engine`, and `docs-query-code` answers through the same step runner
+as every other model call rather than dispatching a subagent.
 
-See [AGENTS.md](AGENTS.md) for architecture details and conventions.
+Skill names all carry a `docs-` prefix now, so `/learn-code` is gone along with
+the skill itself. Skills install into one flat directory shared with every other
+plugin, and a name collision makes the installer skip this plugin whole rather
+than the colliding skill, which one generic name like `changelog` was enough to
+trigger.
 
 ## Versioning
 
-Use git tags (`v0.1.0`, `v0.2.0`, etc.) for releases. The `main` branch is the development head.
+Git tags (`v0.1.0`, `v0.2.0`). The `main` branch is the development head.
 
 ## License
 

@@ -1,7 +1,7 @@
 {
   "name": "docs-skills",
   "version": "0.5.0",
-  "description": "Turns a code repository into developer documentation in plain Markdown and keeps it current from CI, alongside the JIRA-driven AsciiDoc workflow",
+  "description": "Turns a code repository into developer documentation in plain Markdown and keeps it current from CI",
   "author": {
     "name": "opendatahub-io"
   },

@@ -19,21 +19,23 @@ Thank you for your interest in contributing to docs-skills! This plugin provides
 
 ```text
 .claude-plugin/plugin.json   Plugin packaging metadata
-skills/                      Skill directories (SKILL.md + scripts/)
-agents/                      Subagent definitions
-reference/                   Shared domain knowledge
-hooks/                       Claude Code event hooks
-eval/                        Evaluation test cases
+skills/docs-engine/          Shared runtime: lib, prompts, schemas, languages
+skills/<skill>/SKILL.md      Skill definitions with frontmatter
+tests/                       pytest suite and the synthetic fixture repository
 ```
 
 Read [AGENTS.md](AGENTS.md) for architecture details and conventions.
 
 ## Ways to Contribute
 
+- **Add a language** — two files under `skills/docs-engine/`: an entry in
+  `scripts/lib/ast/languages.yaml` for the parse rules, and a
+  `languages/<lang>.md` for the documentation conventions the writer prompt reads
 - **Add or improve a skill** in `skills/<skill-name>/`
-- **Add or improve an agent** in `agents/`
-- **Add or fix a script** in `skills/<skill-name>/scripts/`
-- **Add evaluation test cases** in `eval/cases/`
+- **Add or fix a script** in `skills/<skill-name>/scripts/`, or in the engine's
+  `scripts/lib/` when several skills need it
+- **Improve a prompt or schema** in `skills/docs-engine/prompts/` and
+  `skills/docs-engine/schemas/`
 - **Fix a bug** or improve existing functionality
 - **Improve documentation**
 
@@ -86,7 +88,7 @@ Write concise commit messages that explain *why* the change was made:
 - `docs:` for documentation changes
 - `chore:` for maintenance tasks
 
-Example: `feat: add retry logic to docs-orchestrator workflow resumption`
+Example: `feat: add a Rust language file to the writer`
 
 ## Style and Conventions
 
@@ -110,7 +112,13 @@ Example: `feat: add retry logic to docs-orchestrator workflow resumption`
 ### Skills
 
 - Each skill lives in `skills/<name>/` with a `SKILL.md` and optional `scripts/` directory
-- `SKILL.md` must include YAML frontmatter with at least `name` and `description`
+- `SKILL.md` must include YAML frontmatter with at least `name` and `description`,
+  and `name` must match the directory name
+- Every skill name carries a `docs-` prefix. Skills install into one flat
+  directory shared with other plugins, and a name collision makes the installer
+  skip this plugin whole rather than the colliding skill
+- No subagent dispatch and no `${CLAUDE_PLUGIN_ROOT}`. Model steps go through
+  the engine's `lib/run/step.py`; paths resolve from the file that uses them
 
 ## License
 

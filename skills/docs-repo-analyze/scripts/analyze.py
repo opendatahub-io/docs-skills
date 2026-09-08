@@ -65,9 +65,9 @@ CONFIG = ENGINE / "config"
 from lib.git.api_surface import registry_hash  # noqa: E402
 from lib.run import step  # noqa: E402
 
-# The tree-sitter extractors are a sibling skill, reached the same way as
-# the engine: flat siblings in an install, under skills/ in a checkout.
-LEARN = ENGINE.parent / "docs-learn-code" / "scripts"
+# Language detection, module mapping, and the tree-sitter extractors live in
+# the engine with the rest of the shared runtime, so they travel with it.
+EXTRACTORS = ENGINE / "scripts" / "lib" / "ast"
 
 SCHEMA = "docs-skills/registry/1"
 
@@ -98,7 +98,7 @@ def run_json(script, *args, cwd=None):
 
 
 def detect(repo):
-    result = run_json(LEARN / "detect_language.py", "--repo", repo)
+    result = run_json(EXTRACTORS / "detect_language.py", "--repo", repo)
     if result.get("error"):
         raise RuntimeError(result["error"])
     return result.get("primary_language") or result.get("language")
@@ -136,7 +136,7 @@ def build_registry(repo, language, excludes):
     args = ["--repo", repo, "--lang", language]
     if excludes:
         args += ["--exclude", *excludes]
-    mapping = run_json(LEARN / "build_module_map.py", *args)
+    mapping = run_json(EXTRACTORS / "build_module_map.py", *args)
     if mapping.get("error"):
         raise RuntimeError(mapping["error"])
 
@@ -194,7 +194,7 @@ def extract_api(repo, registry, out_dir):
             continue
         try:
             result = run_json(
-                LEARN / "extract_public_api_treesitter.py",
+                EXTRACTORS / "extract_public_api_treesitter.py",
                 "--module",
                 name,
                 "--lang",
@@ -247,7 +247,7 @@ def dep_pairs(out_dir):
     summaries_path.write_text(json.dumps(summaries, indent=2) + "\n")
     try:
         pairs = run_json(
-            LEARN / "build_dep_pairs.py",
+            EXTRACTORS / "build_dep_pairs.py",
             "--summaries",
             summaries_path,
             "--registry",

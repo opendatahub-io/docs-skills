@@ -3,12 +3,12 @@
   "owner": {
     "name": "opendatahub-io"
   },
-  "description": "Documentation review, writing, and workflow tools for AsciiDoc and Markdown documentation",
+  "description": "Turns a code repository into developer documentation in plain Markdown and keeps it current from CI",
   "plugins": [
     {
       "name": "docs-skills",
       "source": ".",
-      "description": "Documentation review, writing, and workflow tools for AsciiDoc and Markdown documentation"
+      "description": "Turns a code repository into developer documentation in plain Markdown and keeps it current from CI"
     }
   ]
 }
