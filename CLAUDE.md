@@ -76,8 +76,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/detect_language.py --repo /path/to/repo
 ### Cross-skill calls
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --issue PROJ-123
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/learn-code/scripts/detect_language.py --repo /path
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-jira-reader/scripts/jira_reader.py --issue PROJ-123
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-learn-code/scripts/detect_language.py --repo /path
 ```
 
 ## Referencing files from agents and skills

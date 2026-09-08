@@ -53,7 +53,7 @@ def _is_remote_url(value):
 def _git_pr_reader_path():
     """Locate git_pr_reader.py relative to this script."""
     return str(
-        Path(__file__).resolve().parents[2] / "git-pr-reader" / "scripts" / "git_pr_reader.py"
+        Path(__file__).resolve().parents[2] / "docs-git-pr-reader" / "scripts" / "git_pr_reader.py"
     )
 
 

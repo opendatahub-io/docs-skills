@@ -3,12 +3,12 @@
 pytest
 jsonschema
 pyyaml
-# Imported at module load by skills/git-pr-reader/scripts/git_pr_reader.py,
+# Imported at module load by skills/docs-git-pr-reader/scripts/git_pr_reader.py,
 # which tests/test_git_pr_reader_reply.py imports (deps otherwise supplied by
 # uv via the script's PEP 723 metadata at runtime).
 PyGithub
 python-gitlab
-# Needed by skills/learn-code/scripts/extract_public_api_treesitter.py, which
+# Needed by skills/docs-learn-code/scripts/extract_public_api_treesitter.py, which
 # tests/test_treesitter_extractor.py runs as a subprocess with the same
 # interpreter (deps otherwise supplied by uv via PEP 723 metadata at runtime).
 tree-sitter>=0.25.2

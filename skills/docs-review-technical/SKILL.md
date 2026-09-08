@@ -20,7 +20,7 @@ For style guide compliance and modular docs review, use `docs-review-style`.
 | `--pr <url> --post-comments` | PR/MR + post | Review and post inline comments to PR/MR |
 | *(no arguments)* | Interactive | AskUserQuestion gathers mode and options |
 
-For actioning unresolved review comments on a PR/MR, use the `action-comments` skill.
+For actioning unresolved review comments on a PR/MR, use the `docs-action-comments` skill.
 
 ## Global Options
 
@@ -29,7 +29,7 @@ For actioning unresolved review comments on a PR/MR, use the `action-comments` s
 | `--threshold <0-100>` | Confidence threshold for reporting issues (default: 80) |
 | `--code <url>` | Code repository URL for technical validation (repeatable). Enables Agent 2. |
 | `--fix` | Auto-fix high-confidence issues (>=65%), then interactively walk through remaining |
-| `--jira <TICKET-123>` | Auto-discover code repos from JIRA ticket (uses `jira-reader`). Enables Agent 2. |
+| `--jira <TICKET-123>` | Auto-discover code repos from JIRA ticket (uses `docs-jira-reader`). Enables Agent 2. |
 | `--ref <branch>` | Git ref to check out in `--code` repos (default: default branch). Applies to preceding `--code`. |
 
 ## Interactive mode — no arguments provided
@@ -66,11 +66,11 @@ The `--local` and `--pr` modes share the same pipeline. The difference is how fi
 
 ### For --pr mode
 
-Launch a haiku agent to run pre-flight checks using `git-pr-reader`. Stop if any condition is true (still review Claude-generated PRs):
+Launch a haiku agent to run pre-flight checks using `docs-git-pr-reader`. Stop if any condition is true (still review Claude-generated PRs):
 
 - **PR/MR is closed or draft**: Check the PR/MR state from the platform API.
-- **No documentation files changed**: Run `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py files "${PR_URL}" --json` and check if any changed files end with `.adoc` or `.md`.
-- **Claude already commented**: Run `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py comments "${PR_URL}" --include-resolved --json` and check if any comment `author` matches Claude's username.
+- **No documentation files changed**: Run `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/git_pr_reader.py files "${PR_URL}" --json` and check if any changed files end with `.adoc` or `.md`.
+- **Claude already commented**: Run `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/git_pr_reader.py comments "${PR_URL}" --include-resolved --json` and check if any comment `author` matches Claude's username.
 
 ### For --local mode
 
@@ -103,10 +103,10 @@ DOC_FILES=$(wc -l < /tmp/docs-review-doc-files.txt)
 
 ### For --pr mode
 
-Use `git-pr-reader` to get changed files:
+Use `docs-git-pr-reader` to get changed files:
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py files "${PR_URL}" --json | \
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/git_pr_reader.py files "${PR_URL}" --json | \
     python3 -c "import json,sys; files=[f['path'] for f in json.load(sys.stdin) if f['path'].endswith(('.adoc','.md'))]; print('\n'.join(files))" > /tmp/docs-review-doc-files.txt
 ```
 
@@ -122,15 +122,15 @@ Extract the exact changed line ranges so review agents only flag issues in chang
 
 ```bash
 git diff "$BASE_BRANCH"...HEAD -- $(cat /tmp/docs-review-doc-files.txt | tr '\n' ' ') | \
-  python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/extract_changed_ranges.py \
+  python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/extract_changed_ranges.py \
     --context 3 -o /tmp/docs-review-changed-ranges.json
 ```
 
 ### For --pr mode
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py diff "${PR_URL}" | \
-  python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/extract_changed_ranges.py \
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/git_pr_reader.py diff "${PR_URL}" | \
+  python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/extract_changed_ranges.py \
     --context 3 -o /tmp/docs-review-changed-ranges.json
 ```
 
@@ -143,7 +143,7 @@ Launch a sonnet agent to view changes and return a summary noting:
 - Whether files appear to be concepts, procedures, references, or assemblies
 - Any structural patterns (modular docs, release notes)
 
-For `--pr` mode: `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py diff "${PR_URL}"`
+For `--pr` mode: `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/git_pr_reader.py diff "${PR_URL}"`
 For `--local` mode: `git diff "$BASE_BRANCH"...HEAD -- $(cat /tmp/docs-review-doc-files.txt)`
 
 ## Step 4: Agent 1 — Technical Accuracy and Consistency
@@ -151,11 +151,11 @@ For `--local` mode: `git diff "$BASE_BRANCH"...HEAD -- $(cat /tmp/docs-review-do
 - `subagent_type`: `docs-skills:technical-reviewer`
 - `model`: `opus`
 
-Follow the full technical review process: doc type detection, reviewer persona (developer/architect lens), 6 review dimensions, confidence scoring, and output format. Use `jira-reader`, `git-pr-reader`, and `article-extractor` skills to cross-check technical claims. Do not duplicate style or formatting checks.
+Follow the full technical review process: doc type detection, reviewer persona (developer/architect lens), 6 review dimensions, confidence scoring, and output format. Use `docs-jira-reader`, `docs-git-pr-reader`, and `docs-article-extractor` skills to cross-check technical claims. Do not duplicate style or formatting checks.
 
 Returns issues with: `file`, `line`, `description`, `reason`, `confidence` (0-100), `severity` (error/warning/suggestion).
 
-For `--pr` mode, use `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py extract` for deterministic line numbers.
+For `--pr` mode, use `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/git_pr_reader.py extract` for deterministic line numbers.
 
 **Important**: The agent file describes a JIRA-based drafts workflow for standalone use. In this context, ignore JIRA/drafts sections — review changed files from the diff and return issues in the format above.
 
@@ -176,13 +176,13 @@ Workflow:
 1. **Clone repos** to `/tmp/tech-review/<repo-name>/` using full history (needed for `git log` search):
 
    ```bash
-   uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py clone <repo-url> \
+   uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/git_pr_reader.py clone <repo-url> \
      --output-dir /tmp/tech-review/<repo-name>/ --depth 0 [--ref <ref>]
    ```
 
    **Repository discovery priority**: `--code` (explicit) > PR URL linked repos > `--jira` ticket linked repos > `:code-repo-url:` AsciiDoc attributes.
 
-   If `--jira` is provided, fetch the ticket using `jira-reader` and extract linked PR/MR URLs and repository references. Parse repo URLs from PR links and JIRA ticket fields.
+   If `--jira` is provided, fetch the ticket using `docs-jira-reader` and extract linked PR/MR URLs and repository references. Parse repo URLs from PR links and JIRA ticket fields.
 
 2. **Extract references** from doc files:
    ```bash
@@ -190,14 +190,14 @@ Workflow:
    python3 ${CLAUDE_SKILL_DIR}/scripts/extract_refs.py "${DOC_FILES[@]}" --output /tmp/tech-review-refs.json
    ```
 
-3. **Validate claims against code** — For each cloned repo, check if learn-code analysis exists:
+3. **Validate claims against code** — For each cloned repo, check if docs-learn-code analysis exists:
    ```bash
    ls /tmp/tech-review/repo-name/.code-learner/ONBOARDING.md 2>/dev/null
    ```
 
-   **If learn-code analysis exists**, read the module summaries from `.code-learner/summaries/` to get `public_api`, `dependencies`, and `data_flow` for each module. Cross-reference documentation claims against these structured summaries.
+   **If docs-learn-code analysis exists**, read the module summaries from `.code-learner/summaries/` to get `public_api`, `dependencies`, and `data_flow` for each module. Cross-reference documentation claims against these structured summaries.
 
-   **If learn-code analysis does NOT exist**, use direct source file reading: read the extracted references from `/tmp/tech-review-refs.json` and use Grep/Read to verify each reference against the actual source files. This is slower but works without prior analysis.
+   **If docs-learn-code analysis does NOT exist**, use direct source file reading: read the extracted references from `/tmp/tech-review-refs.json` and use Grep/Read to verify each reference against the actual source files. This is slower but works without prior analysis.
 
    For each claim in the documentation (function names, parameter types, configuration options, API endpoints, class names), verify against the source using the best available method (analysis data or direct reading). Record findings as:
    - **verified**: claim matches source code
@@ -205,7 +205,7 @@ Workflow:
    - **stale**: referenced symbol exists but has changed (renamed, deprecated, different signature)
    - **unverifiable**: cannot determine from available sources
 
-4. **Extract API surface** — For each cloned repo: if learn-code analysis exists (`.code-learner/summaries/`), read `public_api` from module summaries. Otherwise, use Grep to find exported symbols (Go: `^func [A-Z]`, `^type [A-Z]`; Python: `^def [a-z]`/`^class [A-Z]` excluding `_` prefixed). Build an API reference list.
+4. **Extract API surface** — For each cloned repo: if docs-learn-code analysis exists (`.code-learner/summaries/`), read `public_api` from module summaries. Otherwise, use Grep to find exported symbols (Go: `^func [A-Z]`, `^type [A-Z]`; Python: `^def [a-z]`/`^class [A-Z]` excluding `_` prefixed). Build an API reference list.
 
 5. **Triage results** — Review the claim validation findings and API reference list against the extracted references (`/tmp/tech-review-refs.json`). Apply the structured triage pipeline from Step 6 (below). Use Read and Grep on source files to verify ambiguous results.
 
@@ -266,15 +266,15 @@ If issues found, continue to Step 11.
 
 Get deterministic line numbers:
 ```bash
-LINE=$(uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py extract "${PR_URL}" "path/to/file.adoc" "pattern from the issue")
+LINE=$(uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/git_pr_reader.py extract "${PR_URL}" "path/to/file.adoc" "pattern from the issue")
 ```
 
 Build comments JSON and post:
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py post "${PR_URL}" /tmp/docs-review-comments.json --review-type technical
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/git_pr_reader.py post "${PR_URL}" /tmp/docs-review-comments.json --review-type technical
 ```
 
-For each comment: brief description with evidence from source code, include corrected values for small fixes, describe larger fixes without inline code. **Only ONE comment per unique issue.**
+Each comment: a brief description with source evidence, corrected values for small fixes, prose for larger ones. **One comment per unique issue.**
 
 ## Step 11a: Fix Mode (--fix only)
 
@@ -288,7 +288,7 @@ See [report template](references/report-template.md) for the fix-mode report sec
 
 # Notes
 
-- Use `uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py --` for all Git platform interactions. Use `extract` for deterministic line numbers — never guess
+- All Git platform interaction goes through `git_pr_reader.py`. Use `extract` for deterministic line numbers — never guess
 - Use Bash with heredoc/cat for /tmp files (not Write). Include source code evidence in each issue's `reason`
-- If learn-code analysis exists (`.code-learner/`), use ONBOARDING.md and module summaries. Otherwise use Read/Grep directly
+- Where `.code-learner/` exists, read ONBOARDING.md and the module summaries. Otherwise use Read/Grep
 - Vale linting is NOT part of this review — use `docs-review-style`

@@ -111,7 +111,7 @@ Agent:
     Read the claims to verify from: <claims_file>
     It is a JSON array of objects with fields: id, text, file, line.
 
-    Read the learn-code analysis data from: <code_analysis_dir>/
+    Read the docs-learn-code analysis data from: <code_analysis_dir>/
     Files available: detection.json, registry.json, ONBOARDING.md, summaries/, relationships/
 
     REPO_PATH: <repo_path>

@@ -1,6 +1,6 @@
 ---
 name: code-questioner
-description: Answers questions about an analyzed codebase using learn-code output and direct source code inspection. Provides file:line-grounded answers.
+description: Answers questions about an analyzed codebase using docs-learn-code output and direct source code inspection. Provides file:line-grounded answers.
 tools: Read, Write, Bash, Grep, Glob
 maxTurns: 25
 ---

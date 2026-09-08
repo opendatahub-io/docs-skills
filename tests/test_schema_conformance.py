@@ -188,9 +188,9 @@ GOLDEN_EXAMPLES: dict[str, dict] = {
         "filtered_out": 2,
         "ready": [],
     },
-    "action-comments": {
+    "docs-action-comments": {
         "schema_version": 1,
-        "step": "action-comments",
+        "step": "docs-action-comments",
         "ticket": "TEST-1",
         "completed_at": _TS,
         "ci_mode": False,

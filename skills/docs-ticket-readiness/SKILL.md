@@ -61,7 +61,7 @@ If PRs were discovered in Step 1 (i.e., `dimensions.pr_source_linkage.checks.git
 
    a. Run the git PR reader to fetch PR info:
    ```bash
-   uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info <PR_URL>
+   uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/git_pr_reader.py info <PR_URL>
    ```
 
    b. Compare the PR title and description against the JIRA ticket summary and description (from `description_text` in the Step 1 JSON).

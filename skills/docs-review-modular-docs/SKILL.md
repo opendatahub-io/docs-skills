@@ -139,7 +139,7 @@ File contains: `Install {product-name} version {product-version}`
 
 ## Integrates with
 
-- **lint-with-vale**: Run `vale <file>` for automated style linting
+- **docs-lint-with-vale**: Run `vale <file>` for automated style linting
 
 ## References
 

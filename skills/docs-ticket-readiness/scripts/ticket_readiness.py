@@ -58,7 +58,7 @@ def load_env():
 
 def resolve_jira_reader(plugin_root: str) -> str:
     """Resolve path to jira_reader.py."""
-    path = os.path.join(plugin_root, "skills", "jira-reader", "scripts", "jira_reader.py")
+    path = os.path.join(plugin_root, "skills", "docs-jira-reader", "scripts", "jira_reader.py")
     if not os.path.isfile(path):
         print(json.dumps({"error": f"jira_reader.py not found at {path}"}), file=sys.stdout)
         sys.exit(1)

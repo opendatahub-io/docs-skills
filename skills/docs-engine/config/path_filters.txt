@@ -3,7 +3,7 @@
 # Blank lines and lines starting with # are ignored.
 #
 # Filter here rather than in a caller, so every harness sees the same hotspots.
-# Adapted from git-pr-reader's git_filters.yaml.
+# Adapted from docs-git-pr-reader's git_filters.yaml.
 
 # Build and task files
 ^Makefile$

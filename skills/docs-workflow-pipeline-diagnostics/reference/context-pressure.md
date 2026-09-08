@@ -112,7 +112,7 @@ The risk score is a simple sum of triggered conditions:
 ### For critical pressure
 
 - Create a custom workflow YAML with only the needed steps (e.g., `docs-writing-only.yaml` that skips analysis steps and reads from an existing plan)
-- Run code-analysis as a separate learn-code invocation beforehand, then reference the cached results
+- Run code-analysis as a separate docs-learn-code invocation beforehand, then reference the cached results
 - Break the ticket into multiple smaller tickets with fewer requirements each
 
 ## Calibration notes

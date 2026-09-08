@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Map a repository into modules, extract its public API, and summarize it.
 
-`learn-code` with the agent layer removed. Detection, module mapping, API
+`docs-learn-code` with the agent layer removed. Detection, module mapping, API
 extraction, and the dependency graph are deterministic and run here. The two
 steps that need a model, per-module summaries and cross-module synthesis, go
 through `lib/run/step.py` one at a time, so nothing depends on a harness
@@ -67,7 +67,7 @@ from lib.run import step  # noqa: E402
 
 # The tree-sitter extractors are a sibling skill, reached the same way as
 # the engine: flat siblings in an install, under skills/ in a checkout.
-LEARN = ENGINE.parent / "learn-code" / "scripts"
+LEARN = ENGINE.parent / "docs-learn-code" / "scripts"
 
 SCHEMA = "docs-skills/registry/1"
 
@@ -80,7 +80,7 @@ def slug(module):
 
 
 def run_json(script, *args, cwd=None):
-    """Run one learn-code script and parse its stdout."""
+    """Run one docs-learn-code script and parse its stdout."""
     argv = [sys.executable, str(script), *[str(a) for a in args]]
     completed = subprocess.run(argv, capture_output=True, text=True, cwd=cwd)
     if completed.returncode != 0:

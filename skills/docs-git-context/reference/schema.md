@@ -107,7 +107,7 @@ Separate artifact, committed to the docs repo.
 }
 ```
 
-`registry_hash` covers the `learn-code` registry. A mismatch means module
+`registry_hash` covers the `docs-learn-code` registry. A mismatch means module
 boundaries moved and attribution from a previous run cannot be trusted, so
 rebuild everything.
 

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Write the code-analysis step-result.json sidecar.
 
-Reads the learn-code analysis directory to derive module/relationship/language
+Reads the docs-learn-code analysis directory to derive module/relationship/language
 metrics deterministically, so the orchestrator does not need to parse them and
 the sidecar cannot drift from its schema.
 
 Usage:
   write_step_result.py --ticket <id> --repo <path> \
-      --analysis-path <learn-code base> --sidecar <path>
+      --analysis-path <docs-learn-code base> --sidecar <path>
 """
 
 import argparse
@@ -55,7 +55,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ticket", required=True)
     parser.add_argument("--repo", required=True, help="Path to the analyzed source repo")
-    parser.add_argument("--analysis-path", required=True, help="learn-code analysis base directory")
+    parser.add_argument(
+        "--analysis-path", required=True, help="docs-learn-code analysis base directory"
+    )
     parser.add_argument("--sidecar", required=True, help="Path to write step-result.json")
     args = parser.parse_args()
 

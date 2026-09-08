@@ -27,14 +27,14 @@ Git access (for PR/MR details) is only required when PR/MR URLs are present — 
 
 **Do not** prepend `source ~/.env` to bash commands — all Python scripts load `.env` files automatically.
 
-**Note:** The jira-reader script requires `jira` and `ratelimit` Python packages. If these are not installed, you will see `ModuleNotFoundError`. Run: `python3 -m pip install jira ratelimit`
+**Note:** The docs-jira-reader script requires `jira` and `ratelimit` Python packages. If these are not installed, you will see `ModuleNotFoundError`. Run: `python3 -m pip install jira ratelimit`
 
 ## Procedure
 
 ### 1. Fetch the primary JIRA ticket
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --issue <TICKET>
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-jira-reader/scripts/jira_reader.py --issue <TICKET>
 ```
 
 Record the ticket's summary, description, priority, fix version, and labels.
@@ -46,7 +46,7 @@ Scan the description for GitHub PR URLs (`github.com/.../pull/NNN`), GitLab MR U
 ### 2. Traverse the JIRA ticket graph
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --graph <TICKET> --max-graph-tokens 15000
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-jira-reader/scripts/jira_reader.py --graph <TICKET> --max-graph-tokens 15000
 ```
 
 From the graph output, collect:
@@ -63,7 +63,7 @@ Handle errors gracefully: the script exits 0 if the primary ticket was fetched, 
 ### 2a. Persist comments to disk
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py \
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-jira-reader/scripts/jira_reader.py \
   --issue <TICKET> --include-comments --save-comments <OUTPUT_DIR> --brief
 ```
 
@@ -72,7 +72,7 @@ The full comments are written to `<OUTPUT_DIR>/comments.json` and a brief digest
 ### 2b. Fetch attachments to disk
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py \
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-jira-reader/scripts/jira_reader.py \
   --attachments <TICKET> --output-dir <OUTPUT_DIR>
 ```
 
@@ -83,9 +83,9 @@ Text-extractable files are downloaded first; binary files get placeholders. Reco
 For each PR/MR URL (manually-provided and auto-discovered, deduplicated):
 
 ```bash
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info <pr-url> --json
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py files <pr-url> --json
-uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py diff <pr-url> --save-diff <OUTPUT_DIR>/pr-<number>.diff
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/git_pr_reader.py info <pr-url> --json
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/git_pr_reader.py files <pr-url> --json
+uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/docs-git-pr-reader/scripts/git_pr_reader.py diff <pr-url> --save-diff <OUTPUT_DIR>/pr-<number>.diff
 ```
 
 Record: PR title, description summary, changed file paths. The full diff is saved to disk for the analyst to read. Record the diff file path and line count for `persisted_sources`.

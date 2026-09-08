@@ -44,7 +44,7 @@ Each step's output JSON Schema defines the sidecar contract:
 | create-merge-request | `skills/docs-workflow-create-merge-request/schema/create-merge-request-output.json` |
 | create-jira | `skills/docs-workflow-create-jira/schema/create-jira-output.json` |
 | quality-gate | `skills/docs-workflow-quality-gate/schema/quality-gate-output.json` |
-| action-comments | `skills/action-comments/schema/action-comments-output.json` |
+| docs-action-comments | `skills/docs-action-comments/schema/action-comments-output.json` |
 | pipeline-diagnostics | `skills/docs-workflow-pipeline-diagnostics/schema/pipeline-diagnostics-output.json` |
 | jira-ready | `skills/docs-workflow-jira-ready/schema/jira-ready-output.json` |
 

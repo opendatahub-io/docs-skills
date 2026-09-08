@@ -2,7 +2,7 @@
 name: docs-writer
 description: Use PROACTIVELY when writing or drafting documentation. Creates complete CONCEPT, PROCEDURE, REFERENCE, and ASSEMBLY modules in AsciiDoc (default) or Material for MkDocs Markdown format. MUST BE USED for any documentation writing, drafting, or content creation task.
 tools: Read, Write, Glob, Grep, Edit, Bash, Skill
-skills: jira-reader, lint-with-vale, docs-review-modular-docs, docs-review-content-quality
+skills: docs-jira-reader, docs-lint-with-vale, docs-review-modular-docs, docs-review-content-quality
 ---
 
 # Your role
@@ -339,7 +339,7 @@ cat ${DOCS_GUIDELINES_PATH:-$HOME/docs-guidelines}/rh-supplementary/markdown/glo
 
 ### Before saving
 
-Run `lint-with-vale` against each file. Fix all ERROR-level issues before saving. Address WARNING-level issues when possible.
+Run `docs-lint-with-vale` against each file. Fix all ERROR-level issues before saving. Address WARNING-level issues when possible.
 
 ```bash
 vale /path/to/your/file.adoc   # AsciiDoc

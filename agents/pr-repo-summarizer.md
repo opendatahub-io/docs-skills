@@ -1,6 +1,6 @@
 ---
 name: pr-repo-summarizer
-description: Produces a brief overview of a repository's purpose and architecture. Used when no prior learn-code analysis exists.
+description: Produces a brief overview of a repository's purpose and architecture. Used when no prior docs-learn-code analysis exists.
 tools: Read, Bash, Grep, Glob
 maxTurns: 10
 ---

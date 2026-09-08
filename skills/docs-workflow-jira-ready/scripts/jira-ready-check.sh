@@ -27,7 +27,7 @@ JIRA_URL="${JIRA_URL:-https://redhat.atlassian.net}"
 
 # Resolve jira_reader.py relative to this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-JIRA_READER="${SCRIPT_DIR}/../../jira-reader/scripts/jira_reader.py"
+JIRA_READER="${SCRIPT_DIR}/../../docs-jira-reader/scripts/jira_reader.py"
 
 # --- Parse arguments ---
 while [[ $# -gt 0 ]]; do

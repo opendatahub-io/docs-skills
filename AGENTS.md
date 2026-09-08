@@ -46,7 +46,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/detect_language.py --repo /path/to/repo
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --issue PROJ-123
 
 # Cross-skill call
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/learn-code/scripts/detect_language.py --repo /path
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-learn-code/scripts/detect_language.py --repo /path
 ```
 
 ### Cursor
@@ -54,7 +54,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/learn-code/scripts/detect_language.py --rep
 Use paths relative to the repository root (workspace):
 
 ```bash
-python3 skills/learn-code/scripts/detect_language.py --repo /path/to/repo
+python3 skills/docs-learn-code/scripts/detect_language.py --repo /path/to/repo
 ```
 
 ## The documentation generator
@@ -81,10 +81,12 @@ The same walk resolves `skills/docs-engine/` in a checkout and
 `<skills-dir>/docs-engine/` after an install, so there is no build step and no
 duplicated copy. `SKILL.md` uses `$(dirname "$0")/../docs-engine/`.
 
-**Skill names carry a `docs-` prefix.** A destination-path collision makes the
+**Skill names carry a `docs-` prefix.** This applies to every skill in the
+repository, not only the generator's. A destination-path collision makes the
 installer skip the entire plugin with a warning rather than just the colliding
-skill, so an unprefixed name like `changelog` can make every skill here vanish
-from an installation.
+skill, so one unprefixed name like `changelog` can make all 59 skills here
+vanish from an installation. The `ibm-sg-*` and `rh-ssg-*` skills are the
+exception, already namespaced by their own prefixes.
 
 **No subagent dispatch.** No `Agent`, no `Task`, no fan-out. Where the plan
 calls for per-module work, it is a sequential loop over the engine's `step.py`.
@@ -105,13 +107,13 @@ receives the surrounding text is a guarantee.
 
 ## Skill and agent naming
 
-**Skills** (invoked via the Skill tool) use bare names: `docs-workflow-requirements`, `jira-reader`, `learn-code`. Qualified names (`docs-skills:docs-workflow-requirements`) also work. Use bare names in workflow YAML step lists and skill-to-skill invocations.
+**Skills** (invoked via the Skill tool) use bare names: `docs-workflow-requirements`, `docs-jira-reader`, `docs-learn-code`. Qualified names (`docs-skills:docs-workflow-requirements`) also work. Use bare names in workflow YAML step lists and skill-to-skill invocations.
 
 **Agents** (invoked via the Agent tool's `subagent_type`) require fully-qualified names with the plugin prefix: `docs-skills:technical-reviewer`, `docs-skills:docs-writer`. Bare names like `technical-reviewer` will fail with "Agent type not found".
 
 ## Contributing rules
 
-- Use kebab-case for skill and agent names
+- Use kebab-case for skill and agent names, and prefix every skill with `docs-`
 - Bump version in `.claude-plugin/plugin.json` when making changes
 - New Python scripts with external dependencies must use PEP 723 inline metadata
 - New stdlib-only scripts use plain `python3` invocation

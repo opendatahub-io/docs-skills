@@ -11,7 +11,7 @@ Turns a repository into the structured picture every later step reads: which
 modules exist, where their boundaries fall, what each one exposes, and what
 depends on what.
 
-`learn-code` with the agent layer removed. The fan-out over subagents is gone,
+`docs-learn-code` with the agent layer removed. The fan-out over subagents is gone,
 replaced by one sequential model call per module through `docs-engine`'s `lib/run/step.py`, so
 the same commands work under any harness or none.
 

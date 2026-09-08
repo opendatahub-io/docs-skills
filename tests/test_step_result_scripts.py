@@ -34,7 +34,7 @@ code_analysis_wsr = _load(
 
 
 def _make_analysis(base):
-    """Build a minimal learn-code analysis tree under base."""
+    """Build a minimal docs-learn-code analysis tree under base."""
     (base / "module-registry").mkdir(parents=True)
     (base / "module-registry" / "registry.json").write_text(json.dumps([{"m": 1}, {"m": 2}]))
     (base / "relationships").mkdir()

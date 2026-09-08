@@ -87,7 +87,7 @@ Select the prompt below based on the `--format` flag. Substitute `<SOURCE_FILES_
 > **Report output**: `<OUTPUT_FILE>` — you MUST save the review report to exactly this path. Do NOT write to any other location.
 >
 > For each file:
-> 1. Run Vale linting once (use the `lint-with-vale` skill)
+> 1. Run Vale linting once (use the `docs-lint-with-vale` skill)
 > 2. Fix obvious errors where the fix is clear and unambiguous
 > 3. Run documentation review skills:
 >    - Red Hat docs: docs-review-modular-docs, docs-review-content-quality
@@ -113,7 +113,7 @@ Select the prompt below based on the `--format` flag. Substitute `<SOURCE_FILES_
 > **Report output**: `<OUTPUT_FILE>` — you MUST save the review report to exactly this path. Do NOT write to any other location.
 >
 > For each file:
-> 1. Run Vale linting once (use the `lint-with-vale` skill)
+> 1. Run Vale linting once (use the `docs-lint-with-vale` skill)
 > 2. Fix obvious errors where the fix is clear and unambiguous
 > 3. Run documentation review skills:
 >    - Content quality: docs-review-content-quality

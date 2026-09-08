@@ -185,12 +185,12 @@ class TestCmdReply:
         mock_api.reply_to_comment.return_value = (True, "")
         mock_from_url.return_value = mock_api
 
-        result = cmd_reply(self._make_args(signoff="Claude Code action-comments (CI)"))
+        result = cmd_reply(self._make_args(signoff="Claude Code docs-action-comments (CI)"))
 
         assert result == 0
         call_body = mock_api.reply_to_comment.call_args.kwargs["body"]
         assert "Applied the fix." in call_body
-        assert "\U0001f916 Claude Code action-comments (CI)" in call_body
+        assert "\U0001f916 Claude Code docs-action-comments (CI)" in call_body
 
     @patch("git_pr_reader.GitReviewAPI.from_url")
     def test_no_signoff_when_empty(self, mock_from_url):

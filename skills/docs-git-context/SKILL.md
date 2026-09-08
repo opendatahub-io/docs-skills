@@ -77,7 +77,7 @@ Fork-based PRs whose branch is absent from origin fall back to
 
 ## Module attribution
 
-Pass `--registry` pointing at a `learn-code` `registry.json`, or at a simple
+Pass `--registry` pointing at a `docs-learn-code` `registry.json`, or at a simple
 `{"module-name": ["path/prefix"]}` map. Longest matching prefix wins. Without a
 registry the artifact still lists files; it just cannot roll them up.
 
@@ -158,7 +158,7 @@ everything, because module boundaries moving invalidates every prior attribution
 ### Language coverage
 
 Python is fingerprinted natively via stdlib `ast`. Other languages come in
-through `--api-dir`, pointing at per-module JSON from `learn-code`'s tree-sitter
+through `--api-dir`, pointing at per-module JSON from `docs-learn-code`'s tree-sitter
 extractor, which already emits `{name, kind, file, signature}`. Adding a language
 means teaching the extractor, not touching this script.
 

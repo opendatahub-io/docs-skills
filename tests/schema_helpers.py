@@ -10,10 +10,10 @@ from jsonschema import Draft202012Validator
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 _ACTION_COMMENTS_SCHEMA = (
-    REPO_ROOT / "skills" / "action-comments" / "schema" / "action-comments-output.json"
+    REPO_ROOT / "skills" / "docs-action-comments" / "schema" / "action-comments-output.json"
 )
 _EXTRA_OUTPUT_SCHEMAS = [
-    ("action-comments", _ACTION_COMMENTS_SCHEMA),
+    ("docs-action-comments", _ACTION_COMMENTS_SCHEMA),
 ]
 
 

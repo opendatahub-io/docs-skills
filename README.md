@@ -14,6 +14,38 @@ workflow for a publishing team, producing AsciiDoc against the IBM and Red Hat
 style guides. Still supported, and slated for removal once the generator has run
 against a real repository. Nothing in it changed in this release.
 
+## Breaking change: every skill is now `docs-` prefixed
+
+Skills install into one flat directory shared with every other plugin, and a
+destination-path collision makes the installer skip the **whole plugin** rather
+than the colliding skill. One generic name like `changelog` could take all 59
+skills here down with it, with nothing but a warning.
+
+Every skill now carries the prefix. Slash commands change accordingly:
+`/learn-code` becomes `/docs-learn-code`.
+
+| Old | New |
+|---|---|
+| `action-comments` | `docs-action-comments` |
+| `article-extractor` | `docs-article-extractor` |
+| `git-pr-reader` | `docs-git-pr-reader` |
+| `jira-reader` | `docs-jira-reader` |
+| `jira-writer` | `docs-jira-writer` |
+| `learn-code` | `docs-learn-code` |
+| `lint-with-vale` | `docs-lint-with-vale` |
+| `mdita-write` | `docs-mdita-write` |
+| `query-code` | `docs-query-code` |
+| `redhat-docs-toc` | `docs-redhat-docs-toc` |
+| `rn-known-issues` | `docs-rn-known-issues` |
+| `understand-pull-request` | `docs-understand-pull-request` |
+| `validate-plugin-prereqs` | `docs-validate-plugin-prereqs` |
+
+The `ibm-sg-*` and `rh-ssg-*` skills keep their own prefixes, which already
+namespace them well enough to make a collision implausible.
+
+Script filenames are unchanged, so `jira_reader.py` and `git_pr_reader.py` are
+still where they were inside their skill directories.
+
 ## Documentation generator
 
 Seven skills. No subagent dispatch, no forge token, and no assumption that a
@@ -40,7 +72,7 @@ python3 skills/docs-sync/scripts/sync.py --repo /path/to/code \
 | [`docs-sync`](skills/docs-sync/) | none directly | The CI entry point. Composes the rest |
 | [`docs-changelog`](skills/docs-changelog/) | zero above ratio 0.7 | Release notes from commit history |
 | [`docs-engine`](skills/docs-engine/) | none | Shared runtime the six above read. Not invoked directly |
-| [`query-code`](skills/query-code/) | one | Questions about an analyzed codebase |
+| [`docs-query-code`](skills/docs-query-code/) | one | Questions about an analyzed codebase |
 
 ### How it decides what to rewrite
 
@@ -101,6 +133,26 @@ what the test suite uses.
 No skill reads `${CLAUDE_PLUGIN_ROOT}` or any other harness variable, because no
 harness sets one. Scripts resolve from `__file__`, and each `SKILL.md` uses
 paths relative to itself.
+
+The shared code lives in a `docs-engine` skill rather than at the repository
+root. An installer copies each skill directory on its own and drops symlinks on
+the way, so a tree above the skills does not survive an install and cannot be
+linked in. It does place every skill as a flat sibling, and that is what the
+lookup walks to:
+
+```python
+for base in (here.parent, *here.parents):
+    if (base / "scripts" / "lib" / "run" / "step.py").exists():
+        return base
+    if (base / "docs-engine" / "scripts" / "lib" / "run" / "step.py").exists():
+        return base / "docs-engine"
+```
+
+One walk resolves `skills/docs-engine/` in a checkout and
+`<skills-dir>/docs-engine/` after an install, so there is no build step and no
+duplicated copy. [agentic-ci#397](https://github.com/opendatahub-io/agentic-ci/pull/397)
+proposes an `x-shared-paths` frontmatter key that would let the installer carry
+a repository-root `lib/` instead; if it lands, `docs-engine` folds away.
 
 ### Configuration
 
@@ -168,12 +220,12 @@ The JIRA-anchored workflow, unchanged in this release.
 | Category | Skills | Description |
 |----------|--------|-------------|
 | **Workflow** | `docs-orchestrator`, `docs-workflow-start`, `docs-workflow-requirements`, `docs-workflow-planning`, `docs-workflow-writing`, `docs-workflow-code-analysis`, `docs-workflow-pr-analysis`, `docs-workflow-scope-req-audit`, `docs-workflow-style-review`, `docs-workflow-tech-review`, `docs-workflow-create-merge-request`, `docs-workflow-create-jira`, `docs-workflow-jira-ready` | End-to-end documentation pipeline with YAML-defined step lists, conditional execution, and resume capability |
-| **Code Analysis** | `learn-code`, `query-code`, `understand-pull-request` | Tree-sitter AST parsing, module registry, cross-module relationships, PR impact analysis |
+| **Code Analysis** | `docs-learn-code`, `docs-query-code`, `docs-understand-pull-request` | Tree-sitter AST parsing, module registry, cross-module relationships, PR impact analysis |
 | **Generator** | `docs-engine`, `docs-git-context`, `docs-repo-analyze`, `docs-write`, `docs-review`, `docs-sync`, `docs-changelog` | See [Documentation generator](#documentation-generator) |
 | **Review** | `docs-review-style`, `docs-review-technical`, `docs-review-content-quality`, `docs-review-modular-docs` | Multi-agent style and technical review with confidence scoring and claim validation |
 | **Style Guides** | `ibm-sg-*` (8 skills), `rh-ssg-*` (8 skills) | IBM Style Guide and Red Hat Supplementary Style Guide compliance |
-| **Integration** | `jira-reader`, `jira-writer`, `git-pr-reader`, `article-extractor`, `docs-convert-gdoc-md`, `redhat-docs-toc` | JIRA, GitHub/GitLab, Google Docs, and web content integration |
-| **Other** | `rn-known-issues` | Release notes known issues audit |
+| **Integration** | `docs-jira-reader`, `docs-jira-writer`, `docs-git-pr-reader`, `docs-article-extractor`, `docs-convert-gdoc-md`, `docs-redhat-docs-toc` | JIRA, GitHub/GitLab, Google Docs, and web content integration |
+| **Other** | `docs-rn-known-issues` | Release notes known issues audit |
 
 ### Agents
 
@@ -257,7 +309,7 @@ GITLAB_TOKEN=your_gitlab_pat
 | `gh` | `dnf install gh` / [cli.github.com](https://cli.github.com/) | GitHub PR/issue workflows |
 | `glab` | `dnf install glab` / [gitlab.com](https://gitlab.com/gitlab-org/cli) | GitLab MR workflows |
 | `gcloud` | [cloud.google.com/sdk](https://cloud.google.com/sdk/docs/install) | Google Docs export (`docs-convert-gdoc-md`) — alternative: configure [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials) |
-| [Vale](https://vale.sh/) | `dnf copr enable mczernek/vale && dnf install vale` / `brew install vale` | `lint-with-vale` style linting |
+| [Vale](https://vale.sh/) | `dnf copr enable mczernek/vale && dnf install vale` / `brew install vale` | `docs-lint-with-vale` style linting |
 
 #### Development / linting
 
@@ -272,12 +324,12 @@ These are declared as PEP 723 inline metadata in their scripts and installed aut
 
 | Script | Packages |
 |--------|----------|
-| `jira-reader/scripts/jira_reader.py` | `jira`, `urllib3`, `ratelimit` |
-| `jira-writer/scripts/jira_writer.py` | `jira`, `ratelimit` |
-| `git-pr-reader/scripts/git_pr_reader.py` | `PyGithub`, `python-gitlab`, `pyyaml` |
-| `article-extractor/scripts/article_extractor.py` | `requests`, `beautifulsoup4`, `html2text` |
-| `redhat-docs-toc/scripts/toc_extractor.py` | `requests`, `beautifulsoup4` |
-| `learn-code/scripts/extract_public_api_treesitter.py` | `tree-sitter`, `tree-sitter-go`, `tree-sitter-javascript`, `tree-sitter-python`, `tree-sitter-typescript` |
+| `docs-jira-reader/scripts/jira_reader.py` | `jira`, `urllib3`, `ratelimit` |
+| `docs-jira-writer/scripts/jira_writer.py` | `jira`, `ratelimit` |
+| `docs-git-pr-reader/scripts/git_pr_reader.py` | `PyGithub`, `python-gitlab`, `pyyaml` |
+| `docs-article-extractor/scripts/article_extractor.py` | `requests`, `beautifulsoup4`, `html2text` |
+| `docs-redhat-docs-toc/scripts/toc_extractor.py` | `requests`, `beautifulsoup4` |
+| `docs-learn-code/scripts/extract_public_api_treesitter.py` | `tree-sitter`, `tree-sitter-go`, `tree-sitter-javascript`, `tree-sitter-python`, `tree-sitter-typescript` |
 | `docs-convert-gdoc-md/scripts/gdoc2md.py` | `google-auth`, `python-pptx` |
 
 ## Quick Start
@@ -316,7 +368,7 @@ See the workflow YAML for available steps, conditional execution (`when:` field)
 
 | Flag | Description |
 |------|-------------|
-| `--repo <url-or-path>` | Source code repository for learn-code analysis |
+| `--repo <url-or-path>` | Source code repository for docs-learn-code analysis |
 | `--pr <url>` | PR/MR URL to include in requirements analysis (repeatable) |
 | `--no-source-repo` | Skip source resolution and all source-dependent steps |
 | `--auto-discover-repos` | Skip confirmation when secondary repos are discovered |

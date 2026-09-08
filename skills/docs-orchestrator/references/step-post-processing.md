@@ -13,7 +13,7 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 - Log: `"Code analysis completed: N modules, N relationships, languages: <languages_detected>"`
 - Record `repo_path` from the sidecar for downstream steps
-- Record `repo_analysis_path` from the sidecar. This is the canonical location of learn-code analysis data. Downstream steps that need analysis files (scope-req-audit, tech-review) can use this path directly rather than re-deriving it
+- Record `repo_analysis_path` from the sidecar. This is the canonical location of docs-learn-code analysis data. Downstream steps that need analysis files (scope-req-audit, tech-review) can use this path directly rather than re-deriving it
 - **Multi-repo code analysis**: If `options.additional_sources` is non-empty, run code-analysis for each additional repo sequentially. For each additional source entry (indexed starting at 1):
   1. Derive the repo name: `basename(additional_source.repo_path)`
   2. Invoke the code-analysis step skill with a custom output dir that includes the index to avoid name collisions:
@@ -94,7 +94,7 @@ Build the args string for the step skill. The orchestrator maps its user-facing 
    - `technical-review`: `[--repo <repo_path>]...` — pass `--repo` for the primary source repo AND for each entry in `options.additional_sources` (in order)
    - `style-review`: `--format <adoc|mkdocs>`
    - `create-merge-request`: `[--draft] [--repo-path <path>]`
-   - `action-comments`: `[--pr <url>]` — pass `--pr` from `options.pr_urls[0]` or from `steps.create-merge-request.result.url` if available
+   - `docs-action-comments`: `[--pr <url>]` — pass `--pr` from `options.pr_urls[0]` or from `steps.create-merge-request.result.url` if available
    - `pipeline-diagnostics`: `[--ci-log <path>]` — pass `--ci-log` if `options.ci_log` is set
 
 Step skills derive their own output folder and input folders from `--base-path` and step name conventions. No per-input flag wiring needed.

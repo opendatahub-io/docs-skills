@@ -1,6 +1,6 @@
 ---
 name: docs-workflow-scope-req-audit
-description: Classify JIRA requirements by code evidence status before planning. Uses learn-code analysis data and source code inspection to determine if each requirement is grounded, partial, or absent. Fans out one subagent per requirement for isolated classification. Prevents hallucinated documentation for unimplemented features and surfaces gaps for implemented ones. Conditional on has_source_repo.
+description: Classify JIRA requirements by code evidence status before planning. Uses docs-learn-code analysis data and source code inspection to determine if each requirement is grounded, partial, or absent. Fans out one subagent per requirement for isolated classification. Prevents hallucinated documentation for unimplemented features and surfaces gaps for implemented ones. Conditional on has_source_repo.
 argument-hint: <ticket> --base-path <path> --repo <path>
 allowed-tools: Read, Write, Glob, Grep, Bash, Agent, Skill
 ---
@@ -9,7 +9,7 @@ allowed-tools: Read, Write, Glob, Grep, Bash, Agent, Skill
 
 Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → fan out → merge → write output**.
 
-This skill classifies each JIRA requirement from the requirements step as grounded, partial, or absent by dispatching one subagent per requirement. Each subagent receives learn-code analysis context (module registry, summaries, onboarding guide) and can inspect the actual source code with Read/Grep/Glob. The planning step then uses these classifications to scope documentation modules — grounded requirements get full specs, partial ones are flagged for SME review, and absent ones are deferred to prevent documenting unimplemented features.
+This skill classifies each JIRA requirement from the requirements step as grounded, partial, or absent by dispatching one subagent per requirement. Each subagent receives docs-learn-code analysis context (module registry, summaries, onboarding guide) and can inspect the actual source code with Read/Grep/Glob. The planning step then uses these classifications to scope documentation modules — grounded requirements get full specs, partial ones are flagged for SME review, and absent ones are deferred to prevent documenting unimplemented features.
 
 ## Arguments
 
@@ -94,9 +94,9 @@ For each requirement, extract:
 
 If no requirements are found matching this pattern, STOP with error: "No requirements found in requirements.md. Expected REQ-NNN pattern."
 
-### 4. Pre-flight: resolve and load learn-code analysis data
+### 4. Pre-flight: resolve and load docs-learn-code analysis data
 
-Resolve and load the structured code analysis produced by learn-code. This data provides module-level understanding of the codebase that classifiers use alongside direct source inspection.
+Resolve and load the structured code analysis produced by docs-learn-code. This data provides module-level understanding of the codebase that classifiers use alongside direct source inspection.
 
 #### 4a. Resolve analysis location
 
@@ -118,16 +118,16 @@ Check for existing analysis at `${ANALYSIS_PATH}/synthesis/ONBOARDING.md`.
 
 Check if `${ANALYSIS_PATH}/workflow/` contains a progress file with `status: "in_progress"`.
 
-- If a progress file exists with in-progress status: report that a learn-code analysis is incomplete and offer to resume it.
-- If no progress file exists or analysis directory does not exist: run learn-code:
+- If a progress file exists with in-progress status: report that a docs-learn-code analysis is incomplete and offer to resume it.
+- If no progress file exists or analysis directory does not exist: run docs-learn-code:
 
 ```
-Skill: learn-code, args: "${REPO_PATH}"
+Skill: docs-learn-code, args: "${REPO_PATH}"
 ```
 
 Wait for it to complete. If it fails, STOP with error including the failure details.
 
-After learn-code completes (or if analysis already existed), verify `${ANALYSIS_PATH}/synthesis/ONBOARDING.md` exists. If not, STOP with error: "learn-code analysis failed to produce ONBOARDING.md at `${ANALYSIS_PATH}/synthesis/ONBOARDING.md`."
+After docs-learn-code completes (or if analysis already existed), verify `${ANALYSIS_PATH}/synthesis/ONBOARDING.md` exists. If not, STOP with error: "docs-learn-code analysis failed to produce ONBOARDING.md at `${ANALYSIS_PATH}/synthesis/ONBOARDING.md`."
 
 #### 4b. Verify analysis files and record paths
 
@@ -277,8 +277,8 @@ If `evidence-status.json` does not exist (step was skipped or not configured), t
 - **Fanout pattern:** Each requirement is classified by an independent subagent with a clean context window. This prevents context degradation when processing many requirements — classification quality for REQ-015 is identical to REQ-001
 - **Disk-based data flow:** Agents write their JSON classifications to per-requirement files (`evidence-NNN.json`) on disk instead of returning them to the orchestrator context. The merge agent reads from disk to assemble `evidence-status.json` and `summary.md`. This prevents 15+ agent results and ~300KB of analysis context from accumulating in the orchestrator's context window
 - **Compact prompts:** Agent prompts reference `ANALYSIS_PATH` by path instead of embedding the full analysis JSON. Each agent reads analysis files directly from disk. This reduces per-agent prompt size from ~200KB to ~0.3KB
-- **Learn-code analysis:** Analysis data is produced by learn-code and cached at `.agent_workspace/<repo-name>/`. If analysis already exists from a prior run, it is reused. The first workflow run for a repo pays the analysis cost; subsequent runs skip it. Analysis files are referenced by path in agent prompts — never read into the orchestrator context
-- **Source inspection:** Subagents inspect actual source files using Read/Grep/Glob. The learn-code analysis provides a structural map (modules, APIs, relationships) that guides where to look, but the final classification is based on direct evidence in the source code
+- **Learn-code analysis:** Analysis data is produced by docs-learn-code and cached at `.agent_workspace/<repo-name>/`. If analysis already exists from a prior run, it is reused. The first workflow run for a repo pays the analysis cost; subsequent runs skip it. Analysis files are referenced by path in agent prompts — never read into the orchestrator context
+- **Source inspection:** Subagents inspect actual source files using Read/Grep/Glob. The docs-learn-code analysis provides a structural map (modules, APIs, relationships) that guides where to look, but the final classification is based on direct evidence in the source code
 - **Parallel execution:** All subagent Agent calls are dispatched in a single message for parallel execution. The orchestrator waits for all to complete before merging
 - **Error isolation:** A failed subagent does not affect other requirements — the merge agent creates a fallback entry with `"status": "absent"` and an `"error"` field for diagnostics
 - This step queries the primary source repo only. The `secondary_repos` output enables the orchestrator to clone and index companion repos if needed

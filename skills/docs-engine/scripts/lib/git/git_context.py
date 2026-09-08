@@ -339,7 +339,7 @@ def read_commits(repo, rev_range, paths=None, max_count=None, issue_prefixes=Non
 
 
 def load_registry(path):
-    """Accept a learn-code registry.json or a simple {module: [prefixes]} map."""
+    """Accept a docs-learn-code registry.json or a simple {module: [prefixes]} map."""
     if not path:
         return None
     data = json.loads(Path(path).read_text())
@@ -694,7 +694,7 @@ def main():
 
     p = sub.add_parser("changes", help="Per-file and per-module change rollup")
     add_range_flags(p)
-    p.add_argument("--registry", help="learn-code registry.json or {module: [prefix]} map")
+    p.add_argument("--registry", help="docs-learn-code registry.json or {module: [prefix]} map")
     p.add_argument("--excludes", help="Pattern file, e.g. git_filters.yaml")
     p.add_argument("--out")
     p.set_defaults(func=cmd_changes)

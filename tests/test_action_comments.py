@@ -1,4 +1,4 @@
-"""Tests for skills/action-comments/scripts/action_comments.py."""
+"""Tests for skills/docs-action-comments/scripts/action_comments.py."""
 
 from __future__ import annotations
 
@@ -242,7 +242,7 @@ class TestIsEditablePath:
             now="2026-07-07T00:00:00Z",
         )
         assert s["schema_version"] == 1
-        assert s["step"] == "action-comments"
+        assert s["step"] == "docs-action-comments"
         assert s["ticket"] == "PROJ-1"
         assert s["ci_mode"] is True
         assert s["comments_resolved"] == 2
@@ -255,4 +255,4 @@ class TestIsEditablePath:
 
     def test_conforms_to_output_schema(self):
         s = build_sidecar("PROJ-1", True, 2, 1, 3, 2, ["a.md"])
-        validate_sidecar("action-comments", s)
+        validate_sidecar("docs-action-comments", s)

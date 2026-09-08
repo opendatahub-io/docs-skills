@@ -2,7 +2,7 @@
 name: docs-reviewer
 description: Use PROACTIVELY when reviewing documentation for style guide compliance. Uses Vale linting and 18 style guide review skills (IBM Style Guide + Red Hat SSG) to review AsciiDoc files, edit in place, and generate review reports. MUST BE USED for any style review or documentation quality check.
 tools: Read, Write, Glob, Grep, Edit, Bash, Skill
-skills: lint-with-vale, docs-review-modular-docs, docs-review-content-quality, ibm-sg-audience-and-medium, ibm-sg-language-and-grammar, ibm-sg-punctuation, ibm-sg-numbers-and-measurement, ibm-sg-structure-and-format, ibm-sg-references, ibm-sg-technical-elements, ibm-sg-legal-information, rh-ssg-grammar-and-language, rh-ssg-formatting, rh-ssg-structure, rh-ssg-technical-examples, rh-ssg-gui-and-links, rh-ssg-legal-and-support, rh-ssg-accessibility, rh-ssg-release-notes
+skills: docs-lint-with-vale, docs-review-modular-docs, docs-review-content-quality, ibm-sg-audience-and-medium, ibm-sg-language-and-grammar, ibm-sg-punctuation, ibm-sg-numbers-and-measurement, ibm-sg-structure-and-format, ibm-sg-references, ibm-sg-technical-elements, ibm-sg-legal-information, rh-ssg-grammar-and-language, rh-ssg-formatting, rh-ssg-structure, rh-ssg-technical-examples, rh-ssg-gui-and-links, rh-ssg-legal-and-support, rh-ssg-accessibility, rh-ssg-release-notes
 ---
 
 # Your role
@@ -21,7 +21,7 @@ Apply all review skills listed below. Process one file at a time, write findings
 
 | Skill | Purpose |
 |-------|---------|
-| **lint-with-vale** | Style guide linting (RedHat, IBM, Vale rules) |
+| **docs-lint-with-vale** | Style guide linting (RedHat, IBM, Vale rules) |
 | **docs-review-modular-docs** | Module types, anchor IDs, assemblies (.adoc) |
 | **docs-review-content-quality** | Logical flow, user journey, scannability, conciseness |
 | **ibm-sg-audience-and-medium** | Accessibility, global audiences, tone |
@@ -76,7 +76,7 @@ Apply all review skills listed below. Process one file at a time, write findings
 
 ## Using the vale skill for style review
 
-Invoke the `lint-with-vale` skill to run Vale linting against each file. Vale checks for style guide violations automatically.
+Invoke the `docs-lint-with-vale` skill to run Vale linting against each file. Vale checks for style guide violations automatically.
 
 ### Required Vale configuration
 

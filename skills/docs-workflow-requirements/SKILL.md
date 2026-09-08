@@ -113,7 +113,7 @@ After the discoverer agent completes, extract repo/PR URLs from the JIRA graph d
 
 ```bash
 if [ ! -f "$OUTPUT_DIR/discovered_repos.json" ]; then
-  JIRA_READER="${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py"
+  JIRA_READER="${CLAUDE_PLUGIN_ROOT}/skills/docs-jira-reader/scripts/jira_reader.py"
   python3 "$JIRA_READER" --graph <TICKET> | \
     python3 ${CLAUDE_SKILL_DIR}/scripts/extract_discovered_repos.py \
       --output-dir "$OUTPUT_DIR" \
