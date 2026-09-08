@@ -1,19 +1,104 @@
 # docs-skills
 
-Point it at a code repository, get developer documentation in plain Markdown.
-Merge to main, get the delta.
+Generates developer documentation for a code repository, then keeps it current
+as the code changes.
 
-Deterministic where it can be, harness-agnostic throughout, and built to run
-unattended in CI. Runs under Claude Code, Codex, or a plain shell.
+Point it at a repo and it reads the history, maps the modules, extracts the
+public API, and writes a Markdown page per module. Merge to main and it works
+out which modules actually changed, rewrites only those, and opens a pull
+request explaining why. On most pushes it decides nothing needs writing and
+opens nothing.
+
+It runs under Claude Code, Codex, or a plain shell, and needs no forge token, no
+issue tracker, and no ticket to exist before it starts.
+
+## What you get
+
+```text
+docs/
+  scheduler.md              one page per module, plain Markdown
+  scheduler-task.md         getting started, where the module warrants it
+CHANGELOG.md                release notes, grouped from commit history
+AGENTS.md                   an index of the docs, merged into a marked region
+.docs-state.json            which commit each module's docs were written from
+.docs-gen/                  the artifacts every step reads and writes
+```
+
+Each page carries provenance in its frontmatter, so a reader and a later run
+both know where it came from and who owns it:
+
+```markdown
+---
+id: docs/scheduler
+title: Scheduler
+description: Queues jobs and retries them.
+type: concept
+managed: generated
+source_modules:
+  - pkg/scheduler
+source_sha: d6bc7b8
+generator: docs-skills/0.5.0
+---
+## What it does
+
+Call `Submit` to enqueue a job. The queue retries on failure up to `retries`.
+```
+
+`managed` is the field that matters. It decides whether the writer may touch the
+file at all, and it defaults to `manual` on anything that already exists.
+
+## What it will not do
+
+**Compete with your reference generator.** pdoc, godoc, typedoc, and rustdoc
+render signatures better than prose does, and they never go stale. Where a
+language names one, this skips reference pages entirely and writes what those
+tools cannot: why a module exists, how the pieces fit, and how to get from
+nothing to a working call.
+
+**Touch a file marked `managed: manual`.** Its path never reaches a write call.
+
+**Write doc comments into your source.** That would be a pull request against
+code, which lands in a different review and risk class. It reports the gap
+instead, unless a language file opts in.
+
+**Open a pull request for a paraphrase.** An unchanged module produces an
+unchanged fingerprint and is skipped. A rewrite below the churn floor is
+discarded rather than committed.
+
+## How a run works
+
+```text
+docs-git-context     what changed, and which module it landed in    no model
+docs-repo-analyze    module registry, public API, dependencies      one per module
+api_surface          fingerprint, diff, verdict per module          no model
+docs-write           a document set per module in rebuild[]         one per document
+docs-review          grounding, staleness, fences, frontmatter      usually no model
+docs-changelog       release notes                                  usually no model
+```
+
+`docs-sync` runs that chain in order and stops early when nothing moved. Every
+arrow between steps is a file under `.docs-gen/`, so a run that dies halfway
+leaves what it already produced and the next one resumes from disk.
+
+## Quick start
 
 ```bash
-# First run on a repository with no documentation state
+# Install
+claude plugin marketplace add opendatahub-io/docs-skills
+claude plugin install docs-skills@opendatahub-docs
+
+# First run: no prior state, so every module is queued. Cap it on a large repo.
+/docs-sync /path/to/code --bootstrap --max-modules 20
+
+# Every run after that: only what changed since the watermark
+/docs-sync /path/to/code --since-watermark .docs-state.json
+```
+
+From a checkout, without a harness, the same thing:
+
+```bash
 python3 skills/docs-sync/scripts/sync.py --repo /path/to/code \
     --bootstrap --max-modules 20 --llm-cmd "claude -p"
-
-# Every run after that
-python3 skills/docs-sync/scripts/sync.py --repo /path/to/code \
-    --since-watermark .docs-state.json --llm-cmd "claude -p"
 ```
 
 ## The skills
@@ -186,14 +271,9 @@ on it. Run `/reload-plugins` after a change.
 
 ### Without a harness
 
-Nothing here needs one. Clone the repository and call the scripts directly; the
-only requirement is a command that reads a prompt on stdin and writes JSON to
-stdout.
-
-```bash
-python3 skills/docs-sync/scripts/sync.py --repo /path/to/code \
-    --bootstrap --llm-cmd "claude -p"
-```
+Nothing here needs one. Clone the repository and call the scripts directly, as
+the [quick start](#quick-start) shows. The only requirement is a command that
+reads a prompt on stdin and writes JSON to stdout.
 
 ## Prerequisites
 
