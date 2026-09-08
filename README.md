@@ -33,12 +33,13 @@ python3 skills/docs-sync/scripts/sync.py --repo /path/to/code \
 
 | Skill | Model calls | What it does |
 |---|---|---|
-| [`git-context`](skills/git-context/) | none | Revision range, commit corpus, module attribution, hotspots, watermark |
-| [`repo-analyze`](skills/repo-analyze/) | one per module | Module registry, public API extraction, dependency graph, onboarding guide |
+| [`docs-git-context`](skills/docs-git-context/) | none | Revision range, commit corpus, module attribution, hotspots, watermark |
+| [`docs-repo-analyze`](skills/docs-repo-analyze/) | one per module | Module registry, public API extraction, dependency graph, onboarding guide |
 | [`docs-write`](skills/docs-write/) | one per document | Markdown per module, with ownership enforced in script |
 | [`docs-review`](skills/docs-review/) | zero on most runs | Grounding, staleness, fence freshness, frontmatter |
 | [`docs-sync`](skills/docs-sync/) | none directly | The CI entry point. Composes the rest |
-| [`changelog`](skills/changelog/) | zero above ratio 0.7 | Release notes from commit history |
+| [`docs-changelog`](skills/docs-changelog/) | zero above ratio 0.7 | Release notes from commit history |
+| [`docs-engine`](skills/docs-engine/) | none | Shared runtime the six above read. Not invoked directly |
 | [`query-code`](skills/query-code/) | one | Questions about an analyzed codebase |
 
 ### How it decides what to rewrite
@@ -80,15 +81,15 @@ tree protects every file on first contact.
 
 ### Harness agnosticism
 
-Every model call goes through `lib/run/step.py`, which renders a prompt, pipes it
+Every model call goes through `docs-engine`'s `lib/run/step.py`, which renders a prompt, pipes it
 to a command on stdin, recovers JSON from whatever the CLI printed around it,
 validates against a schema, and retries once with the errors appended.
 
 ```bash
-python3 lib/run/step.py \
-  --prompt prompts/write-module.md \
+python3 skills/docs-engine/scripts/lib/run/step.py \
+  --prompt skills/docs-engine/prompts/write-module.md \
   --input .docs-gen/write-input/scheduler.json \
-  --schema schemas/write-out.json \
+  --schema skills/docs-engine/schemas/write-out.json \
   --llm-cmd "claude -p" \
   --out .docs-gen/write-output/scheduler.json
 ```
@@ -104,7 +105,7 @@ paths relative to itself.
 ### Configuration
 
 One file at the root of the repository being documented. Copy
-[`config/docs-gen.example.yaml`](config/docs-gen.example.yaml) to
+[`config/docs-gen.example.yaml`](skills/docs-engine/config/docs-gen.example.yaml) to
 `.docs-gen.yaml`.
 
 ```yaml
@@ -120,7 +121,7 @@ generate:
 
 Pipeline state lives under `.docs-gen/` in the documented repository.
 `registry.json`, `api/`, and `api-surface.json` are committed; everything else
-is transient. [`config/gitignore.fragment`](config/gitignore.fragment) has the
+is transient. [`config/gitignore.fragment`](skills/docs-engine/config/gitignore.fragment) has the
 split.
 
 The durable set is committed rather than cached because a `registry_hash` match
@@ -132,11 +133,11 @@ produce a matching hash with nothing behind it.
 
 Two files per language, kept apart because they have different consumers.
 
-[`lib/ast/languages.yaml`](lib/ast/languages.yaml) holds parse rules: module
+[`lib/ast/languages.yaml`](skills/docs-engine/scripts/lib/ast/languages.yaml) holds parse rules: module
 boundaries, config file names, what counts as public. Read by `repo-analyze`'s
 scripts.
 
-`languages/<lang>.md` holds documentation conventions: where docs live, which
+[`languages/<lang>.md`](skills/docs-engine/languages/) holds documentation conventions: where docs live, which
 reference generator to defer to, doc comment format, example conventions,
 identifier casing in prose. The body reaches the writer prompt verbatim, and the
 YAML frontmatter carries the values a script executes.
@@ -168,7 +169,7 @@ The JIRA-anchored workflow, unchanged in this release.
 |----------|--------|-------------|
 | **Workflow** | `docs-orchestrator`, `docs-workflow-start`, `docs-workflow-requirements`, `docs-workflow-planning`, `docs-workflow-writing`, `docs-workflow-code-analysis`, `docs-workflow-pr-analysis`, `docs-workflow-scope-req-audit`, `docs-workflow-style-review`, `docs-workflow-tech-review`, `docs-workflow-create-merge-request`, `docs-workflow-create-jira`, `docs-workflow-jira-ready` | End-to-end documentation pipeline with YAML-defined step lists, conditional execution, and resume capability |
 | **Code Analysis** | `learn-code`, `query-code`, `understand-pull-request` | Tree-sitter AST parsing, module registry, cross-module relationships, PR impact analysis |
-| **Generator** | `git-context`, `repo-analyze`, `docs-write`, `docs-review`, `docs-sync`, `changelog` | See [Documentation generator](#documentation-generator) |
+| **Generator** | `docs-engine`, `docs-git-context`, `docs-repo-analyze`, `docs-write`, `docs-review`, `docs-sync`, `docs-changelog` | See [Documentation generator](#documentation-generator) |
 | **Review** | `docs-review-style`, `docs-review-technical`, `docs-review-content-quality`, `docs-review-modular-docs` | Multi-agent style and technical review with confidence scoring and claim validation |
 | **Style Guides** | `ibm-sg-*` (8 skills), `rh-ssg-*` (8 skills) | IBM Style Guide and Red Hat Supplementary Style Guide compliance |
 | **Integration** | `jira-reader`, `jira-writer`, `git-pr-reader`, `article-extractor`, `docs-convert-gdoc-md`, `redhat-docs-toc` | JIRA, GitHub/GitLab, Google Docs, and web content integration |
@@ -332,7 +333,6 @@ See the workflow YAML for available steps, conditional execution (`when:` field)
 ```bash
 make lint       # skillsaw, ruff, shellcheck
 make test       # pytest
-make vendor     # copy lib/ into each generator skill, for a standalone install
 ```
 
 The generator's tests run against a synthetic repository with a scripted

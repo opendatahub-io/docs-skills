@@ -27,13 +27,17 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+# lib/md/ -> lib/ -> scripts/ is the import root; the skill directory above it
+# carries the data trees, so both resolve without knowing the install path.
+_SCRIPTS = Path(__file__).resolve().parents[2]
+_ENGINE = _SCRIPTS.parent
+sys.path.insert(0, str(_SCRIPTS))
 
 from lib.md import docs_meta  # noqa: E402
 from lib.run.step import validate  # noqa: E402
 
-SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "language-file.json"
-LANGUAGES_DIR = Path(__file__).resolve().parents[2] / "languages"
+SCHEMA_PATH = _ENGINE / "schemas" / "language-file.json"
+LANGUAGES_DIR = _ENGINE / "languages"
 
 KINDS = ("library", "service", "cli")
 

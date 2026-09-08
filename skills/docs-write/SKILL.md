@@ -52,14 +52,14 @@ generated body
 <!-- docs-gen:end -->
 ```
 
-`lib/md/fences.py` rewrites the inside and asserts every byte outside came back
+`docs-engine`'s `lib/md/fences.py` rewrites the inside and asserts every byte outside came back
 unchanged. A rewrite that would touch the surrounding prose raises rather than
 writing.
 
 ## Determinism
 
 The model returns structure: sections with stable ids, headings, and bodies.
-`lib/md/render.py` turns that into bytes, so heading levels, blank lines, and
+`docs-engine`'s `lib/md/render.py` turns that into bytes, so heading levels, blank lines, and
 frontmatter key order never vary between runs.
 
 A rewrite below the churn floor is discarded. An LLM rewording one sentence on

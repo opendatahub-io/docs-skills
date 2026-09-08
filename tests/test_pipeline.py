@@ -17,10 +17,10 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_ROOT))
-
-LIB = _ROOT / "lib"
 SKILLS = _ROOT / "skills"
+ENGINE = SKILLS / "docs-engine"
+LIB = ENGINE / "scripts" / "lib"
+sys.path.insert(0, str(ENGINE / "scripts"))
 FIXTURE = Path(__file__).parent / "fixtures" / "make_python_fixture.sh"
 
 pytestmark = pytest.mark.skipif(
@@ -94,7 +94,7 @@ def artifacts(repo, tmp_path):
         "--registry",
         registry,
         "--excludes",
-        _ROOT / "config" / "path_filters.txt",
+        ENGINE / "config" / "path_filters.txt",
         "--out",
         out / "git-context.json",
     )
@@ -166,7 +166,7 @@ def test_the_breaking_change_is_recorded(artifacts):
 
 def test_changelog_is_written_without_a_model(repo, artifacts):
     result = run(
-        SKILLS / "changelog" / "scripts" / "changelog.py",
+        SKILLS / "docs-changelog" / "scripts" / "changelog.py",
         "--context",
         artifacts / "git-context.json",
         "--repo",
@@ -183,7 +183,7 @@ def test_changelog_is_written_without_a_model(repo, artifacts):
 
 def test_changelog_is_idempotent(repo, artifacts):
     argv = (
-        SKILLS / "changelog" / "scripts" / "changelog.py",
+        SKILLS / "docs-changelog" / "scripts" / "changelog.py",
         "--context",
         artifacts / "git-context.json",
         "--repo",
@@ -199,7 +199,7 @@ def test_changelog_is_idempotent(repo, artifacts):
 
 def test_changelog_keeps_a_hand_written_preamble(repo, artifacts):
     argv = (
-        SKILLS / "changelog" / "scripts" / "changelog.py",
+        SKILLS / "docs-changelog" / "scripts" / "changelog.py",
         "--context",
         artifacts / "git-context.json",
         "--repo",
@@ -259,7 +259,7 @@ def fake_llm(tmp_path):
 def written(repo, artifacts, fake_llm):
     """A registry plus one generated document, ready for the ownership tests."""
     run(
-        SKILLS / "repo-analyze" / "scripts" / "analyze.py",
+        SKILLS / "docs-repo-analyze" / "scripts" / "analyze.py",
         "--repo",
         repo,
         "--out",
@@ -545,7 +545,7 @@ def test_sync_loop_guard_stops_on_the_bot_identity(repo, tmp_path):
 def test_registry_hash_is_stable_across_runs(repo, tmp_path):
     first, second = tmp_path / "a", tmp_path / "b"
     for out in (first, second):
-        run(SKILLS / "repo-analyze" / "scripts" / "analyze.py", "--repo", repo, "--out", out)
+        run(SKILLS / "docs-repo-analyze" / "scripts" / "analyze.py", "--repo", repo, "--out", out)
     assert (
         load(first / "registry.json")["registry_hash"]
         == (load(second / "registry.json")["registry_hash"])
@@ -554,9 +554,9 @@ def test_registry_hash_is_stable_across_runs(repo, tmp_path):
 
 def test_analyze_skips_when_the_registry_hash_matches(repo, tmp_path):
     out = tmp_path / "cached"
-    run(SKILLS / "repo-analyze" / "scripts" / "analyze.py", "--repo", repo, "--out", out)
+    run(SKILLS / "docs-repo-analyze" / "scripts" / "analyze.py", "--repo", repo, "--out", out)
     again = run(
-        SKILLS / "repo-analyze" / "scripts" / "analyze.py",
+        SKILLS / "docs-repo-analyze" / "scripts" / "analyze.py",
         "--repo",
         repo,
         "--out",
@@ -566,3 +566,190 @@ def test_analyze_skips_when_the_registry_hash_matches(repo, tmp_path):
     )
     assert again.returncode == 1
     assert "unchanged" in again.stderr
+
+
+# --------------------------------------------------------- the full sync run
+
+
+@pytest.fixture
+def stub_writer(tmp_path):
+    """A writer that always returns the same grounded document."""
+    script = tmp_path / "stub_writer.py"
+    script.write_text(f"import sys, json\nsys.stdin.read()\nprint(json.dumps({WRITER_REPLY!r}))\n")
+    return f"{sys.executable} {script}"
+
+
+def test_sync_runs_the_whole_chain(repo, stub_writer):
+    """Every step in order, against a repository with a known history.
+
+    This is the test that catches ordering and argument bugs between steps.
+    A dry run reaches none of them.
+    """
+    result = run(
+        SKILLS / "docs-sync" / "scripts" / "sync.py",
+        "--repo",
+        repo,
+        "--force",
+        "--llm-cmd",
+        stub_writer,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr[-3000:]
+
+    doc = repo / "docs" / "core.md"
+    assert doc.exists()
+    assert "managed: generated" in doc.read_text()
+    assert (repo / ".docs-state.json").exists()
+    assert (repo / ".docs-gen" / "pr-body.md").exists()
+    assert (repo / "CHANGELOG.md").exists()
+
+
+def test_sync_attributes_commits_to_modules(repo, stub_writer):
+    """History runs after the registry, or module attribution comes back empty.
+
+    Without the registry, git-context cannot roll files up, relevance joins
+    against nothing, and every run reports no_op with every file unattributed.
+    """
+    run(
+        SKILLS / "docs-sync" / "scripts" / "sync.py",
+        "--repo",
+        repo,
+        "--force",
+        "--llm-cmd",
+        stub_writer,
+        check=False,
+    )
+    context = load(repo / ".docs-gen" / "git-context.json")
+    assert "core" in (context.get("modules") or {}), "commits reached no module"
+
+    relevance = load(repo / ".docs-gen" / "relevance.json")
+    assert relevance["rebuild"] == ["core"]
+
+
+def test_sync_second_run_reports_nothing_to_do(repo, stub_writer):
+    """The idempotency requirement, end to end."""
+    argv = (
+        SKILLS / "docs-sync" / "scripts" / "sync.py",
+        "--repo",
+        repo,
+        "--force",
+        "--llm-cmd",
+        stub_writer,
+    )
+    run(*argv, check=False)
+    before = (repo / "docs" / "core.md").read_text()
+
+    again = run(*argv, check=False)
+    assert again.returncode == 1
+    assert "no module changed" in again.stderr
+    assert (repo / "docs" / "core.md").read_text() == before
+
+
+def test_sync_pr_body_explains_each_rebuild(repo, stub_writer):
+    run(
+        SKILLS / "docs-sync" / "scripts" / "sync.py",
+        "--repo",
+        repo,
+        "--force",
+        "--llm-cmd",
+        stub_writer,
+        check=False,
+    )
+    body = (repo / ".docs-gen" / "pr-body.md").read_text()
+    assert "docs/core.md" in body
+    assert "core:" in body
+
+
+# ------------------------------------------------------ the installed layout
+
+
+def _flat_install(dest):
+    """Mirror agentic-ci's per-skill copy: flat siblings, symlinks dropped.
+
+    The generator reaches its shared code as a sibling skill precisely because
+    this is what an installer produces. Copying the same way here is the only
+    way to know the resolution holds.
+    """
+    import shutil
+
+    def copy_tree(src, target):
+        target.mkdir(parents=True, exist_ok=True)
+        for item in sorted(src.iterdir()):
+            if item.is_symlink():
+                continue
+            child = target / item.name
+            if item.is_dir():
+                copy_tree(item, child)
+            else:
+                shutil.copy2(item, child)
+
+    names = {}
+    for skill_md in (SKILLS).rglob("SKILL.md"):
+        if skill_md.is_symlink():
+            continue
+        names.setdefault(skill_md.parent.name, skill_md.parent)
+    for name, source in names.items():
+        copy_tree(source, dest / name)
+    return names
+
+
+def test_skill_names_do_not_collide():
+    """A destination collision makes the installer skip the entire plugin.
+
+    Not just the colliding skill: `install_opencode_skills` warns and drops the
+    whole plugin, so one unprefixed name takes every other skill with it.
+    """
+    seen = {}
+    for skill_md in SKILLS.rglob("SKILL.md"):
+        name = skill_md.parent.name
+        assert name not in seen, f"{name} claimed by {seen.get(name)} and {skill_md.parent}"
+        seen[name] = skill_md.parent
+
+    generator = {
+        "docs-engine",
+        "docs-sync",
+        "docs-write",
+        "docs-review",
+        "docs-repo-analyze",
+        "docs-changelog",
+        "docs-git-context",
+    }
+    assert generator <= set(seen), sorted(generator - set(seen))
+    for name in generator:
+        assert name.startswith("docs-"), name
+
+
+def test_generator_runs_from_a_flat_install(repo, tmp_path, stub_writer):
+    """The whole point of the docs-engine skill.
+
+    An installer copies each skill on its own and drops symlinks, so a shared
+    tree above the skills is gone. What survives is flat siblings, and that is
+    what the engine lookup walks to.
+    """
+    dest = tmp_path / "installed"
+    dest.mkdir()
+    installed = _flat_install(dest)
+    assert "docs-engine" in installed
+
+    result = run(
+        dest / "docs-sync" / "scripts" / "sync.py",
+        "--repo",
+        repo,
+        "--force",
+        "--llm-cmd",
+        stub_writer,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr[-3000:]
+    assert (repo / "docs" / "core.md").exists()
+
+
+def test_a_generator_skill_without_the_engine_fails_clearly(repo, tmp_path):
+    """Missing the engine must name it, rather than raising an ImportError."""
+    import shutil
+
+    dest = tmp_path / "orphan"
+    shutil.copytree(SKILLS / "docs-changelog", dest / "docs-changelog")
+    result = run(dest / "docs-changelog" / "scripts" / "changelog.py", "--help", check=False)
+    assert result.returncode != 0
+    assert "docs-engine" in result.stderr

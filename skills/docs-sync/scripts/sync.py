@@ -22,27 +22,39 @@ import subprocess
 import sys
 from pathlib import Path
 
-SKILL_DIR = Path(__file__).resolve().parent.parent
 
+def _find_engine():
+    """Locate the docs-engine skill, which holds the generator's shared runtime.
 
-def _find_root():
-    """Locate the shared lib, in the repository or vendored into this skill.
+    An installer copies each skill directory on its own and drops symlinks on
+    the way, so a tree shared above the skills cannot be linked in and does not
+    survive the copy. It does land every skill as a flat sibling, and that is
+    what this walk uses: docs-engine sits two levels up from any generator
+    skill's script, in an install and in a checkout alike.
 
-    Skill installers copy a skill directory to a harness-specific location and
-    drop symlinks on the way, so a shared `lib/` cannot be linked in. A
-    vendored copy under `scripts/` wins when it is there; otherwise the walk
-    finds the repository root. Nothing reads a plugin root from the
-    environment, because no harness sets one.
+    Nothing reads a plugin root from the environment, because no harness sets
+    one.
     """
     here = Path(__file__).resolve()
     for base in (here.parent, *here.parents):
-        if (base / "lib" / "run" / "step.py").exists():
+        if (base / "scripts" / "lib" / "run" / "step.py").exists():
             return base
-    raise SystemExit("docs-skills: cannot locate lib/. Run `make vendor` or invoke from a checkout")
+        sibling = base / "docs-engine"
+        if (sibling / "scripts" / "lib" / "run" / "step.py").exists():
+            return sibling
+    raise SystemExit(
+        "docs-skills: cannot find the docs-engine skill. It ships alongside this "
+        "one and carries the shared runtime; install it, or run from a checkout."
+    )
 
 
-ROOT = _find_root()
-sys.path.insert(0, str(ROOT))
+ENGINE = _find_engine()
+sys.path.insert(0, str(ENGINE / "scripts"))
+
+PROMPTS = ENGINE / "prompts"
+SCHEMAS = ENGINE / "schemas"
+LANGUAGES = ENGINE / "languages"
+CONFIG = ENGINE / "config"
 
 try:
     import yaml
@@ -51,8 +63,10 @@ except ImportError:
 
 SCHEMA = "docs-skills/sync/1"
 
-LIB = ROOT / "lib"
-SKILLS = ROOT / "skills"
+LIB = ENGINE / "scripts" / "lib"
+# Every generator skill is a flat sibling of docs-engine, in an install and
+# in a checkout alike, so one parent reaches all of them.
+SKILLS = ENGINE.parent
 CONFIG_NAME = ".docs-gen.yaml"
 ARTIFACT_DIR = ".docs-gen"
 
@@ -206,39 +220,11 @@ def main(argv=None):
             log(f"nothing to do: {reason}")
             return 1
 
-    # 1. History. Deterministic, no model, always first.
-    context_args = [
-        LIB / "git" / "git_context.py",
-        "context",
-        "--repo",
-        repo,
-        "--excludes",
-        ROOT / "config" / "path_filters.txt",
-        "--out",
-        out_dir / "git-context.json",
-    ]
-    if (out_dir / "registry.json").exists():
-        context_args += ["--registry", out_dir / "boundaries.json"]
-    if args.range:
-        context_args += ["--range", args.range]
-    elif not args.bootstrap and Path(watermark).exists():
-        context_args += ["--since-watermark", watermark]
-    for prefix in config.get("issue_prefixes") or []:
-        context_args += ["--issue-prefix", prefix]
-    try:
-        run(context_args, "reading history")
-    except StepFailedError as exc:
-        log(str(exc))
-        return 3
-
-    context = json.loads((out_dir / "git-context.json").read_text())
-    head = context.get("head", "")
-    if context.get("range") is None:
-        log("watermark is unreachable; treat this as a full rebuild")
-
-    # 2. Registry and per-module API. Skipped when module boundaries held still.
+    # 1. Registry and per-module API. Runs before history, because attributing
+    # a commit to a module needs the boundaries, and a first run has none.
+    # Skipped entirely when the registry hash has not moved.
     analyze = [
-        SKILLS / "repo-analyze" / "scripts" / "analyze.py",
+        SKILLS / "docs-repo-analyze" / "scripts" / "analyze.py",
         "--repo",
         repo,
         "--out",
@@ -258,21 +244,57 @@ def main(argv=None):
 
     boundaries, registry = boundaries_file(out_dir)
 
-    # 3. Fingerprints, then the relevance verdict.
-    surface = out_dir / "api-surface.json"
-    api_dir = out_dir / "api"
-    snapshot = [
-        LIB / "git" / "api_surface.py",
-        "snapshot",
+    # 2. History, attributed against those boundaries.
+    context_args = [
+        LIB / "git" / "git_context.py",
+        "context",
         "--repo",
         repo,
         "--registry",
         boundaries,
+        "--excludes",
+        CONFIG / "path_filters.txt",
         "--out",
-        surface,
+        out_dir / "git-context.json",
     ]
-    if api_dir.is_dir():
-        snapshot += ["--api-dir", api_dir]
+    if args.range:
+        context_args += ["--range", args.range]
+    elif not args.bootstrap and Path(watermark).exists():
+        context_args += ["--since-watermark", watermark]
+    for prefix in config.get("issue_prefixes") or []:
+        context_args += ["--issue-prefix", prefix]
+    try:
+        run(context_args, "reading history")
+    except StepFailedError as exc:
+        log(str(exc))
+        return 3
+
+    context = json.loads((out_dir / "git-context.json").read_text())
+    head = context.get("head", "")
+    if context.get("range") is None:
+        log("watermark is unreachable; treat this as a full rebuild")
+
+    # 3. Fingerprints, then the relevance verdict.
+    surface = out_dir / "api-surface.json"
+    api_dir = out_dir / "api"
+
+    def snapshot_args(out, at=None):
+        """One snapshot invocation. `at` rebuilds a past surface in a worktree."""
+        argv = [
+            LIB / "git" / "api_surface.py",
+            "snapshot",
+            "--repo",
+            repo,
+            "--registry",
+            boundaries,
+            "--out",
+            out,
+        ]
+        if api_dir.is_dir():
+            argv += ["--api-dir", api_dir]
+        if at:
+            argv += ["--at", at]
+        return argv
 
     if args.bootstrap:
         rebuild = list(registry["modules"])
@@ -284,18 +306,18 @@ def main(argv=None):
             "review": [],
         }
         (out_dir / "relevance.json").write_text(json.dumps(relevance, indent=2) + "\n")
-        run(snapshot, "fingerprinting the public API")
+        run(snapshot_args(surface), "fingerprinting the public API")
         log(f"bootstrap: every module queued ({len(rebuild)})")
     else:
         base = (context.get("range") or {}).get("base")
         before = out_dir / "api-before.json"
         try:
             if base:
-                before_args = list(snapshot)
-                before_args[before_args.index(str(surface))] = str(before)
-                before_args += ["--at", base]
-                run(before_args, f"fingerprinting the API at {base[:7]}")
-            run(snapshot, "fingerprinting the public API")
+                run(
+                    snapshot_args(before, at=base),
+                    f"fingerprinting the API at {base[:7]}",
+                )
+            run(snapshot_args(surface), "fingerprinting the public API")
             if base and before.exists():
                 run(
                     [
@@ -391,9 +413,12 @@ def main(argv=None):
         return 5
 
     # 5. Metadata, then review. Both deterministic unless a claim needs judging.
+    # docs_meta takes --docs-dir on the parser, before the subcommand.
     run(
         [
             LIB / "md" / "docs_meta.py",
+            "--docs-dir",
+            docs_dir,
             "mark",
             "--repo",
             repo,
@@ -401,8 +426,6 @@ def main(argv=None):
             "file,git,context",
             "--context",
             out_dir / "git-context.json",
-            "--docs-dir",
-            docs_dir,
             "--write",
         ],
         "filling frontmatter",
@@ -428,13 +451,13 @@ def main(argv=None):
     run(
         [
             LIB / "md" / "docs_meta.py",
+            "--docs-dir",
+            docs_dir,
             "index",
             "--repo",
             repo,
             "--out",
             str(repo / "AGENTS.md"),
-            "--docs-dir",
-            docs_dir,
         ],
         "indexing",
         allowed=(0, 1, 3),
@@ -444,7 +467,7 @@ def main(argv=None):
     if config.get("changelog") and not args.no_changelog:
         run(
             [
-                SKILLS / "changelog" / "scripts" / "changelog.py",
+                SKILLS / "docs-changelog" / "scripts" / "changelog.py",
                 "--context",
                 out_dir / "git-context.json",
                 "--repo",
@@ -545,7 +568,7 @@ def render_pr_body(out_dir, relevance, report, context):
         lines += [f"- `{r.get('path')}`: {r.get('reason')}" for r in report["refused"]]
         lines.append("")
 
-    unattributed = context.get("unattributed_files") or []
+    unattributed = relevance.get("unattributed_files") or []
     if unattributed:
         lines += [
             "### Files no module claims",

@@ -23,33 +23,43 @@ import os
 import sys
 from pathlib import Path
 
-SKILL_DIR = Path(__file__).resolve().parent.parent
 
+def _find_engine():
+    """Locate the docs-engine skill, which holds the generator's shared runtime.
 
-def _find_root():
-    """Locate the shared lib, in the repository or vendored into this skill.
+    An installer copies each skill directory on its own and drops symlinks on
+    the way, so a tree shared above the skills cannot be linked in and does not
+    survive the copy. It does land every skill as a flat sibling, and that is
+    what this walk uses: docs-engine sits two levels up from any generator
+    skill's script, in an install and in a checkout alike.
 
-    Skill installers copy a skill directory to a harness-specific location and
-    drop symlinks on the way, so a shared `lib/` cannot be linked in. A
-    vendored copy under `scripts/` wins when it is there; otherwise the walk
-    finds the repository root. Nothing reads a plugin root from the
-    environment, because no harness sets one.
+    Nothing reads a plugin root from the environment, because no harness sets
+    one.
     """
     here = Path(__file__).resolve()
     for base in (here.parent, *here.parents):
-        if (base / "lib" / "run" / "step.py").exists():
+        if (base / "scripts" / "lib" / "run" / "step.py").exists():
             return base
-    raise SystemExit("docs-skills: cannot locate lib/. Run `make vendor` or invoke from a checkout")
+        sibling = base / "docs-engine"
+        if (sibling / "scripts" / "lib" / "run" / "step.py").exists():
+            return sibling
+    raise SystemExit(
+        "docs-skills: cannot find the docs-engine skill. It ships alongside this "
+        "one and carries the shared runtime; install it, or run from a checkout."
+    )
 
 
-ROOT = _find_root()
-sys.path.insert(0, str(ROOT))
+ENGINE = _find_engine()
+sys.path.insert(0, str(ENGINE / "scripts"))
+
+PROMPTS = ENGINE / "prompts"
+SCHEMAS = ENGINE / "schemas"
+LANGUAGES = ENGINE / "languages"
+CONFIG = ENGINE / "config"
 
 from lib.md import docs_meta, fences, language_file, render  # noqa: E402
 from lib.run import step  # noqa: E402
 
-PROMPTS = ROOT / "prompts"
-SCHEMAS = ROOT / "schemas"
 GENERATOR = "docs-skills/0.5.0"
 
 SCHEMA = "docs-skills/write/1"
@@ -380,7 +390,7 @@ def main(argv=None):
     parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument("--floor", type=int, default=render.DEFAULT_FLOOR)
     parser.add_argument("--max-modules", type=int, default=0, help="0 means no cap")
-    parser.add_argument("--languages-dir", default=str(ROOT / "languages"))
+    parser.add_argument("--languages-dir", default=str(LANGUAGES))
     args = parser.parse_args(argv)
 
     repo = Path(args.repo).resolve()

@@ -1,5 +1,5 @@
 ---
-name: git-context
+name: docs-git-context
 description: Extract structured history from a git repository for documentation generation. Resolves which revision range to document, parses the commit corpus, attributes changes to code modules, ranks hotspots, and tracks a per-module documented-SHA watermark for incremental CI runs. Deterministic and offline.
 argument-hint: <repo-path> [--range REV..REV | --since-watermark FILE]
 allowed-tools: Bash, Read, Write
@@ -12,7 +12,7 @@ documentation step reads. No model calls, no forge API, no network. A run over
 a few hundred commits takes under a second and produces the same output every
 time, which is what makes it safe to put in CI.
 
-Everything here is `lib/git/git_context.py`, stdlib only. Invoke it directly.
+Everything here is `docs-engine`'s `lib/git/git_context.py`, stdlib only. Invoke it directly.
 There is no agent dispatch and nothing harness-specific, so the same commands
 work under Claude Code, Codex, or a plain shell in a CI job.
 
@@ -28,12 +28,12 @@ Skip it only when generating docs for a repo with no history worth reading.
 # Resolve from this file, not from an environment variable: skill installers
 # copy a skill directory to a different path per harness, and none of them set
 # a plugin root.
-GC="$(dirname "$0")/../../lib/git/git_context.py"
+GC="$(dirname "$0")/../docs-engine/scripts/lib/git/git_context.py"
 
 # One artifact with everything downstream needs
 python3 "$GC" context --repo /path/to/repo \
   --registry .docs-gen/registry.json \
-  --excludes "$(dirname "$0")/../../config/path_filters.txt" \
+  --excludes "$(dirname "$0")/../docs-engine/config/path_filters.txt" \
   --out .docs-gen/git-context.json
 ```
 
@@ -118,13 +118,13 @@ floor to work from.
 
 ## API surface and change relevance
 
-`lib/git/api_surface.py` is the other half of this skill. It fingerprints the
+`docs-engine`'s `lib/git/api_surface.py` is the other half of this skill. It fingerprints the
 public API, which serves two jobs from one artifact: the rollup hashes drive
 cache invalidation, and diffing two snapshots decides whether a change is worth
 documenting.
 
 ```bash
-AS="$(dirname "$0")/../../lib/git/api_surface.py"
+AS="$(dirname "$0")/../docs-engine/scripts/lib/git/api_surface.py"
 
 python3 "$AS" snapshot --repo . --registry registry.json --at "$WATERMARK_SHA" --out before.json
 python3 "$AS" snapshot --repo . --registry registry.json --out after.json
@@ -164,11 +164,11 @@ means teaching the extractor, not touching this script.
 
 ## Metadata
 
-`lib/md/docs_meta.py` owns document frontmatter: reading, filling, validating,
+`docs-engine`'s `lib/md/docs_meta.py` owns document frontmatter: reading, filling, validating,
 indexing, and the staleness join.
 
 ```bash
-DM="$(dirname "$0")/../../lib/md/docs_meta.py"
+DM="$(dirname "$0")/../docs-engine/scripts/lib/md/docs_meta.py"
 
 python3 "$DM" mark  --repo . --source file,git,context --context git-context.json --write
 python3 "$DM" stale --repo . --relevance relevance.json --out stale.json

@@ -12,19 +12,22 @@ reference/                   Shared domain knowledge (frameworks, templates, gui
 hooks/hooks.json             Plugin-level Claude Code event hooks
 eval/                        Evaluation test cases and harness config
 
-lib/git/                     git_context.py, api_surface.py
-lib/md/                      docs_meta.py, language_file.py, fences.py, render.py
-lib/ast/languages.yaml       Per-language parse rules
-lib/run/step.py              The single model call. Prompt in, validated JSON out
-languages/<lang>.md          Per-language documentation conventions
-prompts/<step>.md            One file per model step
-schemas/<step>-out.json      What each model step must return
-config/                      Path filters, example .docs-gen.yaml, gitignore fragment
+skills/docs-engine/          Shared runtime for the generator. Not invoked directly
+  scripts/lib/git/           git_context.py, api_surface.py
+  scripts/lib/md/            docs_meta.py, language_file.py, fences.py, render.py
+  scripts/lib/ast/           languages.yaml, per-language parse rules
+  scripts/lib/run/step.py    The single model call. Prompt in, validated JSON out
+  languages/<lang>.md        Per-language documentation conventions
+  prompts/<step>.md          One file per model step
+  schemas/<step>-out.json    What each model step must return
+  config/                    Path filters, example .docs-gen.yaml, gitignore fragment
 ```
 
-The `lib/`, `languages/`, `prompts/`, and `schemas/` trees belong to the
-documentation generator. They are shared across its skills rather than bundled
-into each one, and the rules for reaching them differ from the sections below.
+The generator's shared code lives inside `skills/docs-engine/` rather than at the
+repository root. An installer copies each skill directory on its own and drops
+symlinks on the way, so a tree above the skills does not survive installation. It
+does place every skill as a flat sibling, which is what the generator skills use
+to reach the engine. The rules for doing that differ from the sections below.
 
 ## Calling scripts from skills
 
@@ -60,27 +63,34 @@ Its skills follow different rules from the ticket-driven pipeline, and the
 difference is deliberate.
 
 **No harness variables.** Nothing reads `${CLAUDE_PLUGIN_ROOT}` or
-`${CLAUDE_SKILL_DIR}`. Skill installers copy a skill directory to a
-harness-specific path and drop symlinks on the way, and no harness sets a plugin
-root. Python scripts resolve with a walk from `__file__`:
+`${CLAUDE_SKILL_DIR}`, because no harness sets a plugin root. Python scripts
+find the engine with a walk from `__file__`:
 
 ```python
-def _find_root():
+def _find_engine():
     here = Path(__file__).resolve()
     for base in (here.parent, *here.parents):
-        if (base / "lib" / "run" / "step.py").exists():
+        if (base / "scripts" / "lib" / "run" / "step.py").exists():
             return base
+        sibling = base / "docs-engine"
+        if (sibling / "scripts" / "lib" / "run" / "step.py").exists():
+            return sibling
 ```
 
-That finds a vendored copy under `scripts/` first and the repository root
-otherwise, so the same script works installed and in a checkout. `make vendor`
-produces the vendored copies. `SKILL.md` uses `$(dirname "$0")`.
+The same walk resolves `skills/docs-engine/` in a checkout and
+`<skills-dir>/docs-engine/` after an install, so there is no build step and no
+duplicated copy. `SKILL.md` uses `$(dirname "$0")/../docs-engine/`.
+
+**Skill names carry a `docs-` prefix.** A destination-path collision makes the
+installer skip the entire plugin with a warning rather than just the colliding
+skill, so an unprefixed name like `changelog` can make every skill here vanish
+from an installation.
 
 **No subagent dispatch.** No `Agent`, no `Task`, no fan-out. Where the plan
-calls for per-module work, it is a sequential loop over `lib/run/step.py`.
+calls for per-module work, it is a sequential loop over the engine's `step.py`.
 Parallelism is the harness's to supply; the skill supplies a list.
 
-**Every model call goes through `lib/run/step.py`.** Prompt file in, JSON out,
+**Every model call goes through the engine's `lib/run/step.py`.** Prompt in, JSON out,
 validated against a schema, one retry with the errors appended. A step that
 needs a model gets a prompt in `prompts/` and a schema in `schemas/`. Nothing
 calls a model any other way.
@@ -109,7 +119,7 @@ receives the surrounding text is a guarantee.
 - Install test dependencies with `pip install -r requirements.txt` before running `make test`
 - Use `feat:`, `fix:`, `docs:`, `chore:` commit prefixes
 - Generator skills carry no harness variables and no subagent dispatch (see above)
-- A new language is two files: an entry in `lib/ast/languages.yaml` and a
-  `languages/<lang>.md` whose frontmatter validates against
-  `schemas/language-file.json`
+- A new language is two files under `skills/docs-engine/`: an entry in
+  `scripts/lib/ast/languages.yaml` and a `languages/<lang>.md` whose frontmatter
+  validates against `schemas/language-file.json`
 - When referencing Python in install steps, always use `python3`

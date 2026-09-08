@@ -1,5 +1,5 @@
 ---
-name: repo-analyze
+name: docs-repo-analyze
 description: Map a code repository into modules, extract each module's public API, and summarize what each one does. Produces the registry, per-module API JSON, a dependency graph, and an onboarding guide. Sequential, with no subagent dispatch.
 argument-hint: <repo-path> [--llm-cmd CMD] [--out DIR]
 allowed-tools: Bash, Read, Write
@@ -12,7 +12,7 @@ modules exist, where their boundaries fall, what each one exposes, and what
 depends on what.
 
 `learn-code` with the agent layer removed. The fan-out over subagents is gone,
-replaced by one sequential model call per module through `lib/run/step.py`, so
+replaced by one sequential model call per module through `docs-engine`'s `lib/run/step.py`, so
 the same commands work under any harness or none.
 
 ## Quick start
@@ -59,7 +59,7 @@ library's `ast`, so no extraction happens here. Go, JavaScript, and TypeScript
 go through the tree-sitter extractor and arrive at the fingerprint layer via
 `--api-dir`.
 
-Parse rules per language live in `lib/ast/languages.yaml`: module boundaries,
+Parse rules per language live in `docs-engine/lib/ast/languages.yaml`: module boundaries,
 config file names, what counts as public, and the shared exclusion lists.
 Adding a language means teaching the extractor and adding an entry there.
 

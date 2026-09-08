@@ -1,5 +1,5 @@
 ---
-name: changelog
+name: docs-changelog
 description: Release notes from git history. Groups conventional commits by type, hoists breaking changes, and links pull request numbers with no model call. Falls back to one model call for a repository whose commit subjects are prose.
 argument-hint: "[--context FILE] [--version LABEL] [--llm-cmd CMD]"
 allowed-tools: Bash, Read, Write
@@ -15,7 +15,7 @@ paraphrase of the same information.
 
 ```bash
 CL="$(dirname "$0")/scripts/changelog.py"
-GC="$(dirname "$0")/../../lib/git/git_context.py"
+GC="$(dirname "$0")/../docs-engine/scripts/lib/git/git_context.py"
 
 python3 "$GC" context --repo . --out .docs-gen/git-context.json
 python3 "$CL" --context .docs-gen/git-context.json --repo . --version v1.2.0

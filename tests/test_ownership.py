@@ -13,7 +13,8 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_ROOT))
+ENGINE = _ROOT / "skills" / "docs-engine"
+sys.path.insert(0, str(ENGINE / "scripts"))
 
 from lib.md import fences, language_file, render  # noqa: E402
 
@@ -188,7 +189,7 @@ def test_merge_front_never_demotes_a_manual_file():
 
 def test_every_shipped_language_file_validates():
     """A contributor adding a language finds out here, not in a generation run."""
-    catalogue = language_file.load_all(_ROOT / "languages")
+    catalogue = language_file.load_all(ENGINE / "languages")
     assert catalogue, "no language files found"
     for name, lang in catalogue.items():
         assert lang.language == name
@@ -211,7 +212,7 @@ def test_language_file_renders_its_generator_command():
 
 def test_doc_comments_are_not_writable_by_default():
     """Writing doc comments into source is a code PR, a different risk class."""
-    for lang in language_file.load_all(_ROOT / "languages").values():
+    for lang in language_file.load_all(ENGINE / "languages").values():
         assert lang.writes_doc_comments is False
 
 
