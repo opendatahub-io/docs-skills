@@ -25,7 +25,7 @@ REFERENCE = Path(__file__).resolve().parents[1] / "reference"
 
 import write_module  # noqa: E402
 from lib.git import api_surface, commit_select  # noqa: E402
-from lib.md import changeset, docs_meta, fences, render, sections  # noqa: E402
+from lib.md import changeset, docs_meta, fences, render  # noqa: E402
 from lib.md.ownership import (  # noqa: E402
     WriteRefusedError,
     existing_summary,
@@ -173,7 +173,7 @@ def run_with_repair(prompt, payload, schema, args, values, place, lint_path, res
 
         try:
             wrote, reason, extra = place(result)
-        except (WriteRefusedError, fences.FenceError, sections.SectionError) as exc:
+        except (WriteRefusedError, fences.FenceError) as exc:
             return {"status": "refused", "reason": str(exc)}, result
         wrote_any = wrote_any or wrote
         wrote_reason = reason if wrote else wrote_reason
@@ -763,9 +763,7 @@ def build_parser():
     picks.add_argument("--plan", default=None, help="plan.json. Defaults to <out>/plan.json")
     picks.add_argument("--relevance", help="Module mode: write the modules in rebuild[]")
     picks.add_argument("--modules", nargs="*", help="Module mode: write these modules")
-    picks.add_argument(
-        "--max-modules", type=int, default=0, help="Module mode: 0 means no cap"
-    )
+    picks.add_argument("--max-modules", type=int, default=0, help="Module mode: 0 means no cap")
     picks.add_argument(
         "--changeset",
         default=None,

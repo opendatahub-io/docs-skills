@@ -35,9 +35,7 @@ def _registry(*names):
     return {
         "language": "python",
         "module_count": len(names),
-        "modules": {
-            name: {"kind": "library", "file_count": 1, "paths": [name]} for name in names
-        },
+        "modules": {name: {"kind": "library", "file_count": 1, "paths": [name]} for name in names},
         "registry_hash": "sha256:x",
     }
 
@@ -271,7 +269,8 @@ def test_bootstrap_reports_a_failed_snapshot_rather_than_raising():
     """The first run against a new repository is the one most likely to hit an
     extractor problem, and it ended in a traceback."""
     source = (REPO_ROOT / "skills" / "docs-sync" / "scripts" / "sync.py").read_text()
-    bootstrap = source[source.index("if args.bootstrap:") : source.index("    else:", source.index("if args.bootstrap:"))]
+    opens = source.index("if args.bootstrap:")
+    bootstrap = source[opens : source.index("    else:", opens)]
     assert "try:" in bootstrap, bootstrap
 
 
@@ -312,3 +311,17 @@ def test_the_generator_stamp_is_derived_from_the_package_version():
         "skills/docs-changelog/scripts/changelog.py",
     ):
         assert "GENERATOR = " not in (REPO_ROOT / rel).read_text(), rel
+
+
+def test_the_numbered_section_splicer_is_gone():
+    """`lib/md/sections.py` split a published guide on its dotted section
+    numbers, for the update path that read an `rhd` cache. That path went, and
+    nothing called any of its five names afterwards: the one reference left was
+    a `SectionError` in an except tuple that could no longer be raised.
+    """
+    assert not (_ENGINE / "lib" / "md" / "sections.py").exists()
+    assert not (REPO_ROOT / "tests" / "test_sections.py").exists()
+    for script in sorted((REPO_ROOT / "skills").rglob("*.py")):
+        source = script.read_text()
+        assert "sections.SectionError" not in source, script
+        assert "import sections" not in source, script

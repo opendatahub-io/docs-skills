@@ -494,7 +494,6 @@ def main(argv=None):
         log(f"{exc}", "error")
         return 2
 
-
     registry_path = out_dir / "registry.json"
     if args.skip_cached and registry_path.exists():
         existing = json.loads(registry_path.read_text())

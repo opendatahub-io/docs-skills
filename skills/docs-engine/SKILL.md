@@ -37,11 +37,11 @@ Everything the bootstrap would otherwise recompute lives in [scripts/lib/run/eng
 ```
 scripts/lib/ast/       the walkers and extractors; languages.yaml documents them
 scripts/lib/git/       git_context.py, api_surface.py, commit_select.py, digest.py
-scripts/lib/md/        docs_meta.py, fences.py, render.py, sections.py,
-                       changeset.py, language_file.py, ownership.py
+scripts/lib/md/        docs_meta.py, fences.py, render.py, changeset.py,
+                       language_file.py, ownership.py
 scripts/lib/pipeline/  config.py and workspace.py: what a run resolves before it starts
 scripts/lib/run/       step.py (the single model call), engine.py (where things are),
-                       report.py (what a step says), ask.py, coverage.py, evidence.py
+                       report.py (what a step says), ask.py (the pi bridge)
 scripts/lib/vale/      check.py, compose.py, repair.py
 prompts/               one file per model step
 schemas/               what each model step must return

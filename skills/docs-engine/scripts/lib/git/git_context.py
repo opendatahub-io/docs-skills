@@ -452,8 +452,6 @@ def summarize(commits):
     }
 
 
-
-
 # ------------------------------------------------------------------ commands
 
 
@@ -670,7 +668,6 @@ def main():
     p.add_argument("--doc")
     p.add_argument("--registry-hash")
     p.set_defaults(func=cmd_watermark)
-
 
     args = parser.parse_args()
     if getattr(args, "repo", None) and not is_repo(args.repo):

@@ -17,7 +17,7 @@ tests/                       pytest suite and the synthetic fixture repository
 
 skills/docs-engine/          Shared runtime for the generator. Not invoked directly
   scripts/lib/git/           git_context.py, api_surface.py, commit_select.py, digest.py
-  scripts/lib/md/            docs_meta.py, fences.py, render.py, ownership.py, sections.py, changeset.py
+  scripts/lib/md/            docs_meta.py, fences.py, render.py, ownership.py, changeset.py
   scripts/lib/ast/           languages.yaml, per-language parse rules, exclusions.py
   scripts/lib/vale/          check.py, compose.py, repair.py
   scripts/lib/pipeline/      config.py, workspace.py
