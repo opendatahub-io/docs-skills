@@ -33,6 +33,10 @@ EXTRACTORS = ENGINE / "scripts" / "lib" / "ast"
 
 SCHEMA = "docs-skills/registry/1"
 
+# Mirrors `analyze.synthesis_budget` in lib/pipeline/config.py, for a direct
+# invocation that reads no config file.
+DEFAULT_SYNTHESIS_BUDGET = 240000
+
 TREESITTER_LANGS = {"go", "javascript", "typescript"}
 
 
@@ -256,15 +260,14 @@ def extract_api(repo, registry, out_dir):
 # ------------------------------------------------------------------- main
 
 
-def dep_pairs(out_dir):
+def dep_pairs(out_dir, registry):
     """Cross-module edges, deduplicated, from the module summaries.
 
     Runs after the summaries because that is where declared dependencies come
     from. Deterministic in itself: the same summaries always yield the same
     graph.
     """
-    module_dir = Path(out_dir) / "modules"
-    summaries = [json.loads(p.read_text()) for p in sorted(module_dir.glob("*.json"))]
+    summaries = module_summaries(out_dir, registry)
     if not summaries:
         return {"pairs": [], "total_pairs": 0}
 
@@ -357,39 +360,158 @@ def read_sources(repo, files, budget=60000):
     return chunks
 
 
-def synthesize(registry, out_dir, llm_cmd, timeout):
-    """One call over every module summary and the dependency graph.
+def module_summaries(out_dir, registry):
+    """This run's module summaries, in a stable order.
 
-    The previous design fanned out a second time to analyze relationships pair
-    by pair. One call over the whole dependency graph sees the shape the pairs
-    make, which is what an onboarding guide is about.
+    Reads the modules the current registry names rather than globbing the
+    directory. A run whose boundaries have moved leaves summaries behind, and
+    globbing picked them up: a guide could describe modules that no longer
+    exist, attributed to a run that never saw them.
     """
     module_dir = Path(out_dir) / "modules"
-    summaries = []
-    for path in sorted(module_dir.glob("*.json")):
-        summaries.append(json.loads(path.read_text()))
+    found = []
+    for name in sorted(registry.get("modules") or {}):
+        path = module_dir / f"{slug(name)}.json"
+        if not path.is_file():
+            continue
+        try:
+            found.append(json.loads(path.read_text()))
+        except (OSError, json.JSONDecodeError) as exc:
+            # One unreadable summary is one module missing from the guide, not
+            # a reason to abandon the modules beside it.
+            log(f"{name}: summary is not readable ({exc})", "warning")
+    return found
+
+
+def partition(summaries, budget):
+    """Pack summaries into batches of at most `budget` characters.
+
+    Deterministic: the input order decides the batches, and the caller hands
+    them over sorted. A summary larger than the budget on its own still gets a
+    batch, because refusing to place it would drop a module from the guide
+    without saying so.
+    """
+    batches, current, used = [], [], 0
+    for entry in summaries:
+        size = len(json.dumps(entry))
+        if current and used + size > budget:
+            batches.append(current)
+            current, used = [], 0
+        current.append(entry)
+        used += size
+    if current:
+        batches.append(current)
+    return batches
+
+
+def _record_failure(out_dir, command, summaries, exc, stage, batch=None):
+    """What a failed synthesis leaves behind for whoever has to diagnose it.
+
+    `$: no JSON object or array found in output` on its own says nothing about
+    why. StepError carries the raw reply, and this is where it stops being
+    thrown away.
+    """
+    record = {
+        "stage": stage,
+        "command": command,
+        "modules": len(summaries),
+        "input_chars": sum(len(json.dumps(entry)) for entry in summaries),
+        "errors": list(getattr(exc, "errors", None) or [str(exc)]),
+        "raw": getattr(exc, "raw", ""),
+    }
+    if batch is not None:
+        record["batch"] = batch
+    path = Path(out_dir) / "synthesis-error.json"
+    path.write_text(json.dumps(record, indent=2) + "\n")
+    log(f"synthesis failed at {stage}: {record['errors'][0]}", "error")
+    log(f"{record['modules']} module(s), {record['input_chars']} chars; see {path.name}")
+    return path
+
+
+def compact(summaries, out_dir, llm_cmd, timeout, budget):
+    """Reduce a large summary set until it fits one call.
+
+    Returns the summaries to synthesize from, or None when a batch failed. A
+    set that already fits comes back untouched, so a small repository makes
+    exactly the one call it always did.
+    """
+    batches = partition(summaries, budget)
+    if len(batches) < 2:
+        return summaries
+
+    log(f"{len(summaries)} summaries over the {budget} char budget; {len(batches)} batches")
+    prompt = (PROMPTS / "synthesize-batch.md").read_text()
+    schema = json.loads((SCHEMAS / "synthesize-batch-out.json").read_text())
+    compacted = []
+    for index, batch in enumerate(batches, start=1):
+        log(f"[{index}/{len(batches)}] compacting {len(batch)} module(s)")
+        try:
+            result, _ = step.run_step(
+                prompt, {"_kind": "batch", "modules": batch}, schema, llm_cmd, timeout
+            )
+        except (step.StepError, RuntimeError) as exc:
+            _record_failure(out_dir, llm_cmd, batch, exc, "batch", batch=index)
+            return None
+        compacted.extend(result.get("modules") or [])
+    return compacted
+
+
+def synthesize(
+    registry, out_dir, llm_cmd, timeout, budget=DEFAULT_SYNTHESIS_BUDGET, narrowed=False
+):
+    """The onboarding guide, over every module summary and the dependency graph.
+
+    One call sees the shape the dependency pairs make, which is what an
+    onboarding guide is about. Where the summaries are too large for one call,
+    they are compacted in batches first and the final call reads those.
+    """
+    out_dir = Path(out_dir)
+    if narrowed:
+        # A guide built from three of fifty modules describes a repository
+        # nobody has. `--modules` is for iterating on one module's summary.
+        log(
+            "--modules narrowed this run, so the guide would describe part of "
+            "the repository as the whole of it; skipping synthesis",
+            "warning",
+        )
+        return None
+
+    summaries = module_summaries(out_dir, registry)
     if not summaries:
         log("no module summaries to synthesize")
         return None
 
-    pairs_path = Path(out_dir) / "dep-pairs.json"
-    pairs = json.loads(pairs_path.read_text()) if pairs_path.exists() else {}
+    reduced = compact(summaries, out_dir, llm_cmd, timeout, budget)
+    if reduced is None:
+        return None
+
+    pairs_path = out_dir / "dep-pairs.json"
+    pairs = {}
+    if pairs_path.exists():
+        try:
+            pairs = json.loads(pairs_path.read_text())
+        except json.JSONDecodeError as exc:
+            log(f"dep-pairs.json is not readable ({exc}); synthesizing without it", "warning")
 
     payload = {
         "language": registry["language"],
         "module_count": registry["module_count"],
         "config_files": registry.get("config_files", []),
-        "modules": summaries,
+        "modules": reduced,
         "dependencies": pairs.get("pairs") or pairs.get("dependencies") or [],
     }
     prompt = (PROMPTS / "synthesize-modules.md").read_text()
     schema = json.loads((SCHEMAS / "synthesize-out.json").read_text())
     log("synthesizing onboarding guide")
-    result, _ = step.run_step(prompt, payload, schema, llm_cmd, timeout)
+    try:
+        result, _ = step.run_step(prompt, payload, schema, llm_cmd, timeout)
+    except (step.StepError, RuntimeError) as exc:
+        _record_failure(out_dir, llm_cmd, reduced, exc, "synthesis")
+        return None
 
     from lib.md import render  # local import: only the model path needs it
 
-    target = Path(out_dir) / "ONBOARDING.md"
+    target = out_dir / "ONBOARDING.md"
     target.write_text(render.document(result))
     return target
 
@@ -462,6 +584,15 @@ def main(argv=None):
     )
     parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument(
+        "--synthesis-budget",
+        type=int,
+        default=DEFAULT_SYNTHESIS_BUDGET,
+        help=(
+            "Characters of module summaries per synthesis call. Over this, the "
+            "summaries are compacted in batches first"
+        ),
+    )
+    parser.add_argument(
         "--modules", nargs="*", help="Summarize only these modules. Registry still full"
     )
     parser.add_argument(
@@ -526,16 +657,23 @@ def main(argv=None):
         log(f"every module summary failed ({len(failed)})", "error")
         return 3
 
-    graph = dep_pairs(out_dir)
+    graph = dep_pairs(out_dir, registry)
     log(f"{graph.get('total_pairs', 0)} dependency pairs")
 
-    try:
-        target = synthesize(registry, out_dir, args.llm_cmd, args.timeout)
-    except (step.StepError, RuntimeError) as exc:
-        log(f"synthesis failed: {exc}", "error")
+    target = synthesize(
+        registry,
+        out_dir,
+        args.llm_cmd,
+        args.timeout,
+        budget=args.synthesis_budget,
+        narrowed=only is not None,
+    )
+    if target is None and only is None:
+        # A narrowed run declines to synthesize and says so; anything else
+        # reaching here failed, and left synthesis-error.json behind.
         return 3
 
-    log(f"{len(written)} summarized, {len(failed)} failed, wrote {target}")
+    log(f"{len(written)} summarized, {len(failed)} failed, wrote {target or 'no guide'}")
     return 0
 
 

@@ -42,6 +42,7 @@ they cost nothing.
 | `modules/<slug>.json` | yes | Purpose, responsibilities, dependencies, gotchas |
 | `dep-pairs.json` | no | Cross-module edges, from those summaries |
 | `ONBOARDING.md` | yes | The synthesis |
+| `synthesis-error.json` | no | Written only when synthesis fails: stage, command, input size, errors, raw reply |
 
 A module name carries slashes and a filename cannot, so `pkg/scheduler` is
 written as `pkg__scheduler.json`. Each file names its own module in a `module`
@@ -53,6 +54,33 @@ key, and the ingestion path reads that rather than the filename.
 the watermark skips module analysis entirely, which is what `--skip-cached`
 does. A mismatch means attribution from an earlier run cannot be trusted, so
 every module rebuilds regardless of what the API diff says.
+
+## Bounding the synthesis
+
+The onboarding guide is one call over every module summary and the dependency
+graph, because one call sees the shape the pairs make. A repository with enough
+modules exceeds the model's context window doing that, and the only thing said
+about it was `$: no JSON object or array found in output`.
+
+So the summaries are packed into batches of at most `--synthesis-budget`
+characters, each batch is compacted by one call that keeps the module paths,
+dependencies, gotchas and evidence while shortening the prose, and the guide is
+written from those. One batch means one call, so a small repository behaves
+exactly as it did.
+
+Characters rather than tokens: `read_sources` already budgets that way, a token
+count needs either a tokenizer dependency or a chars-per-token guess that is a
+character budget wearing a hat, and this runtime is the standard library plus
+PyYAML. Roughly four characters to a token, so the 240,000 default is about
+60,000 tokens of summaries per call.
+
+A failed synthesis writes `synthesis-error.json`: the stage, the command, the
+module count, the input size in characters, the errors, and the raw reply the
+model actually sent.
+
+`--modules` narrows which modules are summarized, and a guide built from three
+of fifty describes a repository nobody has, so a narrowed run skips synthesis
+and says so. Any existing `ONBOARDING.md` is left alone.
 
 ## Narrowing a large repository
 

@@ -36,7 +36,13 @@ DEFAULTS = {
     # repository could configure one entry point and not the other.
     "bot_author": "",
     "max_modules_per_run": 20,
-    "token_budget": 400000,
+    # Synthesis packs module summaries into batches under this many characters.
+    # Characters rather than tokens: `read_sources` already budgets that way, a
+    # token count needs either a tokenizer dependency or a chars-per-token guess
+    # that is a character budget wearing a hat, and the runtime is stdlib plus
+    # PyYAML by design. Roughly four characters to a token, so 240,000 is about
+    # 60,000 tokens of summaries per call.
+    "analyze": {"synthesis_budget": 240000},
     "write_doc_comments": False,
     "language": "auto",
     "changelog": True,

@@ -24,6 +24,12 @@ generate:
   # `auto` detects the language; otherwise an explicit name.
   language: auto
 
+  # Characters of module summaries the onboarding synthesis sends in one call.
+  # Over this, the summaries are compacted in batches first, so a repository
+  # with more modules than fit a context window still produces a guide.
+  analyze:
+    synthesis_budget: 240000
+
   # docs-sync only. The author whose commits mean this run is looking at its
   # own last push, and the ceiling on modules rebuilt in one run.
   bot_author: docs-bot@example.com
