@@ -17,7 +17,6 @@ the step, because an expired token failing every call alike must never read as
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 import types
 from pathlib import Path
@@ -37,16 +36,6 @@ for path in (_ENGINE, _PLACE, _RESEARCH, _SOURCES, _WRITE):
 import write  # noqa: E402
 from lib.md import docs_meta  # noqa: E402
 
-INVALID = "Error: Not a valid Red Hat Documentation link (error 2001)"
-
-
-def fake_rhd_run(monkeypatch, stderr, returncode=1):
-    def run(argv, capture_output, text, timeout):
-        return subprocess.CompletedProcess(argv, returncode, "", stderr)
-
-    monkeypatch.setattr(rhd.subprocess, "run", run)
-
-
 # ------------------------------------------------------------------- the line
 
 
@@ -61,7 +50,7 @@ def test_one_deliverable_that_raises_does_not_discard_the_others(monkeypatch, tm
     ]
     (out / "plan.json").write_text(json.dumps({"deliverables": deliverables}))
 
-    def one_raises(repo, item, findings, out_dir, *a, **k):
+    def one_raises(repo, item, out_dir, *a, **k):
         if item["path"] == "boom.md":
             raise RuntimeError("the archetype file is missing")
         return {"deliverable": item["path"], "status": "written", "path": "docs/fine.md"}
@@ -74,11 +63,11 @@ def test_one_deliverable_that_raises_does_not_discard_the_others(monkeypatch, tm
         vale_config=None,
         vale_level="error",
         vale_attempts=1,
+        repair_attempts=1,
         docs_dir="docs",
         plan=str(out / "plan.json"),
         changeset=str(tmp_path / "repo" / "docs" / "changeset-x"),
         changes=None,
-        ticket="TICKET-1",
         topic="t",
     )
     (tmp_path / "repo").mkdir()
@@ -92,13 +81,6 @@ def test_one_deliverable_that_raises_does_not_discard_the_others(monkeypatch, tm
 
 
 # ----------------------------------------------------------------- frontmatter
-
-
-def test_invalid_frontmatter_yaml_arrives_as_this_module_s_own_error():
-    """A `YAMLError` reaching a caller is a different exception for the same
-    fact, and it escaped every guard written for malformed frontmatter."""
-    with pytest.raises(docs_meta.MetaError):
-        docs_meta.parse("---\ntitle: [unclosed\n---\n\nBody.\n")
 
 
 def test_invalid_frontmatter_yaml_arrives_as_this_module_s_own_error():

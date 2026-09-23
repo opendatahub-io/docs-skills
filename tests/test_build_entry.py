@@ -32,9 +32,7 @@ def test_the_build_entry_point_is_where_the_extension_looks():
     """`extensions/docs.ts` joins this path. A move breaks the command."""
     assert BUILD.is_file()
     joined = (ROOT / "extensions" / "docs.ts").read_text()
-    assert '"skills", "docs", "scripts", "build.py"' in joined.replace("\n", "").replace(
-        "  ", ""
-    )
+    assert '"skills", "docs", "scripts", "build.py"' in joined.replace("\n", "").replace("  ", "")
 
 
 def test_help_comes_from_the_existing_parser(capsys):
@@ -94,6 +92,7 @@ def test_console_style_sync_initializes_an_empty_repository(tmp_path, monkeypatc
     assert (out_dir / "vale-packages").is_dir()
     assert not (out_dir / "vale-sync.ini").exists()
     assert calls == [["vale", "--config", str(out_dir / "vale-sync.ini"), "sync"]]
+
 
 def test_console_does_not_build_when_style_sync_fails(tmp_path, monkeypatch):
     build = load_build()

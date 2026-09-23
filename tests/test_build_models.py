@@ -180,6 +180,7 @@ def test_the_policy_modules_do_not_print():
         assert "print(" not in source, f"{name} prints"
         assert "log(" not in source, f"{name} logs"
 
+
 def test_the_bridge_reads_as_the_session_in_the_table():
     """`python3 '/long/path/ask.py'` says less to a reader than what it does."""
     table = pipeline_config.model_table({}, None, "python3 '/some/where/lib/run/ask.py'")

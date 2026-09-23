@@ -74,6 +74,7 @@ def out_values(calls, name):
         found.append(argv[argv.index("--out") + 1])
     return found
 
+
 def test_topic_mode_is_keyed_by_its_slug(tmp_path):
     """A run with no ticket still needs a name of its own, and it is the same
     name its changeset under `docs/` carries."""
@@ -121,6 +122,7 @@ def test_a_caller_naming_its_own_trail_keeps_it(tmp_path, monkeypatch):
 
     assert os.environ[step.TRAIL_ENV] == str(tmp_path / "mine.jsonl")
 
+
 def test_the_vale_workspace_is_per_run_and_its_packages_are_not(tmp_path, monkeypatch):
     """`--sync-styles` downloads the packages once and the repository's own
     `.vale.ini` names that one path, so a run composes against the root while
@@ -142,6 +144,7 @@ def test_the_vale_workspace_is_per_run_and_its_packages_are_not(tmp_path, monkey
 
     assert seen["out_dir"] == build.run_directory(root, args)
     assert seen["packages_dir"] == root / workspace.VALE_PACKAGES_DIR
+
 
 # --------------------------------------------------- a re-run starts from nothing
 
@@ -181,6 +184,7 @@ def test_the_shared_caches_survive_a_rerun(tmp_path):
     assert (root / "checkouts" / "org-repo" / "README").is_file()
     assert (root / "vale-packages" / "RedHat").is_dir()
     assert not where.exists()
+
 
 def test_clearing_a_directory_that_is_not_there_is_fine(tmp_path):
     root = tmp_path / "out"

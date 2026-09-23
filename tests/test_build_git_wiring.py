@@ -294,6 +294,7 @@ def test_no_relevant_commits_means_write_gets_no_flag_either(tmp_path, monkeypat
     assert len(write_calls) == 1
     assert "--changes" not in write_calls[0]
 
+
 def test_a_ticket_with_no_summary_falls_back_to_topic_only(tmp_path, monkeypatch):
     out_dir = tmp_path / "out"
     out_dir.mkdir()

@@ -12,35 +12,15 @@
           "type": {"type": "string", "enum": ["concept", "procedure", "reference"]},
           "title": {"type": "string", "minLength": 1},
           "rationale": {"type": "string", "minLength": 1},
-          "sources": {"type": "array", "items": {"type": "string"}},
-          "requirements": {
+          "sources": {
             "type": "array",
-            "description": "The numbers of the requirements this document answers. Coverage is measured against these, so a deliverable claiming none documents none.",
-            "items": {"type": "integer", "minimum": 1}
+            "description": "Module paths from the registry, or the page path for an update. The planner drops any that name neither.",
+            "items": {"type": "string"}
           },
-          "kind": {"type": "string", "enum": ["new", "update"]},
-          "target": {
-            "type": "object",
-            "properties": {
-              "guide_url": {"type": "string"},
-              "section": {"type": "string"}
-            }
-          }
+          "kind": {"type": "string", "enum": ["new", "update"]}
         }
       }
     },
-    "covered": {"type": "array", "items": {"type": "string"}},
-    "deferred": {
-      "type": "array",
-      "description": "Requirements no deliverable in this plan answers, each with the reason nothing does.",
-      "items": {
-        "type": "object",
-        "required": ["requirement", "reason"],
-        "properties": {
-          "requirement": {"type": "integer", "minimum": 1},
-          "reason": {"type": "string", "minLength": 1}
-        }
-      }
-    }
+    "covered": {"type": "array", "items": {"type": "string"}}
   }
 }
