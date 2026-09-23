@@ -18,7 +18,7 @@ def build(repo, out_dir, config, package_root, packages_dir=None):
 
     `out_dir` is one run's own directory and the workspace is rebuilt inside
     it. `packages_dir` is where `--sync-styles` put the downloaded packages,
-    which is one directory shared by every run: re-downloading them per ticket
+    which is one directory shared by every run: re-downloading them per run
     would spend a network round trip on files that never differ, and the
     repository's own `.vale.ini` names that path once.
     """

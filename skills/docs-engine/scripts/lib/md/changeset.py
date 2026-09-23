@@ -17,14 +17,14 @@ def _slug(text):
     return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
 
 
-def marker_id(ticket, topic):
-    """The ticket key, or the topic's slug when there is no ticket."""
-    return ticket.strip() if ticket and ticket.strip() else _slug(topic)[:60]
+def marker_id(key, topic):
+    """An explicit key, or the topic's slug when there is none."""
+    return key.strip() if key and key.strip() else _slug(topic)[:60]
 
 
-def directory_for(docs_dir, ticket, topic, today, base=None):
-    """Where this run's documents go, keyed by date and ticket."""
-    name = marker_id(ticket, topic) or "run"
+def directory_for(docs_dir, key, topic, today, base=None):
+    """Where this run's documents go, keyed by date and subject."""
+    name = marker_id(key, topic) or "run"
     if base is not None:
         parent = Path(base) / docs_dir
         if parent.is_dir():

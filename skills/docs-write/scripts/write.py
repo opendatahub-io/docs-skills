@@ -43,8 +43,8 @@ GENERATOR = "docs-skills/0.4.0"
 
 SCHEMA = "docs-skills/write/1"
 
-# Lower than commit_select.DEFAULT_LIMIT of 30, the ticket-wide cut plan.py
-# forwards. A deliverable is a narrower subject than its ticket, and by the
+# Lower than commit_select.DEFAULT_LIMIT of 30, the run-wide cut plan.py
+# forwards. A deliverable is a narrower subject than the run, and by the
 # time a commit reaches this payload it sits behind the published excerpts and
 # up to 400 API symbols. More would crowd out what already carries the page.
 CHANGES_LIMIT = 8

@@ -22,89 +22,43 @@ import subprocess
 import sys
 from pathlib import Path
 
-
-def _find_engine():
-    """Locate the docs-engine skill, which holds the generator's shared runtime.
-
-    An installer copies each skill directory on its own and drops symlinks on
-    the way, so a tree shared above the skills cannot be linked in and does not
-    survive the copy. It does land every skill as a flat sibling, and that is
-    what this walk uses: docs-engine sits two levels up from any generator
-    skill's script, in an install and in a checkout alike.
-
-    Nothing reads a plugin root from the environment, because no harness sets
-    one.
-    """
-    here = Path(__file__).resolve()
-    for base in (here.parent, *here.parents):
-        if (base / "scripts" / "lib" / "run" / "step.py").exists():
-            return base
-        sibling = base / "docs-engine"
-        if (sibling / "scripts" / "lib" / "run" / "step.py").exists():
-            return sibling
+# docs-engine carries the shared runtime and lands as a flat sibling of this
+# skill, in an install and in a checkout alike. Saying so here, rather than
+# letting the import fail, names what is missing when it is missing. The
+# explicit position rather than a walk: lib/run/engine.py derives PACKAGE_ROOT
+# as ENGINE.parent.parent to reach styles/ and vale/, which a walk that halted
+# at the first directory holding step.py could not.
+ENGINE = Path(__file__).resolve().parents[2] / "docs-engine"
+if not (ENGINE / "scripts" / "lib" / "run" / "step.py").exists():
     raise SystemExit(
-        "docs-skills: cannot find the docs-engine skill. It ships alongside this "
-        "one and carries the shared runtime; install it, or run from a checkout."
+        "docs-skills: the docs-engine skill is missing. It ships alongside this one "
+        "and carries the shared runtime; install it, or run from a checkout."
     )
-
-
-ENGINE = _find_engine()
 sys.path.insert(0, str(ENGINE / "scripts"))
 
-PROMPTS = ENGINE / "prompts"
-SCHEMAS = ENGINE / "schemas"
-LANGUAGES = ENGINE / "languages"
-CONFIG = ENGINE / "config"
-
-try:
-    import yaml
-except ImportError:
-    yaml = None
+from lib.pipeline import workspace  # noqa: E402
+from lib.pipeline.config import (  # noqa: E402
+    ARTIFACT_DIR,
+    check_steps,
+    llm_cmd_for,
+    load_config,
+    model_table,
+    step_is_configured,
+)
+from lib.run.engine import (  # noqa: E402
+    CONFIG,
+    LIB,
+    PACKAGE_ROOT,
+    SKILLS,
+)
+from lib.run.report import logger  # noqa: E402
 
 SCHEMA = "docs-skills/sync/1"
 
-LIB = ENGINE / "scripts" / "lib"
-# Every generator skill is a flat sibling of docs-engine, in an install and
-# in a checkout alike, so one parent reaches all of them.
-SKILLS = ENGINE.parent
-CONFIG_NAME = ".docs-gen.yaml"
-ARTIFACT_DIR = ".docs-gen"
-
-DEFAULTS = {
-    "llm_cmd": "claude -p",
-    "docs_dir": "docs",
-    "issue_prefixes": [],
-    "bot_author": "",
-    "max_modules_per_run": 20,
-    "token_budget": 400000,
-    "write_doc_comments": False,
-    "language": "auto",
-    "changelog": True,
-    "modules": {"include": [], "exclude": []},
-}
-
-
-def log(message):
-    print(f"docs-sync: {message}", file=sys.stderr)
+log = logger("docs-sync")
 
 
 # ------------------------------------------------------------------- config
-
-
-def load_config(repo):
-    """`.docs-gen.yaml` at the repository root. One config surface, not two."""
-    config = dict(DEFAULTS)
-    path = Path(repo) / CONFIG_NAME
-    if not path.exists():
-        return config
-    if yaml is None:
-        log(f"{CONFIG_NAME} found but PyYAML is missing; using defaults")
-        return config
-    data = yaml.safe_load(path.read_text()) or {}
-    generate = data.get("generate") or {}
-    for key, value in generate.items():
-        config[key] = value
-    return config
 
 
 # --------------------------------------------------------------- loop guard
@@ -205,7 +159,16 @@ def main(argv=None):
     repo = Path(args.repo).resolve()
     config = load_config(repo)
     docs_dir = args.docs_dir or config["docs_dir"]
-    llm_cmd = args.llm_cmd or os.environ.get("DOCS_LLM_CMD") or config["llm_cmd"]
+    env_cmd = os.environ.get("DOCS_LLM_CMD")
+    try:
+        check_steps(config)
+    except ValueError as exc:
+        log(str(exc), "error")
+        return 2
+    if getattr(args, "models", False):
+        print(model_table(config, args.llm_cmd, env_cmd))
+        return 0
+    llm_cmd = llm_cmd_for("write", config, args.llm_cmd, env_cmd)
     max_modules = (
         args.max_modules if args.max_modules is not None else config["max_modules_per_run"]
     )
@@ -396,6 +359,21 @@ def main(argv=None):
         "--modules",
         *rebuild,
     ]
+    # Late, because the workspace writes style files into the artifact
+    # directory and nothing that scans the tree may run after it, and just
+    # ahead of the write step, so a draft is gated before a model drafts from
+    # artifacts that are already over budget.
+    vale_config, note = workspace.build(
+        repo,
+        out_dir,
+        config,
+        PACKAGE_ROOT,
+        packages_dir=Path(out_dir) / workspace.VALE_PACKAGES_DIR,
+    )
+    if note:
+        log(note)
+    if vale_config:
+        write_args += ["--vale-config", str(vale_config)]
     try:
         code = run(write_args, f"writing {len(rebuild)} document set(s)", allowed=(0, 1, 3))
     except StepFailedError as exc:
@@ -443,7 +421,16 @@ def main(argv=None):
                 out_dir,
                 "--docs-dir",
                 docs_dir,
-            ],
+            ]
+            # A model reaches review only when a repository asked for one by
+            # name. The deterministic checks and the Vale pass settle most
+            # findings and cost nothing.
+            + (
+                ["--llm-cmd", llm_cmd_for("review", config, args.llm_cmd, env_cmd)]
+                if step_is_configured("review", config)
+                else []
+            )
+            + (["--vale-config", str(vale_config)] if vale_config else []),
             "reviewing",
             allowed=(0, 1, 3),
         )

@@ -370,7 +370,7 @@ def write_surface(repo, registry, out_dir):
     """This run's `api-surface.json`, from the API files just extracted.
 
     `docs-sources` was the only thing that ever wrote this, and it went with
-    the ticket reader. Both the planner and the writer ground on it, and its
+    the Jira reader. Both the planner and the writer ground on it, and its
     absence is silent: a writer with no surface grounds against nothing and
     every backticked symbol reports unverified.
 
