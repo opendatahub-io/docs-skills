@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "required": ["queries"],
+  "properties": {
+    "queries": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {"type": "string", "minLength": 2}
+    }
+  }
+}

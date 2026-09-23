@@ -1,0 +1,46 @@
+{
+  "type": "object",
+  "required": ["deliverables"],
+  "properties": {
+    "deliverables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "type", "title", "rationale"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "type": {"type": "string", "enum": ["concept", "procedure", "reference"]},
+          "title": {"type": "string", "minLength": 1},
+          "rationale": {"type": "string", "minLength": 1},
+          "sources": {"type": "array", "items": {"type": "string"}},
+          "requirements": {
+            "type": "array",
+            "description": "The numbers of the requirements this document answers. Coverage is measured against these, so a deliverable claiming none documents none.",
+            "items": {"type": "integer", "minimum": 1}
+          },
+          "kind": {"type": "string", "enum": ["new", "update"]},
+          "target": {
+            "type": "object",
+            "properties": {
+              "guide_url": {"type": "string"},
+              "section": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "covered": {"type": "array", "items": {"type": "string"}},
+    "deferred": {
+      "type": "array",
+      "description": "Requirements no deliverable in this plan answers, each with the reason nothing does.",
+      "items": {
+        "type": "object",
+        "required": ["requirement", "reason"],
+        "properties": {
+          "requirement": {"type": "integer", "minimum": 1},
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

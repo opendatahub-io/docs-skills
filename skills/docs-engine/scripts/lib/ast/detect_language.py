@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Detect the primary programming language in a repository by counting file extensions.
-
-Uses os.walk with common exclusions. Outputs JSON to stdout.
-
-Usage:
-    python3 detect_language.py --repo /path/to/repo [--lang python]
-"""
+"""Detect the primary programming language in a repository by counting file extensions."""
 
 import argparse
 import json
@@ -14,39 +8,9 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-EXCLUDED_DIRS = {
-    ".git",
-    "node_modules",
-    "vendor",
-    "__pycache__",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".tox",
-    ".venv",
-    "venv",
-    "env",
-    ".env",
-    "dist",
-    "build",
-    "out",
-    "target",
-    "bin",
-    "obj",
-    ".idea",
-    ".vscode",
-    ".claude",
-    ".agent_workspace",
-    "coverage",
-    ".nyc_output",
-    ".next",
-    ".nuxt",
-    ".cache",
-    "tmp",
-    "temp",
-    ".ruff_cache",
-    ".vale",
-    ".work",
-}
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from lib.ast.exclusions import EXCLUDED_DIRS  # noqa: E402
 
 EXCLUDED_EXTENSIONS = {
     ".pyc",

@@ -1,58 +1,110 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Writer output for one document",
-  "description": "Structure, not bytes. lib/md/render.py decides heading levels, blank lines, and frontmatter serialization, so two runs producing the same sections produce the same file.",
-  "type": "object",
-  "required": ["path", "frontmatter", "sections", "evidence"],
-  "properties": {
-    "path": {
-      "type": "string",
-      "description": "Repository-relative destination, ending in .md.",
-      "pattern": "\\.md$"
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "Writer output for one document",
+ "description": "Structure, not bytes. lib/md/render.py decides heading levels, blank lines, and frontmatter serialization, so two runs producing the same sections produce the same file.",
+ "type": "object",
+ "required": [
+  "path",
+  "frontmatter",
+  "sections",
+  "evidence"
+ ],
+ "properties": {
+  "path": {
+   "type": "string",
+   "description": "Repository-relative destination, ending in .md.",
+   "pattern": "\\.md$"
+  },
+  "frontmatter": {
+   "type": "object",
+   "required": [
+    "title",
+    "description",
+    "type"
+   ],
+   "properties": {
+    "title": {
+     "type": "string",
+     "minLength": 3,
+     "maxLength": 120
     },
-    "frontmatter": {
-      "type": "object",
-      "required": ["title", "description", "type"],
-      "properties": {
-        "title": {"type": "string", "minLength": 3, "maxLength": 120},
-        "description": {"type": "string", "minLength": 10, "maxLength": 300},
-        "type": {"type": "string", "enum": ["concept", "task", "reference", "overview"]},
-        "tags": {"type": "array", "items": {"type": "string"}}
-      }
+    "description": {
+     "type": "string",
+     "minLength": 10,
+     "maxLength": 300
     },
-    "sections": {
-      "type": "array",
-      "minItems": 1,
-      "maxItems": 12,
-      "items": {
-        "type": "object",
-        "required": ["id", "heading", "body"],
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "Stable across runs. Section-level regeneration keys on it.",
-            "pattern": "^[a-z0-9][a-z0-9-]*$"
-          },
-          "heading": {"type": "string", "minLength": 2, "maxLength": 100},
-          "body": {"type": "string", "minLength": 10},
-          "level": {"type": "integer", "minimum": 2, "maximum": 4},
-          "symbols": {
-            "type": "array",
-            "description": "Public symbols this section covers. A signature change to any of them regenerates this section and no other.",
-            "items": {"type": "string"}
-          }
-        }
-      }
+    "type": {
+     "type": "string",
+     "enum": [
+      "concept",
+      "procedure",
+      "reference",
+      "overview"
+     ]
     },
-    "evidence": {
-      "type": "array",
-      "description": "file:line references the body relies on. docs-review cross-checks them.",
-      "items": {"type": "string", "pattern": "^.+:[0-9]+$"}
-    },
-    "gaps": {
-      "type": "array",
-      "description": "What the writer could not ground in the source it was given.",
-      "items": {"type": "string"}
+    "tags": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
     }
+   }
+  },
+  "sections": {
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 12,
+   "items": {
+    "type": "object",
+    "required": [
+     "id",
+     "heading",
+     "body"
+    ],
+    "properties": {
+     "id": {
+      "type": "string",
+      "description": "Stable across runs. Section-level regeneration keys on it.",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+     },
+     "heading": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 100
+     },
+     "body": {
+      "type": "string",
+      "minLength": 10
+     },
+     "level": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 4
+     },
+     "symbols": {
+      "type": "array",
+      "description": "Public symbols this section covers. A signature change to any of them regenerates this section and no other.",
+      "items": {
+       "type": "string"
+      }
+     }
+    }
+   }
+  },
+  "evidence": {
+   "type": "array",
+   "description": "What the body rests on: a repo-relative file:line, a URL from the findings, or the Jira ticket description reference. docs-review cross-checks file:line entries and recognizes ticket references.",
+   "items": {
+    "type": "string",
+    "pattern": "^(?:[A-Za-z][A-Za-z0-9+.-]*://.+|jira:[A-Za-z][A-Za-z0-9_]*-[0-9]+:description|.+:[0-9]+)$"
+   }
+  },
+  "gaps": {
+   "type": "array",
+   "description": "What the writer could not ground in the source it was given.",
+   "items": {
+    "type": "string"
+   }
   }
+ }
 }

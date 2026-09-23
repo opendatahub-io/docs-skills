@@ -1,75 +1,24 @@
-# Per-language parse rules: how to partition a repository and what counts as
-# public. Read by repo-analyze's scripts. This file is machine-consumed from end
-# to end, which is why it is YAML rather than the prose it replaced.
+# Per-language parse rules: how a repository is partitioned, what counts as
+# public, and what couples two modules without an import between them.
 #
-# The other half of per-language knowledge lives in `languages/<lang>.md`: how a
-# language's community documents itself. That half reaches the writer prompt
-# verbatim, so it stays out of here. Coupling vocabularies and tree-sitter notes
-# have no bearing on prose, and handing them to a writer gives it material to
-# narrate about.
+# Nothing reads this file. It is reference for whoever teaches the extractors a
+# language, and the fields it used to carry that code also holds -- extensions,
+# config filenames, the exclusion lists -- are gone from here rather than kept
+# in two places: they had already drifted. Those live in, and only in:
 #
-# Consolidated from reference/language-configs.md and the constants that were
-# duplicated across build_module_map.py, detect_language.py, and
-# extract_public_api_treesitter.py.
+#   lib/ast/build_module_map.py   LANG_EXTENSIONS, CONFIG_FILES
+#   lib/ast/exclusions.py         EXCLUDED_DIRS
+#   lib/ast/detect_language.py    the detection order
+#
+# A language is added by teaching the extractor, adding it to those constants,
+# and describing it here. tests/test_language_reference.py holds the two in
+# step.
 
 schema: docs-skills/languages/1
-
-# Directories skipped by every walker, in every language.
-excluded_dirs:
-  - .git
-  - .agent_workspace
-  - .docs-gen
-  - .cache
-  - .claude
-  - .cursor
-  - .env
-  - .idea
-  - .mypy_cache
-  - .next
-  - .nuxt
-  - .nyc_output
-  - .pytest_cache
-  - .ruff_cache
-  - .tox
-  - .vale
-  - .venv
-  - .vscode
-  - .work
-  - bin
-  - build
-  - coverage
-  - dist
-  - env
-  - node_modules
-  - obj
-  - out
-  - target
-  - temp
-  - tmp
-  - vendor
-  - venv
-  - __pycache__
-
-# File patterns skipped by every walker. Compiled output, minified bundles, and
-# lock files carry no public API and dominate churn rankings when included.
-excluded_files:
-  - "*.pyc"
-  - "*.pyo"
-  - "*.class"
-  - "*.o"
-  - "*.so"
-  - "*.dylib"
-  - "*.dll"
-  - "*.min.js"
-  - "*.bundle.js"
-  - "*.map"
-  - "*.lock"
-  - "*.sum"
 
 languages:
 
   python:
-    extensions: [.py, .pyi]
     # Namespace packages are real, so __init__.py marks a package without being
     # required to constitute one.
     module_boundary:
@@ -77,7 +26,6 @@ languages:
       description: Each directory holding .py files is one module.
       marker_files: [__init__.py]
       marker_required: false
-    config_files: [pyproject.toml, setup.py, setup.cfg, requirements.txt, __init__.py]
     public_api:
       rule: not_underscore_prefixed
       description: Functions and classes whose names do not start with an underscore.
@@ -91,13 +39,11 @@ languages:
       - A py.typed marker makes annotations part of the public contract.
 
   go:
-    extensions: [.go]
     module_boundary:
       rule: directory
       description: Each directory holding .go files is one package. go.mod marks the module root.
       marker_files: [go.mod]
       marker_required: false
-    config_files: [go.mod, go.sum]
     public_api:
       rule: exported_identifier
       description: Identifiers beginning with an uppercase letter.
@@ -113,13 +59,11 @@ languages:
         understate coupling.
 
   javascript:
-    extensions: [.js, .jsx, .mjs, .cjs]
     module_boundary:
       rule: src_slice
       description: Each directory or feature slice under src/ is one module.
       marker_files: [index.js, package.json]
       marker_required: false
-    config_files: [package.json]
     public_api:
       rule: exported
       description: export function, export class, export const, export default, re-exports.
@@ -134,13 +78,11 @@ languages:
         without appearing in any import.
 
   typescript:
-    extensions: [.ts, .tsx, .mts, .cts]
     module_boundary:
       rule: src_slice
       description: Each directory or feature slice under src/. Barrel files define the contract.
       marker_files: [index.ts, package.json, tsconfig.json]
       marker_required: false
-    config_files: [package.json, tsconfig.json]
     public_api:
       rule: exported
       description: >-
@@ -164,3 +106,28 @@ languages:
       - Structural subtyping couples modules with no shared import. An object
         literal in module A can satisfy an interface in module B, so an import
         graph alone misses the dependency.
+
+  yaml:
+    # Configuration repositories: Kubernetes manifests, CI definitions, Helm
+    # values. detect_language and build_module_map both accept one, and the
+    # file said nothing about it.
+    module_boundary:
+      rule: directory
+      description: Each directory holding .yaml or .yml files is one module.
+      marker_files: [kustomization.yaml, Chart.yaml]
+      marker_required: false
+    public_api:
+      rule: top_level_keys
+      description: >-
+        The keys a consumer sets. There is no extractor: a manifest has no
+        exported symbols, so api-surface.json stays empty for one of these.
+      extractor: none
+      kinds: []
+    imports:
+      patterns: ["$ref", "kustomize resources", "Helm dependencies"]
+      resolves: internal_file_references
+    coupling_types: [config, data-shape, none]
+    notes:
+      - A value in one file is read by a controller defined in another
+        repository, so coupling here is almost never visible in the tree.
+

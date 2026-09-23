@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Writer output for one updated section",
+  "type": "object",
+  "required": ["section", "body"],
+  "properties": {
+    "section": {
+      "type": "string",
+      "description": "The dotted number of the section rewritten. Echoed back so a relocation cannot pass silently.",
+      "minLength": 1
+    },
+    "body": {
+      "type": "string",
+      "description": "The section and its children, as markdown, heading included.",
+      "minLength": 20
+    },
+    "summary": {"type": "string", "maxLength": 300},
+    "evidence": {"type": "array", "items": {"type": "string"}},
+    "gaps": {"type": "array", "items": {"type": "string"}}
+  }
+}

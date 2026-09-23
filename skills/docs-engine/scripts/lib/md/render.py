@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
-"""Turn a writer's JSON into Markdown, deterministically.
-
-The model returns structure. This module returns bytes. Heading levels, blank
-line counts, list markers, and frontmatter key order are decided here, so two
-runs that produce the same sections produce the same file, and a diff shows
-only what actually changed in the prose.
-
-    from lib.md import render
-    text = render.document(payload)          # frontmatter + body
-    if render.worth_writing(old, text):      # churn floor
-        Path(payload["path"]).write_text(text)
-
-`worth_writing` is the other half of idempotency. An LLM rewording a sentence
-on an unchanged module produces a diff that is real at the byte level and worth
-nothing to a reviewer. Below the floor, the old file stands.
-"""
+"""Turn a writer's JSON into Markdown, deterministically."""
 
 import argparse
 import difflib
@@ -41,14 +26,7 @@ BLANK_RUN = re.compile(r"\n{3,}")
 
 
 def body(sections, level=2):
-    """Render `sections[]` to Markdown.
-
-    Each section is `{id, heading, body}`. Headings start at `level` and a
-    section may nest by carrying its own `level`. Bodies arrive as Markdown and
-    are normalized rather than reformatted: trailing whitespace goes, runs of
-    blank lines collapse to one, and every section is separated by exactly one
-    blank line.
-    """
+    """Render `sections[]` to Markdown."""
     parts = []
     for section in sections:
         heading = (section.get("heading") or "").strip()
@@ -71,11 +49,7 @@ def normalize(text):
 
 
 def document(payload, front_overrides=None):
-    """Full file: frontmatter block, then the rendered sections.
-
-    Frontmatter serialization comes from `docs_meta.render`, so a generated
-    document and a marked one quote and order their keys the same way.
-    """
+    """Full file: frontmatter block, then the rendered sections."""
     front = dict(payload.get("frontmatter") or {})
     front.update(front_overrides or {})
     text = body(payload.get("sections") or [], payload.get("level") or 2)
@@ -84,13 +58,28 @@ def document(payload, front_overrides=None):
     return docs_meta.render(front, text)
 
 
-def merge_front(existing, generated, preserve=()):
-    """Frontmatter for a regenerated file.
+MARKER_START = "<!-- docs-gen output {marker} -->"
+MARKER_END = "<!-- end docs-gen -->"
+MARKER_PATTERN = re.compile(
+    r"<!--\s*docs-gen output\s+\S+\s*-->\n(?P<body>.*?)\n?<!--\s*end docs-gen\s*-->",
+    re.DOTALL,
+)
 
-    Generated values win, except for keys a human is expected to own. `managed`
-    is always preserved when present: a file promoted to `manual` never gets
-    demoted by a later run.
-    """
+
+def wrap_marker(text, marker):
+    """`text` bracketed in comment markers naming the run that produced it."""
+    if not marker:
+        return text
+    return f"{MARKER_START.format(marker=marker)}\n{text.strip()}\n{MARKER_END}"
+
+
+def marked_spans(text):
+    """The content between each `docs-gen` marker pair, in order."""
+    return [match.group("body") for match in MARKER_PATTERN.finditer(text or "")]
+
+
+def merge_front(existing, generated, preserve=()):
+    """Frontmatter for a regenerated file."""
     merged = dict(generated)
     keep = set(preserve) | {"managed"}
     for key in keep:
@@ -119,11 +108,7 @@ def changed_lines(before, after):
 
 
 def structural_change(before, after):
-    """Whether the heading set moved.
-
-    A section appearing or disappearing is real news regardless of how few
-    lines it touched, so it skips the churn floor entirely.
-    """
+    """Whether the heading set moved."""
     return _headings(before) != _headings(after)
 
 
@@ -132,11 +117,7 @@ def _headings(text):
 
 
 def worth_writing(before, after, floor=DEFAULT_FLOOR):
-    """Whether a rewrite clears the churn floor.
-
-    Returns `(bool, reason)`. Frontmatter is excluded from the comparison so a
-    refreshed `source_sha` alone never opens a pull request.
-    """
+    """Whether a rewrite clears the churn floor."""
     if before is None:
         return True, "new file"
     if before == after:

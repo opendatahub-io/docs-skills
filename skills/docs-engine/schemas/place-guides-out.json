@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "required": ["guides"],
+  "properties": {
+    "guides": {
+      "type": "array",
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "required": ["url", "reason"],
+        "properties": {
+          "url": {"type": "string", "minLength": 1},
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

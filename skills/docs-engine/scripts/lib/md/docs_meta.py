@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
-"""Frontmatter metadata for generated documentation.
-
-Reads, fills, validates, and indexes YAML frontmatter across a Markdown corpus,
-carrying the provenance fields the relevance engine needs to tell a document
-that its subject moved.
-
-Writing is deliberately not PyYAML's dumper: keys are emitted in a fixed order
-with predictable quoting, and the body is preserved byte for byte. Two runs over
-an unchanged corpus produce an unchanged corpus.
-
-Usage:
-    python3 docs_meta.py mark     --repo . [--source file,git,context] [--force] [--write]
-    python3 docs_meta.py validate --repo . [--strict]
-    python3 docs_meta.py index    --repo . --out AGENTS.md
-    python3 docs_meta.py show     <file>
-"""
+"""Frontmatter metadata for generated documentation."""
 
 import argparse
 import json
@@ -31,7 +16,20 @@ except ImportError:
 
 # ------------------------------------------------------------------ schema
 
-TYPES = ("concept", "task", "reference", "changelog", "overview")
+TYPES = ("concept", "procedure", "reference", "changelog", "overview")
+
+# Types this project no longer writes, mapped to what replaced them. Still
+# read, because a repository documented before the rename has them on disk.
+# Nothing writes one, and `validate` warns rather than failing, so a tree
+# drifts towards the current vocabulary.
+LEGACY_TYPES = {"task": "procedure"}
+
+
+def canonical_type(kind):
+    """The current name for a type, whatever name a document was written under."""
+    return LEGACY_TYPES.get(kind, kind)
+
+
 MANAGED = ("generated", "assisted", "manual")
 
 # Emission order. Anything not listed follows, sorted, so custom keys survive.
@@ -90,7 +88,14 @@ def parse(text):
             body = "\n".join(lines[index + 1 :])
             if yaml is None:
                 raise MetaError("PyYAML is required to read frontmatter")
-            data = yaml.safe_load(block) or {}
+            try:
+                data = yaml.safe_load(block) or {}
+            except yaml.YAMLError as exc:
+                # A caller guards against `MetaError`, this module's own
+                # vocabulary. A `YAMLError` reaching it from here is a
+                # different exception for the same fact, and it escaped every
+                # guard that had been written for malformed frontmatter.
+                raise MetaError(f"Frontmatter is not valid YAML: {exc}") from exc
             if not isinstance(data, dict):
                 raise MetaError("Frontmatter is not a mapping")
             return data, body, True
@@ -170,7 +175,7 @@ def from_file(path, root, front):
     elif any(
         word in lowered for word in ("how-to", "howto", "guide", "tutorial", "getting-started")
     ):
-        out["type"] = "task"
+        out["type"] = "procedure"
     elif any(word in lowered for word in ("api", "reference", "cli", "config")):
         out["type"] = "reference"
     elif rel.name in ("index.md", "overview.md"):
@@ -206,12 +211,7 @@ def from_git(path, root, front):
 
 
 def from_context(path, root, front, context):
-    """Provenance from the git-context and relevance artifacts.
-
-    This is the field set that lets a document be told its subject moved:
-    `source_modules` joined against the relevance verdict is the whole
-    staleness mechanism.
-    """
+    """Provenance from the git-context and relevance artifacts."""
     if not context:
         return {}
     out = {"generator": context.get("generator", "docs-gen/0.1")}
@@ -289,8 +289,14 @@ def validate(root, strict=False, docs_dir=None):
             if not front.get(field):
                 errors.append(f"{rel}: missing required field '{field}'")
 
-        if front.get("type") and front["type"] not in TYPES:
-            errors.append(f"{rel}: type '{front['type']}' not in {list(TYPES)}")
+        kind = front.get("type")
+        if kind and kind in LEGACY_TYPES:
+            warnings.append(
+                f"{rel}: type '{kind}' was renamed to '{LEGACY_TYPES[kind]}'; "
+                "it still validates, and the next write will update it"
+            )
+        elif kind and kind not in TYPES:
+            errors.append(f"{rel}: type '{kind}' not in {list(TYPES)}")
         if front.get("managed") and front["managed"] not in MANAGED:
             errors.append(f"{rel}: managed '{front['managed']}' not in {list(MANAGED)}")
         if front.get("source_sha") and not SHA.match(str(front["source_sha"])):
@@ -335,7 +341,7 @@ def build_index(root, docs_dir=None):
                 "path": str(path.relative_to(root)),
                 "title": front.get("title", path.stem),
                 "description": front.get("description", ""),
-                "type": front.get("type", "concept"),
+                "type": canonical_type(front.get("type", "concept")),
                 "managed": front.get("managed", "manual"),
             }
         )
@@ -345,7 +351,7 @@ def build_index(root, docs_dir=None):
 def render_index(entries):
     lines = [INDEX_BEGIN, "", "## Documentation index", ""]
     for kind in TYPES:
-        group = [e for e in entries if e["type"] == kind]
+        group = [e for e in entries if canonical_type(e["type"]) == kind]
         if not group:
             continue
         lines.append(f"### {kind.title()}")
@@ -385,11 +391,7 @@ def write_index(root, out_path, docs_dir=None):
 
 
 def stale(root, relevance, docs_dir=None):
-    """Join source_modules against the relevance verdict.
-
-    Generated documents whose modules moved are queued for rewrite. Manual
-    documents whose modules moved are a finding for a human, never a write.
-    """
+    """Join source_modules against the relevance verdict."""
     rebuild = set(relevance.get("rebuild", []))
     queued, flagged = [], []
     for path in walk(root, docs_dir):

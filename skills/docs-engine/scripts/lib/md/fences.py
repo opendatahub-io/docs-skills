@@ -1,23 +1,5 @@
 #!/usr/bin/env python3
-"""Fenced regions: within-file ownership for `managed: assisted` documents.
-
-A document a human owns can still carry generated sections, marked off like
-this:
-
-    <!-- docs-gen:begin section=api source=pkg/scheduler sha=a1b2c3d -->
-    ...generated body...
-    <!-- docs-gen:end -->
-
-`replace` rewrites the inside of a named region and guarantees every byte
-outside it survives unchanged. That guarantee lives here, in a script, rather
-than in a prompt. A model cannot be argued past a function that never receives
-the surrounding text.
-
-    from lib.md import fences
-    regions = fences.parse(text)                       # what exists, and where
-    text = fences.replace(text, "api", body, sha=head) # rewrite one region
-    fences.outside(text) == fences.outside(original)   # the invariant
-"""
+"""Fenced regions: within-file ownership for `managed: assisted` documents."""
 
 import argparse
 import json
@@ -91,12 +73,7 @@ def parse_attrs(text):
 
 
 def parse(text):
-    """Every fenced region in document order.
-
-    Raises FenceError on a begin without an end, an end without a begin, a
-    nested begin, or two regions claiming the same section id. All four mean
-    the file cannot be rewritten safely, so failing here is the point.
-    """
+    """Every fenced region in document order."""
     events = []
     for match in BEGIN.finditer(text):
         events.append(("begin", match))
@@ -161,17 +138,7 @@ def find(text, section):
 
 
 def outside(text):
-    """Everything a generated write may not touch, with each region collapsed.
-
-    The span from the begin marker through the body counts as inside, because
-    a writer stamps a fresh `sha` onto the marker as part of a legitimate
-    rewrite. The section id survives into the placeholder, so renaming a
-    region still shows up as a change. Everything else, the end marker
-    included, has to come back byte for byte.
-
-    Comparing this before and after a write proves nothing outside the fences
-    moved. `replace` asserts it on every call.
-    """
+    """Everything a generated write may not touch, with each region collapsed."""
     regions = parse(text)
     if not regions:
         return text
@@ -189,12 +156,7 @@ def outside(text):
 
 
 def render_marker(attrs, indent=""):
-    """Serialize a begin marker with a fixed attribute order.
-
-    Section, then source, then sha, then anything else alphabetically. Fixed
-    order is what stops a rewrite from producing a diff on attribute shuffling
-    alone.
-    """
+    """Serialize a begin marker with a fixed attribute order."""
     order = [key for key in ("section", "source", "sha") if key in attrs]
     order += sorted(key for key in attrs if key not in ("section", "source", "sha"))
     rendered = " ".join(f"{key}={_quote(attrs[key])}" for key in order)
@@ -207,12 +169,7 @@ def _quote(value):
 
 
 def replace(text, section, body, **attrs):
-    """Rewrite one region's body, leaving every byte outside it alone.
-
-    Attributes passed here are merged over the existing ones, which is how a
-    writer stamps a fresh `sha`. Returns the new text. Raises FenceError when
-    the section is absent, so a caller cannot silently write nothing.
-    """
+    """Rewrite one region's body, leaving every byte outside it alone."""
     region = find(text, section)
     if region is None:
         raise FenceError(f"no region with section={section!r}")

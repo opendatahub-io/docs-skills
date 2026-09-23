@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""Walk a repository and group source files into modules based on language-specific boundary rules.
-
-Uses language-aware grouping:
-- Python: directory of .py files = one module
-- Go: directory of .go files = one package
-- JS/TS: directory under src/ with source files = one module
-
-Outputs JSON to stdout.
-
-Usage:
-    python3 build_module_map.py --repo /path/to/repo --lang python [--exclude "test/*"]
-"""
+"""Group repository source files into modules using language-specific boundary rules."""
 
 import argparse
 import fnmatch
@@ -19,39 +8,9 @@ import os
 import sys
 from pathlib import Path
 
-EXCLUDED_DIRS = {
-    ".git",
-    "node_modules",
-    "vendor",
-    "__pycache__",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".tox",
-    ".venv",
-    "venv",
-    "env",
-    ".env",
-    "dist",
-    "build",
-    "out",
-    "target",
-    "bin",
-    "obj",
-    ".idea",
-    ".vscode",
-    ".claude",
-    ".agent_workspace",
-    "coverage",
-    ".nyc_output",
-    ".next",
-    ".nuxt",
-    ".cache",
-    "tmp",
-    "temp",
-    ".ruff_cache",
-    ".vale",
-    ".work",
-}
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from lib.ast.exclusions import EXCLUDED_DIRS  # noqa: E402
 
 LANG_EXTENSIONS = {
     "python": {".py"},

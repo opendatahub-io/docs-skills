@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """Load and validate a per-language documentation convention file.
 
-`languages/<lang>.md` carries two things. The YAML frontmatter holds values a
-script executes or branches on: which reference generator to defer to, whether
-doc comments may be written into source, which doc types apply to a library, a
-service, or a CLI. The Markdown body below it is prose, and it reaches the
-writer prompt verbatim.
+`languages/<lang>.md` carries machine fields in YAML frontmatter and prose in
+the Markdown body. The frontmatter says which reference generator to defer to,
+whether doc comments may be written into source, and which doc types apply to
+a library, a service or a CLI. The body reaches the writer prompt verbatim.
 
-Keeping the machine fields in frontmatter is what lets `docs-sync` decide
-whether to shell out to pdoc or godoc with no model call at all. Recovering a
-shell command from prose would put a model in the middle of a deterministic
+Frontmatter is what lets `docs-module-write` decide whether pdoc or godoc
+should own reference output without putting a model inside a deterministic
 step.
 
     from lib.md import language_file
     lang = language_file.load("languages/python.md")
-    lang.doc_types("library")        # ['concept', 'task']
+    lang.doc_types("library")        # ['concept', 'procedure']
     lang.generator_command(out="site", package="mypkg")
     lang.body                        # what the prompt sees
 

@@ -76,6 +76,76 @@ def test_extract_json_rejects_prose_only():
         step.extract_json("I could not complete that request.")
 
 
+# The reasoning the grounding asks for arrives before the reply, and a page
+# about configuration reasons about braces. Every case below is a reply the
+# runner used to spend a retry on.
+
+
+SHAPE = {"type": "object", "required": ["name", "items"]}
+
+
+def test_extract_json_skips_a_sample_quoted_before_the_reply():
+    raw = (
+        'Step 1: the source shows {"apiVersion": "v1", "kind": "ConfigMap"}.\n'
+        "Step 2: that is the shape to document.\n"
+        '{"name": "abc", "items": ["x"]}'
+    )
+    assert step.extract_json(raw, SHAPE) == {"name": "abc", "items": ["x"]}
+
+
+def test_extract_json_prefers_the_last_fenced_block():
+    raw = (
+        "First, the sample the guide gives:\n\n"
+        '```json\n{"apiVersion": "v1"}\n```\n\n'
+        "Here is the answer:\n\n"
+        '```json\n{"name": "abc", "items": ["x"]}\n```\n'
+    )
+    assert step.extract_json(raw, SHAPE)["name"] == "abc"
+
+
+def test_extract_json_keeps_a_reply_that_fails_deeper_validation():
+    """A payload that breaks a rule is still the payload.
+
+    Moving on to a sample that parses would report the wrong error, and the
+    retry would be told to fix something it did not write.
+    """
+    raw = 'Sample: {"apiVersion": "v1"}\n{"name": "ab", "items": []}'
+    assert step.extract_json(raw, SCHEMA) == {"name": "ab", "items": []}
+
+
+def test_extract_json_falls_back_when_nothing_fits_the_schema():
+    raw = 'Only this: {"apiVersion": "v1"}'
+    assert step.extract_json(raw, SHAPE) == {"apiVersion": "v1"}
+
+
+def test_extract_json_without_a_schema_takes_the_first_document():
+    raw = 'Sample: {"apiVersion": "v1"}\n{"name": "abc", "items": ["x"]}'
+    assert step.extract_json(raw) == {"apiVersion": "v1"}
+
+
+def test_extract_json_refuses_two_documents_that_both_fit():
+    """Shape cannot choose between them, so guessing is the wrong answer.
+
+    One of the two is the reply and the other is a sample; picking by position
+    reports a quoted example as the step's result and nothing says so.
+    """
+    raw = 'The guide shows {"name": "ab", "items": ["sample"]}\n{"name": "abc", "items": ["x"]}'
+    with pytest.raises(ValueError, match="2 documents"):
+        step.extract_json(raw, SHAPE)
+
+
+def test_extract_json_accepts_the_same_document_printed_twice():
+    """A fenced reply is also found as a bare span. That is one document."""
+    raw = 'Here:\n\n```json\n{"name": "abc", "items": ["x"]}\n```\n'
+    assert step.extract_json(raw, SHAPE) == {"name": "abc", "items": ["x"]}
+
+
+def test_extract_json_takes_the_first_when_the_schema_names_no_keys():
+    """Nothing to discriminate on: every object fits, so order decides again."""
+    raw = 'Sample: {"apiVersion": "v1"}\n{"name": "abc"}'
+    assert step.extract_json(raw, {"type": "object"}) == {"apiVersion": "v1"}
+
+
 # ------------------------------------------------------------------ validation
 
 
@@ -157,6 +227,70 @@ def test_run_step_returns_a_validated_result(tmp_path):
     result, attempts = step.run_step("Do it: {{input}}", {}, SCHEMA, cmd, 30)
     assert result["name"] == "abc"
     assert attempts == 1
+
+
+def test_run_step_grounds_every_prompt(tmp_path):
+    """The rules reach the model whatever the command is.
+
+    `llm_cmd` resolves to the pi bridge in a session and to a CLI outside one.
+    The prompt is the only thing both of them read.
+    """
+    cmd = _fake_cli(
+        tmp_path,
+        "import sys\n"
+        "prompt = sys.stdin.read()\n"
+        "assert 'Don\\'t guess' in prompt, 'prompt reached the model ungrounded'\n"
+        'print(\'{"name": "abc", "items": ["x"]}\')\n',
+    )
+    result, _ = step.run_step("Do it", {}, SCHEMA, cmd, 30)
+    assert result["name"] == "abc"
+
+
+def test_run_step_drops_the_reasoning_key(tmp_path):
+    """The working out is scaffolding. A strict schema would reject it."""
+    cmd = _fake_cli(
+        tmp_path,
+        "import sys; sys.stdin.read(); "
+        'print(\'{"reasoning": ["read the source"], '
+        '"name": "abc", "items": ["x"]}\')',
+    )
+    result, attempts = step.run_step("go", {}, SCHEMA, cmd, 30)
+    assert result == {"name": "abc", "items": ["x"]}
+    assert attempts == 1
+
+
+def test_run_step_keeps_the_reasoning_in_the_trail(tmp_path, monkeypatch):
+    """Dropped from the reply, kept on disk: an answer nobody can audit is half of one."""
+    trail = tmp_path / "reasoning.jsonl"
+    monkeypatch.setenv(step.TRAIL_ENV, str(trail))
+    cmd = _fake_cli(
+        tmp_path,
+        "import sys; sys.stdin.read(); "
+        'print(\'{"reasoning": ["read the source"], '
+        '"name": "abc", "items": ["x"]}\')',
+    )
+    result, _ = step.run_step("Write the page", {}, SCHEMA, cmd, 30)
+    assert result == {"name": "abc", "items": ["x"]}
+    entry = json.loads(trail.read_text().splitlines()[0])
+    assert entry["reasoning"] == ["read the source"]
+    assert entry["step"] == "Write the page"
+
+
+def test_run_step_without_a_trail_writes_nothing(tmp_path, monkeypatch):
+    monkeypatch.delenv(step.TRAIL_ENV, raising=False)
+    cmd = _fake_cli(
+        tmp_path,
+        'import sys; sys.stdin.read(); print(\'{"reasoning": ["x"], "name": "abc", '
+        '"items": ["x"]}\')',
+    )
+    step.run_step("go", {}, SCHEMA, cmd, 30)
+    assert not list(tmp_path.glob("*.jsonl"))
+
+
+def test_drop_reasoning_leaves_a_schema_that_asks_for_it():
+    schema = {"type": "object", "properties": {"reasoning": {"type": "array"}}}
+    document = {"reasoning": ["a"], "name": "abc"}
+    assert step.drop_reasoning(document, schema) == document
 
 
 def test_run_step_retries_once_with_the_errors_appended(tmp_path):
@@ -287,7 +421,11 @@ def test_cli_dry_run_makes_no_call(tmp_path, capsys):
         )
         == 0
     )
-    assert capsys.readouterr().out == "module: pkg/queue"
+    out = capsys.readouterr().out
+    assert out.startswith("module: pkg/queue")
+    # A dry run is read to see what the model will be sent, which includes the
+    # rules the runner appends to every prompt.
+    assert step.GROUNDING in out
 
 
 def test_cli_validates_the_input_before_calling(tmp_path):

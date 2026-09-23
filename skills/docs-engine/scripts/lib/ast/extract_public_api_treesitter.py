@@ -1,14 +1,4 @@
-"""Extract public API surface from Go, JavaScript, TypeScript, and Python files
-using tree-sitter AST parsing.
-
-Uses py-tree-sitter (compiled bindings, no Node.js required).
-
-Usage:
-    uv run --script extract_public_api_treesitter.py \
-        --files f1.go f2.go --lang go --module mymod
-    uv run --script extract_public_api_treesitter.py \
-        --files f1.ts --lang typescript --module auth
-"""
+"""Extract public APIs with tree-sitter."""
 
 # /// script
 # requires-python = ">=3.10"

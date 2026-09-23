@@ -1,70 +1,85 @@
 ---
 name: docs-engine
-description: Shared runtime for the documentation generator skills. Not invoked directly. Holds the git and API fingerprinting libraries, the Markdown ownership and rendering layer, the model step runner, the prompts and schemas, and the per-language files that docs-sync, docs-write, docs-review, docs-repo-analyze, and docs-changelog all read.
+description: Holds the shared runtime for the documentation generator skills. Use when changing libraries, prompts, or schemas that several generator steps share. Never invoke it directly.
 allowed-tools: Bash, Read
 ---
 
 # docs-engine
 
-The generator's shared code, in a skill directory of its own.
+The shared code behind the generator skills, packaged as a skill so that it survives installation.
 
-Nothing invokes this skill. It exists so that the code five other skills depend
-on has somewhere to live that survives installation.
+Nothing invokes this skill. Every skill in this plugin that runs a script imports from it.
 
-## Why it is a skill
+## Why the shared code lives in a skill
 
-A skill installer copies each skill directory on its own and drops symlinks with
-a warning on the way, so a tree shared above the skills does not survive the
-copy and cannot be linked in either. It does place every skill as a flat sibling
-under one directory.
+Skill installers copy each skill directory separately and drop symlinks with a warning along the way, so a tree shared above the skills survives neither the copy nor a link. What an installer does guarantee is that every skill lands as a flat sibling under one directory.
 
-That is the property the generator skills rely on. From any of their scripts,
-this skill is two levels up:
+The generator skills rely on that guarantee. Each one opens with the same seven lines, which is the whole of the bootstrap:
 
 ```python
-def _find_engine():
-    here = Path(__file__).resolve()
-    for base in (here.parent, *here.parents):
-        if (base / "scripts" / "lib" / "run" / "step.py").exists():
-            return base
-        sibling = base / "docs-engine"
-        if (sibling / "scripts" / "lib" / "run" / "step.py").exists():
-            return sibling
+ENGINE = Path(__file__).resolve().parents[2] / "docs-engine"
+if not (ENGINE / "scripts" / "lib" / "run" / "step.py").exists():
+    raise SystemExit(
+        "docs-skills: the docs-engine skill is missing. It ships alongside this one "
+        "and carries the shared runtime; install it, or run from a checkout."
+    )
+sys.path.insert(0, str(ENGINE / "scripts"))
 ```
 
-The same walk finds `skills/docs-engine/` in a checkout and
-`<skills-dir>/docs-engine/` after an install, so there is no build step, no
-vendored duplicate, and no environment variable.
+`parents[2]` is `skills/` in a checkout and `<skills-dir>/` after an install, so the same two lines reach this directory either way. No build step, no vendored duplicate, no environment variable.
 
-Removing this skill from an installation breaks the other five. They fail with a
-message naming it rather than an import traceback.
+The `exists()` check is the reason the block is not a bare `sys.path.insert`. Remove this skill from an installation and every other one stops with a message naming it, rather than with an import traceback nobody can act on.
+
+Everything the bootstrap would otherwise recompute lives in [scripts/lib/run/engine.py](scripts/lib/run/engine.py): `PROMPTS`, `SCHEMAS`, `CONFIG`, `LANGUAGES`, `TOPICS`, and the package root that owns `styles/`.
 
 ## What is here
 
 ```
-scripts/lib/git/     git_context.py, api_surface.py, extract_changed_ranges.py
-scripts/lib/md/      docs_meta.py, language_file.py, fences.py, render.py
-scripts/lib/ast/     languages.yaml, per-language parse rules
-scripts/lib/run/     step.py, the single model call
-prompts/             one file per model step
-schemas/             what each model step must return
-languages/           per-language documentation conventions
-config/              path filters, example .docs-gen.yaml, gitignore fragment
+scripts/lib/ast/       the walkers and extractors; languages.yaml documents them
+scripts/lib/git/       git_context.py, api_surface.py, commit_select.py, digest.py
+scripts/lib/md/        docs_meta.py, fences.py, render.py, sections.py,
+                       changeset.py, language_file.py, ownership.py
+scripts/lib/pipeline/  config.py and workspace.py: what a run resolves before it starts
+scripts/lib/research/  ticket.py, rhd.py, excerpt.py: the external CLIs and what they return
+scripts/lib/run/       step.py (the single model call), engine.py (where things are),
+                       report.py (what a step says), ask.py, coverage.py, evidence.py
+scripts/lib/vale/      check.py, compose.py, repair.py
+prompts/               one file per model step
+schemas/               what each model step must return
+languages/             the per-language reference a writer is given
+config/                path filters, example .docs-gen.yaml, gitignore fragment
+reference/             the contract shared across skills
 ```
+
+[reference/generated-documents.md](reference/generated-documents.md) holds the ownership, fenced-region, and determinism rules that both writers enforce. [scripts/lib/md/ownership.py](scripts/lib/md/ownership.py) applies them. Change the behaviour and change both.
 
 ## Invoking the libraries directly
 
-Each module has a command line entry point, useful on its own.
+Each library module has a command-line entry point that is useful on its own.
 
 ```bash
 LIB="$(dirname "$0")/scripts/lib"
 
 python3 "$LIB/git/git_context.py" context --repo . --out git-context.json
 python3 "$LIB/md/docs_meta.py" validate --repo .
-python3 "$LIB/md/language_file.py" validate
 python3 "$LIB/md/fences.py" check docs/*.md
+python3 "$LIB/vale/check.py" docs/guide.md --level error
 python3 "$LIB/run/step.py" --prompt P --input I --schema S --llm-cmd "claude -p"
 ```
 
-See [docs-git-context](../docs-git-context/SKILL.md) for the history and
-fingerprinting layer, which is documented as a skill in its own right.
+## What a step says
+
+`run/report.py` gives every step one line format: `docs-<step>: message`, with
+`error:` or `warning:` after the prefix when the message reports an outcome.
+The pi extension colours by that severity, so a step that decides its own
+severity here is the only thing that decides it.
+
+```python
+from lib.run.report import logger
+
+log = logger("docs-plan")
+log(f"{len(deliverables)} deliverable(s)")
+log("no research to plan from", "warning")
+```
+
+The history and fingerprinting layer has its own skill. See [docs-git-context](../docs-git-context/SKILL.md).

@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic git history extraction for documentation generation.
-
-Single-pass `git log` parsing. No network, no model, no third-party deps.
-Every subcommand writes JSON to stdout.
-
-Usage:
-    python3 git_context.py range   --repo . [--since-tag | --since-sha SHA | --since-watermark FILE]
-    python3 git_context.py commits --repo . --range v1.2.0..HEAD
-    python3 git_context.py changes --repo . --range v1.2.0..HEAD [--registry registry.json]
-    python3 git_context.py churn   --repo . --range v1.2.0..HEAD
-    python3 git_context.py context --repo . [--range R] [--registry F] [--out git-context.json]
-    python3 git_context.py clone   <url> --out DIR [--ref REF] [--pr-url URL]
-    python3 git_context.py watermark read  --file .docs-state.json
-    python3 git_context.py watermark write --file .docs-state.json --repo . \
-        --module M --sha SHA --doc PATH
-"""
+"""Deterministic git history extraction for documentation generation."""
 
 import argparse
 import json
@@ -45,6 +30,12 @@ PR_PATTERNS = [
 ISSUE_TRAILERS = ("refs", "fixes", "closes", "resolves", "relates-to", "jira")
 BREAKING = re.compile(r"^BREAKING[ -]CHANGE:", re.MULTILINE)
 
+# What every caller building a context artifact passes as `--max-count`.
+# Measured: 102 commits produced a 212 KB git-context.json without `--full`,
+# whose per-commit file lists make it worse. 300 covers a typical release span
+# and keeps the artifact in the hundreds of kilobytes.
+MAX_COMMITS = 300
+
 
 # ---------------------------------------------------------------- git plumbing
 
@@ -64,6 +55,20 @@ def git(repo, *args, check=True):
     if check and proc.returncode != 0:
         raise GitError(f"git {' '.join(args)}: {proc.stderr.strip()}")
     return proc.stdout
+
+
+def fetched(repo, ref):
+    """Whether `git fetch origin <ref>` succeeded.
+
+    git() returns stdout, so `git(..., check=False) is not None` was always
+    true and every fetch read as a success. A failed fetch leaves any earlier
+    FETCH_HEAD in place, and checking that out succeeds while naming a ref the
+    clone never obtained.
+    """
+    done = subprocess.run(
+        ["git", "-C", str(repo), "fetch", "origin", ref], capture_output=True, check=False
+    )
+    return done.returncode == 0
 
 
 def is_repo(repo):
@@ -114,11 +119,7 @@ def previous_tag(repo, tag):
 
 
 def default_range(repo, fallback_count=200):
-    """Best available range when the caller gives no hint.
-
-    Prefers the span since the most recent tag. Untagged repos fall back to a
-    commit count so the tool still returns something useful.
-    """
+    """Best available range when the caller gives no hint."""
     tag = last_tag(repo)
     if tag:
         ahead = git(repo, "rev-list", "--count", f"{tag}..HEAD", check=False).strip()
@@ -146,7 +147,7 @@ def resolve_range(repo, args):
                 "warning": "SHA not reachable (rebase or force-push). Full rebuild advised.",
             }
         return {"range": f"{args.since_sha}..HEAD", "basis": "since_sha", "base": args.since_sha}
-    if args.since_watermark:
+    if getattr(args, "since_watermark", None):
         state = read_watermark(args.since_watermark)
         shas = {m["sha"] for m in state.get("modules", {}).values() if m.get("sha")}
         reachable = [s for s in shas if sha_exists(repo, s)]
@@ -164,24 +165,11 @@ def resolve_range(repo, args):
     return default_range(repo)
 
 
-def oldest_of(repo, shas):
-    """Return whichever SHA is the earliest ancestor, so nothing is missed."""
-    oldest = shas[0]
-    for sha in shas[1:]:
-        merge_base = git(repo, "merge-base", oldest, sha, check=False).strip()
-        oldest = merge_base or oldest
-    return oldest
-
-
 # ------------------------------------------------------------- commit corpus
 
 
 def parse_numstat(block):
-    """Parse the NUL-delimited numstat tail of one log record.
-
-    Ordinary entries are `adds\tdels\tpath`. Renames under -z emit
-    `adds\tdels\t` followed by two further NUL-separated tokens.
-    """
+    """Parse the NUL-delimited numstat tail of one log record."""
     files = []
     tokens = [t for t in block.split("\0") if t != ""]
     i = 0
@@ -211,19 +199,7 @@ TRAILER_LINE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z0-9 ._-]{0,40}):[ \t]*(?P<va
 
 
 def parse_trailers(raw, body=""):
-    """Parse trailers, falling back to the final body paragraph.
-
-    Git's own `%(trailers)` refuses any block containing a key with a space,
-    so a commit carrying `BREAKING CHANGE:` loses its `Fixes:` and
-    `Co-authored-by:` lines too. Conventional-commits repos hit this
-    constantly, so parse the body directly when git returns nothing.
-
-    The scan walks paragraphs from the end and merges every one that parses
-    wholly as trailers, stopping at the first that does not. A commit-msg hook
-    that appends its own footer (rh-pre-commit, Gerrit Change-Id, DCO tooling)
-    otherwise buries the real trailers behind a block the last-paragraph-only
-    reading never gets past.
-    """
+    """Parse trailers, falling back to the final body paragraph."""
     out = {}
     for line in raw.splitlines():
         match = TRAILER_LINE.match(line.strip())
@@ -271,11 +247,7 @@ def extract_pr(subject, body):
 
 
 def extract_issues(trailers, subject, body, prefixes=None):
-    """Issue keys from trailers always; from free text only for declared prefixes.
-
-    Unscoped scanning for `[A-Z]+-\\d+` matches CWE-22, SHA-256, and UTF-8, so
-    body scanning stays opt-in via --issue-prefix.
-    """
+    """Issue keys from trailers always; from free text only for declared prefixes."""
     issues = []
     for key in ISSUE_TRAILERS:
         issues.extend(trailers.get(key, []))
@@ -293,12 +265,14 @@ def extract_issues(trailers, subject, body, prefixes=None):
 
 def read_commits(repo, rev_range, paths=None, max_count=None, issue_prefixes=None):
     args = ["log", "--numstat", "-M", "-z", f"--pretty=format:{LOG_FORMAT}"]
+    if rev_range:
+        args.append(rev_range)
+    # After the range, not before it: git honours the last `-n` it sees, and
+    # the untagged fallback range is itself an `-nNNN` flag. Appending a
+    # caller's own cap first only for the fallback's `-n` to follow and win
+    # meant `--max-count` was silently ignored whenever no tag existed.
     if max_count:
         args.append(f"-n{max_count}")
-    if rev_range and rev_range.startswith("-n"):
-        args.append(rev_range)
-    elif rev_range:
-        args.append(rev_range)
     if paths:
         args.append("--")
         args.extend(paths)
@@ -339,7 +313,7 @@ def read_commits(repo, rev_range, paths=None, max_count=None, issue_prefixes=Non
 
 
 def load_registry(path):
-    """Accept a docs-learn-code registry.json or a simple {module: [prefixes]} map."""
+    """Accept a docs-repo-analyze registry.json or a simple {module: [prefixes]} map."""
     if not path:
         return None
     data = json.loads(Path(path).read_text())
@@ -478,30 +452,7 @@ def summarize(commits):
     }
 
 
-# ------------------------------------------------------------------ watermark
-
-
-def read_watermark(path):
-    file = Path(path)
-    if not file.exists():
-        return {"registry_hash": None, "modules": {}}
-    return json.loads(file.read_text())
-
-
-def write_watermark(path, module, sha, doc, registry_hash=None):
-    state = read_watermark(path)
-    state["modules"][module] = {"sha": sha, "doc": doc}
-    if registry_hash:
-        state["registry_hash"] = registry_hash
-    Path(path).write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
-    return state
-
-
 # ---------------------------------------------------------------------- clone
-
-
-def normalize_url(url):
-    return url[:-4] if url.endswith(".git") else url
 
 
 def pr_number_from_url(url):
@@ -540,7 +491,7 @@ def clone(url, out, ref=None, pr_url=None, blobless=True):
     if proc.returncode != 0:
         return {"status": "error", "message": proc.stderr.strip()}
 
-    if ref and git(out, "fetch", "origin", ref, check=False) is not None:
+    if ref and fetched(out, ref):
         if (
             subprocess.run(
                 ["git", "-C", str(out), "checkout", "FETCH_HEAD"], capture_output=True, check=False
@@ -554,9 +505,9 @@ def clone(url, out, ref=None, pr_url=None, blobless=True):
         pr_ref = (
             f"refs/merge-requests/{number}/head" if "gitlab" in url else f"refs/pull/{number}/head"
         )
-        git(out, "fetch", "origin", pr_ref, check=False)
         if (
-            subprocess.run(
+            fetched(out, pr_ref)
+            and subprocess.run(
                 ["git", "-C", str(out), "checkout", "FETCH_HEAD"], capture_output=True, check=False
             ).returncode
             == 0
@@ -612,6 +563,13 @@ def cmd_changes(args):
 
 def cmd_churn(args):
     resolved = resolve_range(args.repo, args)
+    if not resolved["range"]:
+        # Without this, None reaches read_commits, which drops both the range
+        # and the max-count and logs the whole repository. The hotspots then
+        # describe every commit ever made while `range.basis` still reports
+        # why the range could not be resolved.
+        emit(resolved)
+        return 1
     commits = read_commits(
         args.repo, resolved["range"], args.path, args.max_count, args.issue_prefix
     )
@@ -627,6 +585,18 @@ def cmd_context(args):
     if not resolved["range"]:
         emit({"repo": str(args.repo), "range": resolved, "commits": [], "files": {}}, args.out)
         return 1
+    # The untagged fallback is already its own `-nNNN` bound, so there is
+    # nothing wider to report truncating against; every other basis
+    # ("explicit", "since_sha", "since_last_tag", "last_tag_span") can run to
+    # any size and is worth checking.
+    if args.max_count and not resolved["range"].startswith("-n"):
+        total = git(args.repo, "rev-list", "--count", resolved["range"], check=False).strip()
+        if total.isdigit() and int(total) > args.max_count:
+            print(
+                f"git-context: {total} commits in {resolved['range']!r} exceeds the cap of "
+                f"{args.max_count}; capped to the {args.max_count} most recent",
+                file=sys.stderr,
+            )
     commits = read_commits(
         args.repo, resolved["range"], args.path, args.max_count, args.issue_prefix
     )
@@ -653,6 +623,53 @@ def cmd_context(args):
 def cmd_clone(args):
     emit(clone(args.url, args.out_dir, args.ref, args.pr_url, not args.full_clone))
     return 0
+
+
+# ------------------------------------------------------------------ watermark
+
+
+def read_watermark(path):
+    """The documented-SHA state, or an empty one.
+
+    An unreadable file reads as empty rather than raising. A run interrupted
+    mid-write leaves exactly that, and it is the moment the next run most
+    needs to rebuild; a traceback is the one outcome that stops it.
+    """
+    file = Path(path)
+    if not file.exists():
+        return {"registry_hash": None, "modules": {}}
+    try:
+        state = json.loads(file.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {"registry_hash": None, "modules": {}}
+    if not isinstance(state, dict):
+        return {"registry_hash": None, "modules": {}}
+    state.setdefault("registry_hash", None)
+    state.setdefault("modules", {})
+    return state
+
+
+def write_watermark(path, module, sha, doc, registry_hash=None):
+    """Record one module's documented SHA. docs-sync calls this per module."""
+    state = read_watermark(path)
+    state["modules"][module] = {"sha": sha, "doc": doc}
+    if registry_hash:
+        state["registry_hash"] = registry_hash
+    Path(path).write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
+    return state
+
+
+def normalize_url(url):
+    return url[:-4] if url.endswith(".git") else url
+
+
+def oldest_of(repo, shas):
+    """Return whichever SHA is the earliest ancestor, so nothing is missed."""
+    oldest = shas[0]
+    for sha in shas[1:]:
+        merge_base = git(repo, "merge-base", oldest, sha, check=False).strip()
+        oldest = merge_base or oldest
+    return oldest
 
 
 def cmd_watermark(args):
@@ -694,7 +711,7 @@ def main():
 
     p = sub.add_parser("changes", help="Per-file and per-module change rollup")
     add_range_flags(p)
-    p.add_argument("--registry", help="docs-learn-code registry.json or {module: [prefix]} map")
+    p.add_argument("--registry", help="docs-repo-analyze registry.json or {module: [prefix]} map")
     p.add_argument("--excludes", help="Pattern file, e.g. git_filters.yaml")
     p.add_argument("--out")
     p.set_defaults(func=cmd_changes)
@@ -716,14 +733,6 @@ def main():
     p.add_argument("--out", default="git-context.json")
     p.set_defaults(func=cmd_context)
 
-    p = sub.add_parser("clone", help="Treeless clone that preserves full history")
-    p.add_argument("url")
-    p.add_argument("--out", dest="out_dir", required=True)
-    p.add_argument("--ref")
-    p.add_argument("--pr-url")
-    p.add_argument("--full-clone", action="store_true", help="Download all blobs up front")
-    p.set_defaults(func=cmd_clone)
-
     p = sub.add_parser("watermark", help="Read or update the documented-SHA state file")
     p.add_argument("action", choices=["read", "write"])
     p.add_argument("--file", default=".docs-state.json")
@@ -733,6 +742,14 @@ def main():
     p.add_argument("--doc")
     p.add_argument("--registry-hash")
     p.set_defaults(func=cmd_watermark)
+
+    p = sub.add_parser("clone", help="Treeless clone that preserves full history")
+    p.add_argument("url")
+    p.add_argument("--out", dest="out_dir", required=True)
+    p.add_argument("--ref")
+    p.add_argument("--pr-url")
+    p.add_argument("--full-clone", action="store_true", help="Download all blobs up front")
+    p.set_defaults(func=cmd_clone)
 
     args = parser.parse_args()
     if getattr(args, "repo", None) and not is_repo(args.repo) and args.command != "clone":

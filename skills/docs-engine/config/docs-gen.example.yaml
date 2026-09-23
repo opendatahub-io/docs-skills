@@ -10,29 +10,15 @@ generate:
   # Where generated Markdown lands, relative to the repository root.
   docs_dir: docs
 
-  modules:
-    include: ["pkg/**", "cmd/**"]
-    exclude: ["pkg/internal/**", "**/testdata/**"]
-
   # Bare issue keys are scanned out of commit bodies only for prefixes named
   # here. An unscoped [A-Z]+-\d+ pattern matches CWE-22, SHA-256, and UTF-8.
   issue_prefixes: [RHOAIENG]
 
-  # The loop guard's first signal. A push whose HEAD carries this author is the
-  # tool looking at its own last commit, so the run stops.
-  bot_author: docs-bot@example.com
-
-  # Bootstrap caps. A module capped out of one run keeps its old watermark and
-  # is picked up by the next, so a large repository converges over several runs.
-  max_modules_per_run: 20
-  token_budget: 400000
-
-  # Writing doc comments into source means a pull request against code, which
-  # lands in a different review and risk class. Off by default; the writer
-  # reports the gap instead.
-  write_doc_comments: false
-
-  # `auto` detects the language. Otherwise a name matching languages/<name>.md.
+  # `auto` detects the language; otherwise an explicit name.
   language: auto
 
-  changelog: true
+  # The documentation set a run targets. Results outside it are dropped
+  # before they cost a fetch.
+  product: red_hat_openshift_ai_self-managed
+  # Optional. --version wins, then the ticket's fix version, then this.
+  version: "3.5"

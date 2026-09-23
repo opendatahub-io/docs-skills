@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""Content-addressed public API snapshots, and the change classification built on them.
-
-One artifact serves two jobs. A per-symbol fingerprint rolls up into per-module
-and whole-repo hashes, which drive cache invalidation. Diffing two snapshots
-tells you whether a change touched the public surface, which drives doc
-relevance. No model calls.
-
-Usage:
-    python3 api_surface.py snapshot --repo . --registry reg.json --out api-surface.json
-    python3 api_surface.py snapshot --repo . --registry reg.json --at v1.2.0 --out before.json
-    python3 api_surface.py diff --before before.json --after api-surface.json
-    python3 api_surface.py relevance --git-context git-context.json --api-diff diff.json
-"""
+"""Content-addressed public API snapshots."""
 
 import argparse
 import ast
@@ -30,6 +18,7 @@ SCHEMA = "api-surface/1"
 # Extensions we can fingerprint natively. Everything else needs --api-dir.
 NATIVE = {".py"}
 
+# A module whose changed files are all prose needs no rebuild on that alone.
 DOC_SUFFIXES = {".md", ".rst", ".txt"}
 
 WS = re.compile(r"\s+")
@@ -144,6 +133,46 @@ def extract_python(path, rel):
 # ------------------------------------------------------------------- registry
 
 
+def usable_modules(out_dir):
+    """This run's `api-surface.json`, or `{}` plus why it was not usable."""
+    out_dir = Path(out_dir)
+    surface_path = out_dir / "api-surface.json"
+    if not surface_path.is_file():
+        return {}, "no api-surface.json for this run"
+    try:
+        surface = json.loads(surface_path.read_text())
+    except json.JSONDecodeError:
+        return {}, "api-surface.json is not valid JSON"
+
+    if "ticket" not in surface and "repositories" not in surface:
+        return surface, ""
+
+    sources_path = out_dir / "sources.json"
+    if not sources_path.is_file():
+        return {}, "api-surface.json is from an earlier run; this run wrote no sources.json"
+    try:
+        current = json.loads(sources_path.read_text())
+    except json.JSONDecodeError:
+        return {}, "sources.json is not valid JSON"
+
+    current_ticket = current.get("ticket") or ""
+    current_repos = sorted(
+        entry.get("url")
+        for entry in current.get("repositories") or []
+        if entry.get("status") in ("cloned", "existing") and entry.get("url")
+    )
+    surface_ticket = surface.get("ticket") or ""
+    surface_repos = sorted(surface.get("repositories") or [])
+
+    if current_ticket != surface_ticket or current_repos != surface_repos:
+        return {}, (
+            f"api-surface.json was built for {surface_ticket or '(no ticket)'!r} "
+            f"({len(surface_repos)} repo(s)); this run is "
+            f"{current_ticket or '(no ticket)'!r} ({len(current_repos)} repo(s))"
+        )
+    return surface, ""
+
+
 def load_registry(path):
     data = json.loads(Path(path).read_text())
     mapping = {}
@@ -164,11 +193,7 @@ def load_registry(path):
 
 
 def registry_hash(mapping):
-    """Hash of module boundaries alone.
-
-    A mismatch means attribution from an earlier run is untrustworthy, so
-    everything rebuilds regardless of what the API diff says.
-    """
+    """Hash of module boundaries alone."""
     canonical = json.dumps({k: sorted(v) for k, v in sorted(mapping.items())}, sort_keys=True)
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
 
@@ -191,15 +216,7 @@ def walk_module(root, prefixes, excludes=()):
 
 
 def ingest_api_dir(path):
-    """Read pre-extracted API JSON produced by a language-specific extractor.
-
-    Accepts `{module: [symbol]}` or a directory of `<module>.json` files, each
-    holding a symbol list or an object with a `public_api` key.
-
-    A file naming its own module in a `module` key wins over its filename.
-    Module names carry slashes (`pkg/scheduler`) and filenames cannot, so the
-    extractor slugifies on the way out and the name round-trips through here.
-    """
+    """Read pre-extracted API JSON produced by a language-specific extractor."""
     result = {}
     target = Path(path)
     if target.is_file():
@@ -287,7 +304,7 @@ def snapshot_at(repo, ref, mapping, api_dir=None):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# ----------------------------------------------------------------------- diff
+# ------------------------------------------------------------------ commands
 
 
 def diff_snapshots(before, after):

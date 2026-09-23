@@ -1,23 +1,5 @@
 #!/usr/bin/env python3
-"""Run one model step: render a prompt, pipe it to a command, validate the reply.
-
-Every model call in this plugin goes through here. The harness is a string on
-the command line, so swapping `claude -p` for `codex exec`, `ollama run`, or a
-shell wrapper around a raw HTTP call changes nothing else.
-
-    python3 lib/run/step.py \
-      --prompt prompts/write-module.md \
-      --input .docs-gen/write-input/scheduler.json \
-      --schema schemas/write-out.json \
-      --llm-cmd "claude -p" \
-      --out .docs-gen/write-output/scheduler.json
-
-Exit codes:
-    0  wrote a validated result
-    2  bad invocation (missing file, unreadable schema)
-    3  the model failed validation twice
-    4  the command itself failed or timed out
-"""
+"""Run one model step: render a prompt, pipe it to a command, validate the reply."""
 
 import argparse
 import json
@@ -34,10 +16,45 @@ SCHEMA = "docs-skills/step/1"
 # prompt carrying literal braces for the model to read survives rendering.
 PLACEHOLDER = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 
-FENCE = re.compile(r"^\s*```(?:json|jsonc)?\s*\n(?P<body>.*?)\n\s*```\s*$", re.DOTALL)
+FENCE = re.compile(r"```(?:json|jsonc)?\s*\n(?P<body>.*?)\n\s*```", re.DOTALL)
 
 
 # ------------------------------------------------------------------- rendering
+
+
+GROUNDING = """
+## Rules for this answer
+
+1. If you are not sure about something, say you don't know. Don't guess.
+2. Only use the provided documents or links when creating output. If you don't
+   have a source for a claim, remove it.
+3. For every fact, reference the file or link and/or exact line number you got
+   it from.
+4. Check each claim. If you can't find a source for it, take it out.
+5. Before you answer, explain how you got there step by step.
+
+Rule 5 happens inside the JSON. Make `reasoning` the first key of the object you
+return, holding an array of short strings, one per step of how you got there.
+Write it before the rest of the object, not after. Five steps at the most, one
+sentence each, and no code samples in them: it is your working out, not a second
+draft of the answer.
+
+The output contract above otherwise stands: one JSON document, nothing printed
+before it, nothing after it, no code fence around it. Anything with braces,
+brackets or backticks in it, a code sample above all, goes inside a JSON string
+where it cannot be mistaken for the reply.
+""".strip()
+
+
+def ground(prompt):
+    """A step's prompt, with the rules its answer has to hold to.
+
+    These ride in the prompt because it is the only channel every step shares.
+    A step's command is whatever `llm_cmd` resolves to: the pi bridge inside a
+    session, `claude -p` outside one, anything a repository configures. A system
+    prompt reaches the first and none of the others.
+    """
+    return f"{prompt.rstrip()}\n\n{GROUNDING}\n"
 
 
 def render(template, values):
@@ -56,12 +73,7 @@ def render(template, values):
 
 
 def build_values(payload, extra):
-    """Prompt variables: the whole input as ``{{input}}``, plus its top level.
-
-    A prompt written against a known input schema reaches fields directly with
-    ``{{module}}``. One written against an evolving schema takes ``{{input}}``
-    and lets the model read the JSON.
-    """
+    """Prompt variables: the whole input as ``{{input}}``, plus its top level."""
     values = {"input": payload}
     if isinstance(payload, dict):
         for key, value in payload.items():
@@ -74,40 +86,147 @@ def build_values(payload, extra):
 # ------------------------------------------------------------------ extraction
 
 
-def extract_json(text):
+MISSING = object()
+
+
+def extract_json(text, schema=None):
     """Recover a JSON document from whatever the CLI printed around it.
 
-    CLIs wrap replies in prose, in a fenced block, or in both. Try the cheap
-    readings first and fall back to brace matching, which handles a preamble
-    and a trailing sign-off in one pass.
+    More than one thing in a reply can parse: the document itself, a sample
+    quoted in the reasoning, a fenced snippet copied out of the input. The
+    schema picks the one shaped like the reply, which keeps a page full of
+    code samples from costing a retry.
+
+    Two documents of the same shape raise instead. Shape has nothing left to
+    choose on and position is no evidence, so the retry says what went wrong
+    rather than returning a quoted example as the step's result.
     """
     stripped = text.strip()
     if not stripped:
         raise ValueError("command produced no output")
 
-    for candidate in (stripped, _unfence(stripped)):
-        if candidate is None:
+    fits = []
+    fallback = MISSING
+    for document in _documents(stripped):
+        if not _fits(document, schema):
+            if fallback is MISSING:
+                fallback = document
             continue
-        try:
-            return json.loads(candidate)
-        except json.JSONDecodeError:
-            pass
+        # The same document reaches here more than once: a fenced reply is
+        # also found as a bare span. One document printed twice is not two.
+        if not any(document == seen for seen in fits):
+            fits.append(document)
+        if not _discriminating(schema):
+            # Nothing was matched on, so every object fits and the first of
+            # them is as good an answer as this can give.
+            return fits[0]
 
-    span = _outermost_json(stripped)
-    if span is None:
+    if len(fits) > 1:
+        raise ValueError(
+            f"the output holds {len(fits)} documents matching the reply shape; "
+            "return exactly one JSON document and quote every example inside a string"
+        )
+    if fits:
+        return fits[0]
+    if fallback is MISSING:
         raise ValueError("no JSON object or array found in output")
-    return json.loads(span)
+    return fallback
 
 
-def _unfence(text):
-    match = FENCE.match(text)
-    return match.group("body") if match else None
+def _discriminating(schema):
+    """Whether `_fits` is deciding on anything a sample could fail."""
+    return bool(isinstance(schema, dict) and schema.get("required"))
 
 
-def _outermost_json(text):
-    """Longest brace- or bracket-balanced span that parses, scanning from each
-    opening delimiter. String literals are skipped so a brace inside prose the
-    model quoted does not throw off the count."""
+def _documents(text):
+    """Every JSON value the output holds, likeliest first."""
+    yield from _parsed(text)
+    # Later fences beat earlier ones: the reasoning comes before the answer, so
+    # a block quoted on the way to it is the one printed first.
+    for match in reversed(list(FENCE.finditer(text))):
+        yield from _parsed(match.group("body"))
+    for span in _spans(text):
+        yield from _parsed(span)
+
+
+def _parsed(candidate):
+    try:
+        yield json.loads(candidate)
+    except json.JSONDecodeError:
+        return
+
+
+def _fits(document, schema):
+    """Whether this is shaped like the reply the step asked for.
+
+    Top level type and required keys, nothing deeper. A payload that breaks a
+    `minLength` is still the payload, and the retry should say so rather than
+    move on to a code sample that parses and report that instead.
+    """
+    if not isinstance(schema, dict):
+        return True
+    expected = schema.get("type")
+    if expected and not _type_ok(document, expected):
+        return False
+    required = schema.get("required") or []
+    if not required:
+        return True
+    return isinstance(document, dict) and all(key in document for key in required)
+
+
+# Where the working out is kept, once it has been taken off the reply. A run
+# sets this to one file and every step in it appends, so the trail reads in
+# the order the run happened.
+TRAIL_ENV = "DOCS_TRAIL"
+
+
+def keep_reasoning(prompt, document, path=None):
+    """Append this step's working out to the run's trail, when there is one.
+
+    `drop_reasoning` takes the reasoning off the artifact, which is right: no
+    step's contract has a place for it. Discarding it outright is not. The
+    reasoning is not evidence and it does not make a claim true, but it is the
+    only record of what the model thought it was doing, and a reviewer asking
+    why a page says something has nothing else to read.
+    """
+    path = path or os.environ.get(TRAIL_ENV)
+    if not path or not isinstance(document, dict):
+        return
+    reasoning = document.get("reasoning")
+    if not reasoning:
+        return
+    entry = {
+        "step": (prompt.strip().splitlines() or [""])[0][:120],
+        "reasoning": reasoning,
+    }
+    try:
+        trail = Path(path)
+        trail.parent.mkdir(parents=True, exist_ok=True)
+        with trail.open("a") as handle:
+            handle.write(json.dumps(entry) + "\n")
+    except OSError as exc:
+        # A trail nobody can write is not a reason to lose the step that
+        # produced it.
+        print(f"step: cannot write the reasoning trail: {exc}", file=sys.stderr)
+
+
+def drop_reasoning(document, schema=None):
+    """Take the model's working out back off the reply.
+
+    The grounding asks for it as the first key, so that the model reasons
+    before it answers rather than after. No step's contract has a place for it,
+    and an artifact carrying it would not match the same artifact written by a
+    step whose schema names the key itself.
+    """
+    if not isinstance(document, dict) or "reasoning" not in document:
+        return document
+    if "reasoning" in ((schema or {}).get("properties") or {}):
+        return document
+    return {key: value for key, value in document.items() if key != "reasoning"}
+
+
+def _spans(text):
+    """Balanced JSON spans that parse, outermost first."""
     for start, closer in _candidates(text):
         depth = 0
         in_string = False
@@ -135,8 +254,8 @@ def _outermost_json(text):
                         json.loads(span)
                     except json.JSONDecodeError:
                         break
-                    return span
-    return None
+                    yield span
+                    break
 
 
 def _candidates(text):
@@ -164,14 +283,7 @@ def resolve_ref(ref, root):
 
 
 def validate(instance, schema, path="$", root=None):
-    """Validate against the JSON Schema subset the step contracts use.
-
-    Deliberately small: type, required, properties, items, enum, additional
-    properties, local ``$ref``, and the numeric and string bounds. Everything
-    in `schemas/` is written to stay inside it, so the plugin adds no
-    dependency for a check that runs on every model reply. Returns a list of
-    human-readable errors.
-    """
+    """Validate against the JSON Schema subset the step contracts use."""
     errors = []
     if not isinstance(schema, dict):
         return errors
@@ -303,7 +415,8 @@ def invoke(command, prompt, timeout, env=None):
 
 RETRY_PREAMBLE = """
 Your previous reply did not satisfy the output contract. Return corrected JSON
-and nothing else. No prose before it, no prose after it, no code fence.
+and nothing else. No prose before it, no prose after it, no code fence. Your
+working out goes in the `reasoning` key, inside the object.
 
 Validation errors:
 {errors}
@@ -314,13 +427,8 @@ Your previous reply:
 
 
 def run_step(prompt_text, payload, schema, command, timeout, retries=1, values=None):
-    """Render, invoke, extract, validate, retry once with the errors appended.
-
-    Returns ``(result, attempts)``. Raises ``StepError`` when the last attempt
-    still fails, carrying the errors and the final raw reply so the caller can
-    write them into review.json rather than losing them to a traceback.
-    """
-    rendered = render(prompt_text, build_values(payload, values or {}))
+    """Render, invoke, extract, validate, retry once with the errors appended."""
+    rendered = ground(render(prompt_text, build_values(payload, values or {})))
     attempt_prompt = rendered
     last_errors = []
     last_raw = ""
@@ -328,7 +436,9 @@ def run_step(prompt_text, payload, schema, command, timeout, retries=1, values=N
     for attempt in range(1, retries + 2):
         last_raw = invoke(command, attempt_prompt, timeout)
         try:
-            result = extract_json(last_raw)
+            document = extract_json(last_raw, schema)
+            keep_reasoning(prompt_text, document)
+            result = drop_reasoning(document, schema)
         except (ValueError, json.JSONDecodeError) as exc:
             last_errors = [f"$: {exc}"]
         else:
@@ -427,7 +537,7 @@ def main(argv=None):
             return 2
 
     if args.dry_run:
-        sys.stdout.write(render(prompt_text, build_values(payload, extra)))
+        sys.stdout.write(ground(render(prompt_text, build_values(payload, extra))))
         return 0
 
     try:
