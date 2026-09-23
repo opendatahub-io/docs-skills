@@ -380,7 +380,7 @@ def test_review_catches_an_identifier_that_does_not_exist(repo, artifacts, writt
             "`Client` wraps a host.", "`Client` wraps a host. Call `reconnect` to retry."
         )
     )
-    result = run(
+    argv = (
         SKILLS / "docs-review" / "scripts" / "review.py",
         "--repo",
         repo,
@@ -388,13 +388,23 @@ def test_review_catches_an_identifier_that_does_not_exist(repo, artifacts, writt
         artifacts,
         "--docs-dir",
         "docs",
-        check=False,
     )
-    assert result.returncode == 3
+    # Grounding rests on matching a backticked word against the extracted API,
+    # so it reports rather than blocks: a page naming a symbol the extractor
+    # never saw is more often an extraction gap than a false claim.
+    result = run(*argv, check=False)
+    assert result.returncode == 0
     findings = load(artifacts / "review.json")["findings"]
-    assert any(
-        f["kind"] == "ungrounded-identifier" and f.get("symbol") == "reconnect" for f in findings
-    )
+    grounding = [
+        f
+        for f in findings
+        if f["kind"] == "ungrounded-identifier" and f.get("symbol") == "reconnect"
+    ]
+    assert grounding
+    assert grounding[0]["severity"] == "warning"
+
+    # --strict turns every finding back into a gate.
+    assert run(*argv, "--strict", check=False).returncode == 3
 
 
 def test_review_accepts_a_grounded_document(repo, artifacts, written):

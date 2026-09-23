@@ -1,13 +1,13 @@
 ---
 name: docs-review
-description: Check generated documentation against the code it describes. Grounding, registry membership, staleness, fence freshness, and frontmatter all resolve deterministically from artifacts on disk. Only ambiguous behavioural claims reach a model.
-argument-hint: <repo-path> [--docs-dir DIR] [--llm-cmd CMD] [--strict]
+description: Checks generated documentation against code and pipeline artifacts. Use when drafts need deterministic grounding checks, with optional model review of claims and style.
+argument-hint: <repo-path> [--docs-dir DIR] [--llm-cmd CMD] [--vale-config PATH] [--no-style] [--strict]
 allowed-tools: Bash, Read, Write
 ---
 
 # docs-review
 
-Deterministic first, model second, and on most runs the model is not needed.
+Runs the deterministic checks first and reaches a model only for the findings they cannot settle. Most runs never need the model.
 
 ## Quick start
 
@@ -17,48 +17,57 @@ REVIEW="$(dirname "$0")/scripts/review.py"
 # Deterministic checks only. Free
 python3 "$REVIEW" --repo . --out .docs-gen --docs-dir docs
 
-# Also judge behavioural claims no symbol name settles
+# Also judge behavioural claims that no symbol name settles
 python3 "$REVIEW" --repo . --out .docs-gen --llm-cmd "claude -p"
 ```
 
-Exit 3 when errors were found. Exit 1 when there is nothing to review.
+## Deterministic checks
 
-## The deterministic checks
+| Check | Rule | Failure means |
+|---|---|---|
+| Grounding | Every backticked identifier in prose appears in `api-surface.json` | The page names something the code does not define |
+| Registry membership | Every `source_modules` entry identifies a code module in the registry | The topic has lost its subject |
+| Fence freshness | Every `docs-gen` region `sha` matches the current code-module head, or is queued | The region describes older code. A region with no sha is a warning |
+| Frontmatter | `managed` holds one of the three values | A missing `description` or `source_sha` is a warning |
+| Evidence | Every `file:line` the writer cited points at a file that exists | The citation leads nowhere |
 
-**Grounding.** Every backticked identifier in prose must appear in
-`api-surface.json`. This is the check that replaces most of a retired LLM
-quality gate, and it costs nothing. Code blocks are exempt: an example
-legitimately names the caller's own variables.
-
-**Registry membership.** Every `source_modules` entry must exist in the
-registry. A document naming a module that no longer exists has lost its subject.
-
-**Staleness.** Each document's `source_modules` is intersected with `rebuild[]`
-from `relevance.json`. Generated and assisted documents whose modules moved are
-queued for rewrite. Manual documents become a finding for a human and are never
-written. That split is what lets hand-written pages take part in the pipeline
-without being overwritten by it.
-
-**Fence freshness.** Every `docs-gen` region's `sha` must match the current
-module head or be queued. A region with no sha at all is a warning.
-
-**Frontmatter.** `managed` must be one of the three values. A missing
-`description` or `source_sha` is a warning.
-
-**Evidence.** Every `file:line` the writer cited must point at a file that
-exists.
+Grounding exempts code blocks, where an example legitimately names the caller's own variables. This check covers most of what a retired LLM quality gate used to do, at no token cost.
 
 ## What reaches a model
 
-One class of finding: a sentence making a behavioural claim that names no
-symbol. "The queue retries three times before giving up" cannot be checked
-against an API listing. One call per flagged document asks whether the cited
-evidence lines support the claim, and an unsupported claim becomes a warning.
+One class of finding: a sentence that makes a behavioural claim naming no symbol. "The queue retries three times before giving up" cannot be checked against an API listing. Each flagged document costs one call asking whether the cited evidence lines support the claim, and an unsupported claim becomes a warning.
 
 Documents marked `manual` are skipped entirely.
 
 ## Output
 
-`review.json` under the artifact directory, with a severity on every finding.
-`docs-sync` renders the errors and the stale hand-written pages into the pull
-request body, so a reviewer sees what a human still has to decide.
+`review.json` in the artifact directory, with a severity on every finding. The caller renders the errors into the pull request body so a reviewer sees what still needs a human decision.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Review completed with nothing blocking |
+| 1 | Nothing to review |
+| 3 | A blocking error was found |
+
+Findings that rest on matching text report and never block. Two cases settled
+this. `Direct.Length` measures a Markdown table row as though it were a
+sentence, so the rule is correct about the word count while the document is
+fine. The grounding check compares backticked words against an extracted
+symbol table, where a config key, a CLI name or a field name reads the same as
+an invented method.
+
+The advisory kinds are `prose`, `style`, `style-failed`, `style-unavailable`,
+`vale-unavailable` and `ungrounded-identifier`. `review.json` counts them under
+`advisory`, and the summary line names them so a run that passes while
+reporting errors does not read as a forgotten exit code.
+
+What blocks is what the tool can check structurally: an unparseable document,
+a broken fenced region, a malformed `managed` field, a `source_modules` entry
+naming a module the registry does not hold. `--strict` blocks on everything,
+including warnings and the advisory kinds.
+
+A grounding finding carries a severity that says how much to trust it. A
+qualified name such as `client.reconnect` is an API path and nothing else, so
+a miss is an `error`. A bare word is ambiguous and reports as a `warning`.

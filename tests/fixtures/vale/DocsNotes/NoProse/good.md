@@ -1,0 +1,2 @@
+- Mirror registry needs a pull secret first [src: pkg/mirror/registry.py:42]
+- Images copy only after that [src: pkg/mirror/registry.py:42]

@@ -1,13 +1,13 @@
 ---
 name: docs-query-code
-description: Answer a question about a repository the generator has already analyzed. Reads the registry, module summaries, and dependency graph, greps the source for the question's terms, and answers once with file:line citations.
+description: Answers a question about an analyzed repository with file and line citations. Use when code-analysis artifacts exist and a focused, source-grounded answer is needed.
 argument-hint: "<question> [--repo PATH] [--write PATH]"
 allowed-tools: Bash, Read, Write
 ---
 
 # docs-query-code
 
-Ask a question, get an answer with line numbers behind it.
+Answers a question about a repository and cites the lines behind the answer.
 
 ## Quick start
 
@@ -18,42 +18,30 @@ python3 "$QUERY" "How does the scheduler decide to retry?" --repo /path/to/code
 python3 "$QUERY" "What calls into the storage layer?" --repo . --write docs/answers/
 ```
 
-Requires an earlier `docs-repo-analyze` run, whose artifacts it reads from
-`.docs-gen/`. Without one it exits 1 and says so.
+Run `docs-repo-analyze` first. This skill reads its artifacts from `.docs-gen/` and exits 1 with an explanation when `registry.json` is missing.
 
 ## What it reads
 
-| Source | What it contributes |
-|---|---|
-| `registry.json` | Which modules exist, their paths and kind |
-| `modules/<slug>.json` | Per-module purpose, responsibilities, gotchas |
-| `dep-pairs.json` | What depends on what |
-| `ONBOARDING.md` | The synthesized overview, when one was written |
-| the source tree | Lines matching the question's terms, with line numbers |
+| Source | What it contributes | Required |
+|---|---|---|
+| `registry.json` | Which code modules exist, their paths and kind | Yes |
+| The source tree | Lines matching the question's terms, with line numbers | Yes |
+| `modules/<slug>.json` | Per-code-module purpose, responsibilities, gotchas | When present |
+| `dep-pairs.json` | What depends on what | When present |
+| `ONBOARDING.md` | The synthesized overview | When present |
 
-Search terms come from the question. Anything backticked, CamelCase, or
-snake_case is treated as an identifier and ranked above the plain words, because
-that is the part of a question that actually narrows a search.
+Search terms come from the question. Anything backticked, CamelCase, or snake_case is treated as an identifier and ranked above the plain words, since identifiers are the part of a question that narrows a search.
 
 ## One call, no dispatch
 
-The answer is a single `lib/run/step.py` invocation, the same runner every other
-model step in this plugin uses. Nothing here dispatches a subagent, so the skill
-behaves identically under Claude Code, Codex, or a bare shell.
+The answer is a single `lib/run/step.py` invocation, the runner every model step in this plugin uses. Nothing here dispatches a subagent, so the skill behaves the same under Claude Code, Codex, or a bare shell.
 
 ## Grounding
 
-The prompt gets real source lines with real line numbers and is told to cite
-them. A claim it cannot attach to a line is asked for separately, under
-`uncertain`, rather than being folded into the answer.
+The prompt receives real source lines with real line numbers and is told to cite them. A claim it cannot attach to a line goes under `uncertain` instead of into the answer.
 
-Where the module summaries and the source disagree, the source wins and the
-answer says the summary is stale. Summaries are generated from an earlier commit
-and go out of date; the lines do not.
+Where a code-module summary and the source disagree, the source wins and the answer reports the summary as stale. Summaries are generated from an earlier commit and go out of date. Lines do not.
 
 ## Output
 
-Markdown with YAML frontmatter, carrying `managed: generated` so the metadata
-layer treats it like any other generated page. Prints to stdout by default.
-`--write` takes a file, or a directory, in which case the filename is a slug of
-the question plus a UTC timestamp.
+Markdown with YAML frontmatter, carrying `managed: generated` so the metadata layer treats it like any other generated page. Output prints to stdout by default. `--write` accepts a file path, or a directory, where the filename becomes a slug of the question plus a UTC timestamp.

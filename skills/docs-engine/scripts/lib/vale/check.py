@@ -73,7 +73,7 @@ def _substantive(text, code):
 def _next_action(message):
     """What a reader should do about it, which is usually syncing styles."""
     if "StylesPath" in message or message.startswith("style "):
-        return "Run `make sync-styles` to install the styles the config names."
+        return "Run `/docs --sync-styles` to install the styles the config names."
     return "Check the Vale config the run was given."
 
 

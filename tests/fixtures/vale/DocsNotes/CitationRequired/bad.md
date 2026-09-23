@@ -1,0 +1,1 @@
+- The mirror registry requires a pull secret

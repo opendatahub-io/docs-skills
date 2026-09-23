@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""Answer a question about a repository the generator has already analyzed.
-
-Reads the artifacts `docs-repo-analyze` produced, gathers the source lines that
-look relevant, and asks once. One model call, through the same step runner as
-every other model step, so nothing here dispatches a subagent.
-
-    python3 query.py "How does the scheduler retry?" --repo . --llm-cmd "claude -p"
-
-Exit codes:
-    0  answered
-    1  no analysis to read
-    2  bad invocation
-    3  the model step failed
-"""
+"""Answer a question about a repository the generator has already analyzed."""
 
 import argparse
 import json
@@ -22,39 +9,22 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-
-def _find_engine():
-    """Locate the docs-engine skill, which holds the generator's shared runtime.
-
-    An installer copies each skill directory on its own and drops symlinks on
-    the way, so a tree shared above the skills cannot be linked in and does not
-    survive the copy. It does land every skill as a flat sibling, and that is
-    what this walk uses: docs-engine sits two levels up from any generator
-    skill's script, in an install and in a checkout alike.
-
-    Nothing reads a plugin root from the environment, because no harness sets
-    one.
-    """
-    here = Path(__file__).resolve()
-    for base in (here.parent, *here.parents):
-        if (base / "scripts" / "lib" / "run" / "step.py").exists():
-            return base
-        sibling = base / "docs-engine"
-        if (sibling / "scripts" / "lib" / "run" / "step.py").exists():
-            return sibling
+# docs-engine carries the shared runtime and lands as a flat sibling of this
+# skill, in an install and in a checkout alike. Saying so here, rather than
+# letting the import fail, names what is missing when it is missing.
+ENGINE = Path(__file__).resolve().parents[2] / "docs-engine"
+if not (ENGINE / "scripts" / "lib" / "run" / "step.py").exists():
     raise SystemExit(
-        "docs-skills: cannot find the docs-engine skill. It ships alongside this "
-        "one and carries the shared runtime; install it, or run from a checkout."
+        "docs-skills: the docs-engine skill is missing. It ships alongside this one "
+        "and carries the shared runtime; install it, or run from a checkout."
     )
-
-
-ENGINE = _find_engine()
 sys.path.insert(0, str(ENGINE / "scripts"))
 
-PROMPTS = ENGINE / "prompts"
-SCHEMAS = ENGINE / "schemas"
-
 from lib.run import step  # noqa: E402
+from lib.run.engine import PROMPTS, SCHEMAS  # noqa: E402
+from lib.run.report import logger  # noqa: E402
+
+log = logger("docs-query-code")
 
 SCHEMA = "docs-skills/query/1"
 
@@ -113,12 +83,7 @@ def slug(text, limit=60):
 
 
 def keywords(question):
-    """Search terms from the question, longest first.
-
-    Identifiers a questioner types are the strongest signal, so anything
-    CamelCase, snake_case, or backticked is kept whole and ranked above the
-    plain words.
-    """
+    """Search terms from the question, longest first."""
     quoted = re.findall(r"`([^`]+)`", question)
     identifiers = re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*(?:[A-Z][a-z0-9_]*)+\b", question)
     identifiers += re.findall(r"\b[a-z]+_[a-z0-9_]+\b", question)
@@ -135,11 +100,7 @@ def keywords(question):
 
 
 def search(repo, terms, budget=40000, per_file=40):
-    """Source lines mentioning any search term, with their line numbers.
-
-    Grep rather than a model pass. The point is to put real lines in front of
-    the model with file:line attached, so the answer can cite them.
-    """
+    """Source lines mentioning any search term, with their line numbers."""
     if not terms:
         return []
     pattern = re.compile("|".join(re.escape(t) for t in terms), re.IGNORECASE)
@@ -237,7 +198,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if not args.question.strip():
-        print("query-code: give me a question", file=sys.stderr)
+        log("give me a question", "error")
         return 2
 
     repo = Path(args.repo).resolve()
@@ -245,10 +206,7 @@ def main(argv=None):
 
     context = gather(out_dir)
     if context is None:
-        print(
-            f"query-code: no analysis at {out_dir}. Run docs-repo-analyze first.",
-            file=sys.stderr,
-        )
+        log(f"no analysis at {out_dir}. Run docs-repo-analyze first.", "error")
         return 1
 
     terms = keywords(args.question)
@@ -262,15 +220,12 @@ def main(argv=None):
 
     prompt = (PROMPTS / "answer-question.md").read_text()
     schema = json.loads((SCHEMAS / "answer-out.json").read_text())
-    print(
-        f"query-code: {len(payload['source'])} file(s) matched {len(terms)} term(s)",
-        file=sys.stderr,
-    )
+    log(f"{len(payload['source'])} file(s) matched {len(terms)} term(s)")
 
     try:
         answer, _ = step.run_step(prompt, payload, schema, args.llm_cmd, args.timeout)
     except (step.StepError, RuntimeError) as exc:
-        print(f"query-code: {exc}", file=sys.stderr)
+        log(f"{exc}", "error")
         return 3
 
     document = render(args.question, answer, repo.name)
@@ -281,7 +236,7 @@ def main(argv=None):
             target = target / f"{slug(args.question)}_{stamp}.md"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(document)
-        print(f"query-code: wrote {target}", file=sys.stderr)
+        log(f"wrote {target}")
     else:
         sys.stdout.write(document)
     return 0

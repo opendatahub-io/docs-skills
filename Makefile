@@ -51,6 +51,10 @@ lint: ## Run skillsaw, typecheck, ruff syntax checker and formatter, and shellch
 		exit 1; \
 	fi
 
+.PHONY: sync-styles
+sync-styles: ## Download the published Vale packages into styles/
+	@vale --config vale/docs.ini sync
+
 .PHONY: test
 test: ## Run pytest test suite
 	python3 -m pytest tests/ -v

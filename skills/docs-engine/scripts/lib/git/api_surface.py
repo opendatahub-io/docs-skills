@@ -144,33 +144,10 @@ def usable_modules(out_dir):
     except json.JSONDecodeError:
         return {}, "api-surface.json is not valid JSON"
 
-    if "ticket" not in surface and "repositories" not in surface:
-        return surface, ""
-
-    sources_path = out_dir / "sources.json"
-    if not sources_path.is_file():
-        return {}, "api-surface.json is from an earlier run; this run wrote no sources.json"
-    try:
-        current = json.loads(sources_path.read_text())
-    except json.JSONDecodeError:
-        return {}, "sources.json is not valid JSON"
-
-    current_ticket = current.get("ticket") or ""
-    current_repos = sorted(
-        entry.get("url")
-        for entry in current.get("repositories") or []
-        if entry.get("status") in ("cloned", "existing") and entry.get("url")
-    )
-    surface_ticket = surface.get("ticket") or ""
-    surface_repos = sorted(surface.get("repositories") or [])
-
-    if current_ticket != surface_ticket or current_repos != surface_repos:
-        return {}, (
-            f"api-surface.json was built for {surface_ticket or '(no ticket)'!r} "
-            f"({len(surface_repos)} repo(s)); this run is "
-            f"{current_ticket or '(no ticket)'!r} ({len(current_repos)} repo(s))"
-        )
     return surface, ""
+
+
+# ------------------------------------------------------------------- registry
 
 
 def load_registry(path):

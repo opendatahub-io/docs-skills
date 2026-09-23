@@ -34,21 +34,17 @@ DEFAULT_BUDGET = 6000
 
 DEFAULT_BUDGETS = {
     "git_context": DEFAULT_BUDGET,
-    "requirements": DEFAULT_BUDGET,
-    "research": DEFAULT_BUDGET,
+    "onboarding": DEFAULT_BUDGET,
     "plan": DEFAULT_BUDGET,
-    "placement": DEFAULT_BUDGET,
     "index": DEFAULT_BUDGET,
 }
 
 # (budget key, path glob, the committed voice, the generated budget style)
 ARTIFACT_SECTIONS = [
-    ("git_context", "[**/git-context.md]", "OrcNotes", "OrcBudgetGitContext"),
-    ("requirements", "[**/requirements.md]", "OrcNotes", "OrcBudgetRequirements"),
-    ("research", "[**/research.md]", "OrcNotes", "OrcBudgetResearch"),
-    ("plan", "[**/plan.md]", "OrcPlan", "OrcBudgetPlan"),
-    ("placement", "[**/placement.md]", "OrcNotes", "OrcBudgetPlacement"),
-    ("index", "[**/changeset-*/index.md]", "OrcPlan", "OrcBudgetIndex"),
+    ("git_context", "[**/git-context.md]", "DocsNotes", "DocsBudgetGitContext"),
+    ("onboarding", "[**/ONBOARDING.md]", "DocsNotes", "DocsBudgetOnboarding"),
+    ("plan", "[**/plan.md]", "DocsPlan", "DocsBudgetPlan"),
+    ("index", "[**/changeset-*/index.md]", "DocsPlan", "DocsBudgetIndex"),
 ]
 
 # A budget is a target rather than a contract, so it warns and the run
@@ -197,7 +193,7 @@ def build(
     styles_dir = workspace / "vale" / "styles"
     styles_dir.mkdir(parents=True, exist_ok=True)
 
-    # Ours first: a target repository must not be able to shadow OrcNotes.
+    # Ours first: a target repository must not be able to shadow DocsNotes.
     link_styles(package_root / "styles", styles_dir)
     if downloaded_styles is not None:
         link_styles(downloaded_styles, styles_dir)

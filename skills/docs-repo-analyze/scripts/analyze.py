@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""Map a repository into modules, extract its public API, and summarize it.
-
-`docs-learn-code` with the agent layer removed. Detection, module mapping, API
-extraction, and the dependency graph are deterministic and run here. The two
-steps that need a model, per-module summaries and cross-module synthesis, go
-through `lib/run/step.py` one at a time, so nothing depends on a harness
-offering subagents.
-
-    python3 analyze.py --repo /path/to/code --out .docs-gen
-
-Writes into the artifact directory:
-
-    registry.json          module -> paths, kind, language, plus registry_hash
-    api/<slug>.json        public symbols per module, for api_surface --api-dir
-    modules/<slug>.json    model summary per module        (needs --llm-cmd)
-    dep-pairs.json         cross-module edges, from those summaries
-    ONBOARDING.md          the synthesis                   (needs --llm-cmd)
-
-Without `--llm-cmd` the deterministic half runs and the model steps are
-skipped, which is enough for `api_surface.py` and the relevance engine.
-"""
+"""Map a repository into modules, extract its public API, and summarize each one."""
 
 import argparse
 import json
@@ -28,42 +8,23 @@ import subprocess
 import sys
 from pathlib import Path
 
-
-def _find_engine():
-    """Locate the docs-engine skill, which holds the generator's shared runtime.
-
-    An installer copies each skill directory on its own and drops symlinks on
-    the way, so a tree shared above the skills cannot be linked in and does not
-    survive the copy. It does land every skill as a flat sibling, and that is
-    what this walk uses: docs-engine sits two levels up from any generator
-    skill's script, in an install and in a checkout alike.
-
-    Nothing reads a plugin root from the environment, because no harness sets
-    one.
-    """
-    here = Path(__file__).resolve()
-    for base in (here.parent, *here.parents):
-        if (base / "scripts" / "lib" / "run" / "step.py").exists():
-            return base
-        sibling = base / "docs-engine"
-        if (sibling / "scripts" / "lib" / "run" / "step.py").exists():
-            return sibling
+# docs-engine carries the shared runtime and lands as a flat sibling of this
+# skill, in an install and in a checkout alike. Saying so here, rather than
+# letting the import fail, names what is missing when it is missing.
+ENGINE = Path(__file__).resolve().parents[2] / "docs-engine"
+if not (ENGINE / "scripts" / "lib" / "run" / "step.py").exists():
     raise SystemExit(
-        "docs-skills: cannot find the docs-engine skill. It ships alongside this "
-        "one and carries the shared runtime; install it, or run from a checkout."
+        "docs-skills: the docs-engine skill is missing. It ships alongside this one "
+        "and carries the shared runtime; install it, or run from a checkout."
     )
-
-
-ENGINE = _find_engine()
 sys.path.insert(0, str(ENGINE / "scripts"))
-
-PROMPTS = ENGINE / "prompts"
-SCHEMAS = ENGINE / "schemas"
-LANGUAGES = ENGINE / "languages"
-CONFIG = ENGINE / "config"
 
 from lib.git.api_surface import registry_hash  # noqa: E402
 from lib.run import step  # noqa: E402
+from lib.run.engine import LIB, PROMPTS, SCHEMAS  # noqa: E402
+from lib.run.report import logger  # noqa: E402
+
+log = logger("docs-repo-analyze")
 
 # Language detection, module mapping, and the tree-sitter extractors live in
 # the engine with the rest of the shared runtime, so they travel with it.
@@ -80,7 +41,7 @@ def slug(module):
 
 
 def run_json(script, *args, cwd=None):
-    """Run one docs-learn-code script and parse its stdout."""
+    """Run one docs-repo-analyze script and parse its stdout."""
     argv = [sys.executable, str(script), *[str(a) for a in args]]
     completed = subprocess.run(argv, capture_output=True, text=True, cwd=cwd)
     if completed.returncode != 0:
@@ -116,13 +77,12 @@ SERVICE_MARKERS = (
 )
 
 
-def classify_kind(name, files):
-    """Which doc types a module needs: cli, service, or library.
+# build_module_map's label for source files sitting at the repository root.
+ROOT_MODULE = "root"
 
-    Path and filename evidence only. The language file maps the answer to a
-    doc type set, and an unrecognised answer falls back to `library`, so a
-    wrong guess costs a page rather than a run.
-    """
+
+def classify_kind(name, files):
+    """Which doc types a module needs: cli, service, or library."""
     haystack = [name.lower()] + [f.lower() for f in files]
     if any(marker in candidate for candidate in haystack for marker in CLI_MARKERS):
         return "cli"
@@ -143,8 +103,15 @@ def build_registry(repo, language, excludes):
     modules = {}
     for name, entry in sorted((mapping.get("modules") or {}).items()):
         files = entry.get("files", [])
+        path = entry.get("path") or name
+        # build_module_map labels the repository root "root", which is a name
+        # and not a directory: api_surface.walk_module tried `<repo>/root`,
+        # found nothing there, and skipped it, so every public symbol at the
+        # root was missing from the surface while the registry claimed the
+        # module had files. walk_module takes a file as readily as a directory.
+        paths = list(files) if path == ROOT_MODULE else [path]
         modules[name] = {
-            "paths": [entry.get("path") or name],
+            "paths": paths,
             "files": files,
             "file_count": entry.get("file_count", 0),
             "total_lines": entry.get("total_lines", 0),
@@ -164,6 +131,36 @@ def build_registry(repo, language, excludes):
     }
 
 
+def narrow(registry, paths):
+    """Keep only the modules under `paths`.
+
+    Targeting a large repository is what `--subject` was always meant to do:
+    extract_api runs tree-sitter over every file of every module it is handed,
+    which is where a whole-repository read spends its time.
+    """
+    wanted = [str(p).strip("/") for p in paths if str(p).strip("/")]
+    if not wanted:
+        return registry
+    kept = {
+        name: entry
+        for name, entry in registry["modules"].items()
+        if any(
+            path == prefix or path.startswith(f"{prefix}/")
+            for path in entry["paths"]
+            for prefix in wanted
+        )
+    }
+    if not kept:
+        # Targeting that matches nothing is worse than reading whole: it would
+        # hand the writer an empty surface and call it the public API.
+        return registry
+    narrowed = dict(registry)
+    narrowed["modules"] = kept
+    narrowed["module_count"] = len(kept)
+    narrowed["registry_hash"] = registry_hash({n: e["paths"] for n, e in kept.items()})
+    return narrowed
+
+
 def registry_boundaries(registry):
     """The `{module: [prefix]}` view api_surface.load_registry expects."""
     return {name: entry["paths"] for name, entry in registry["modules"].items()}
@@ -173,13 +170,7 @@ def registry_boundaries(registry):
 
 
 def extract_api(repo, registry, out_dir):
-    """Write `api/<slug>.json` per module for api_surface's --api-dir.
-
-    Python is fingerprinted natively by api_surface, so only the tree-sitter
-    languages need extracting here. Symbol `file` fields come back as bare
-    basenames, and the fingerprint layer matches on repository-relative paths,
-    so they are rewritten against the module's own file list on the way out.
-    """
+    """Write `api/<slug>.json` per module for api_surface's --api-dir."""
     language = registry["language"]
     if language not in TREESITTER_LANGS:
         return 0
@@ -203,10 +194,10 @@ def extract_api(repo, registry, out_dir):
                 *files,
             )
         except RuntimeError as exc:
-            print(f"repo-analyze: {name}: {exc}", file=sys.stderr)
+            log(f"{name}: {exc}")
             continue
         if result.get("error"):
-            print(f"repo-analyze: {name}: {result['error']}", file=sys.stderr)
+            log(f"{name}: {result['error']}")
             continue
 
         by_basename = {Path(f).name: f for f in entry["files"]}
@@ -229,6 +220,9 @@ def extract_api(repo, registry, out_dir):
         )
         written += 1
     return written
+
+
+# ------------------------------------------------------------------- main
 
 
 def dep_pairs(out_dir):
@@ -254,7 +248,7 @@ def dep_pairs(out_dir):
             Path(out_dir) / "registry.json",
         )
     except RuntimeError as exc:
-        print(f"repo-analyze: dependency pairs unavailable: {exc}", file=sys.stderr)
+        log(f"dependency pairs unavailable: {exc}")
         return {"pairs": [], "total_pairs": 0}
     (Path(out_dir) / "dep-pairs.json").write_text(
         json.dumps(pairs, indent=2, sort_keys=True) + "\n"
@@ -297,15 +291,12 @@ def summarize_modules(repo, registry, out_dir, llm_cmd, timeout, only=None):
             "public_api": symbols[:400],
             "source": read_sources(repo, entry["files"]),
         }
-        print(
-            f"repo-analyze: [{index}/{len(names)}] summarizing {name}",
-            file=sys.stderr,
-        )
+        print(f"repo-analyze: [{index}/{len(names)}] summarizing {name}")
         try:
             result, _ = step.run_step(prompt, payload, schema, llm_cmd, timeout)
         except (step.StepError, RuntimeError) as exc:
             failed.append({"module": name, "error": str(exc)})
-            print(f"repo-analyze: {name} failed: {exc}", file=sys.stderr)
+            log(f"{name} failed: {exc}")
             continue
         result["module"] = name
         (module_dir / f"{slug(name)}.json").write_text(
@@ -347,7 +338,7 @@ def synthesize(registry, out_dir, llm_cmd, timeout):
     for path in sorted(module_dir.glob("*.json")):
         summaries.append(json.loads(path.read_text()))
     if not summaries:
-        print("repo-analyze: no module summaries to synthesize", file=sys.stderr)
+        log("no module summaries to synthesize")
         return None
 
     pairs_path = Path(out_dir) / "dep-pairs.json"
@@ -362,7 +353,7 @@ def synthesize(registry, out_dir, llm_cmd, timeout):
     }
     prompt = (PROMPTS / "synthesize-modules.md").read_text()
     schema = json.loads((SCHEMAS / "synthesize-out.json").read_text())
-    print("repo-analyze: synthesizing onboarding guide", file=sys.stderr)
+    log("synthesizing onboarding guide")
     result, _ = step.run_step(prompt, payload, schema, llm_cmd, timeout)
 
     from lib.md import render  # local import: only the model path needs it
@@ -375,12 +366,64 @@ def synthesize(registry, out_dir, llm_cmd, timeout):
 # ------------------------------------------------------------------- main
 
 
+def write_surface(repo, registry, out_dir):
+    """This run's `api-surface.json`, from the API files just extracted.
+
+    `docs-sources` was the only thing that ever wrote this, and it went with
+    the ticket reader. Both the planner and the writer ground on it, and its
+    absence is silent: a writer with no surface grounds against nothing and
+    every backticked symbol reports unverified.
+
+    `--api-dir` matters for the same reason it mattered there. The walk
+    fingerprints only the suffixes in `api_surface.NATIVE`, which is `.py`
+    alone, so without it every non-Python repository produces an empty surface.
+    """
+    # `load_registry` reads the flat `{module: [prefix]}` view, not the full
+    # registry. Handing it registry.json directly makes it iterate `file_count`
+    # as though it were a path list.
+    boundaries = out_dir / "registry-boundaries.json"
+    boundaries.write_text(
+        json.dumps(registry_boundaries(registry), indent=2, sort_keys=True) + "\n"
+    )
+    done = subprocess.run(
+        [
+            sys.executable,
+            str(LIB / "git" / "api_surface.py"),
+            "snapshot",
+            "--repo",
+            str(repo),
+            "--registry",
+            str(boundaries),
+            "--api-dir",
+            str(out_dir / "api"),
+            "--out",
+            str(out_dir / "api-surface.json"),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if done.returncode not in (0, 1):
+        log(f"api-surface exited {done.returncode}: {done.stderr.strip()[:200]}", "warning")
+        return False
+    return (out_dir / "api-surface.json").is_file()
+
+
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Map and summarize a repository")
+    parser = argparse.ArgumentParser(description="Map a repository and extract its public API")
     parser.add_argument("--repo", required=True)
     parser.add_argument("--out", default=".docs-gen", help="Artifact directory")
     parser.add_argument("--lang", help="Override language detection")
     parser.add_argument("--exclude", nargs="*", default=[])
+    parser.add_argument(
+        "--paths",
+        nargs="*",
+        default=[],
+        help="Only map modules under these directories. Narrows a large repository",
+    )
+    parser.add_argument(
+        "--subject",
+        help="Narrow a large repository to the modules a subject names",
+    )
     parser.add_argument(
         "--llm-cmd",
         default=os.environ.get("DOCS_LLM_CMD"),
@@ -399,7 +442,7 @@ def main(argv=None):
 
     repo = Path(args.repo).resolve()
     if not repo.is_dir():
-        print(f"repo-analyze: not a directory: {repo}", file=sys.stderr)
+        log(f"not a directory: {repo}", "error")
         return 2
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -407,59 +450,53 @@ def main(argv=None):
     try:
         language = args.lang or detect(repo)
         if not language:
-            print("repo-analyze: could not detect a language", file=sys.stderr)
+            log("could not detect a language", "error")
             return 2
-        registry = build_registry(repo, language, args.exclude)
+        registry = narrow(build_registry(repo, language, args.exclude), args.paths)
     except RuntimeError as exc:
-        print(f"repo-analyze: {exc}", file=sys.stderr)
+        log(f"{exc}", "error")
         return 2
+
+    if not registry.get("module_count"):
+        log("no modules found", "warning")
 
     registry_path = out_dir / "registry.json"
     if args.skip_cached and registry_path.exists():
         existing = json.loads(registry_path.read_text())
         if existing.get("registry_hash") == registry["registry_hash"]:
-            print(
-                f"repo-analyze: registry_hash unchanged, nothing to do "
-                f"({registry['module_count']} modules)",
-                file=sys.stderr,
-            )
+            log(f"registry_hash unchanged, nothing to do ({registry['module_count']} modules)")
             return 1
 
     registry_path.write_text(json.dumps(registry, indent=2, sort_keys=True) + "\n")
     extracted = extract_api(repo, registry, out_dir)
+    wrote_surface = write_surface(repo, registry, out_dir)
 
-    print(
-        f"repo-analyze: {registry['module_count']} modules, {extracted} API files, "
-        f"registry_hash {registry['registry_hash']}",
-        file=sys.stderr,
+    log(
+        f"{registry['module_count']} modules, {extracted} API files, "
+        f"{'surface written' if wrote_surface else 'no surface'}, "
+        f"registry_hash {registry['registry_hash']}"
     )
 
     if not args.llm_cmd:
-        print("repo-analyze: no --llm-cmd, skipping summaries", file=sys.stderr)
+        log("no --llm-cmd, skipping summaries")
         return 0
 
     only = set(args.modules) if args.modules else None
     written, failed = summarize_modules(repo, registry, out_dir, args.llm_cmd, args.timeout, only)
     if not written:
-        print("repo-analyze: every module summary failed", file=sys.stderr)
+        log("every module summary failed", "error")
         return 3
 
     graph = dep_pairs(out_dir)
-    print(
-        f"repo-analyze: {graph.get('total_pairs', 0)} dependency pairs",
-        file=sys.stderr,
-    )
+    log(f"{graph.get('total_pairs', 0)} dependency pairs")
 
     try:
         target = synthesize(registry, out_dir, args.llm_cmd, args.timeout)
     except (step.StepError, RuntimeError) as exc:
-        print(f"repo-analyze: synthesis failed: {exc}", file=sys.stderr)
+        log(f"synthesis failed: {exc}", "error")
         return 3
 
-    print(
-        f"repo-analyze: {len(written)} summarized, {len(failed)} failed, wrote {target}",
-        file=sys.stderr,
-    )
+    log(f"{len(written)} summarized, {len(failed)} failed, wrote {target}")
     return 0
 
 
