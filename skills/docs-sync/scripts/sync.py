@@ -5,7 +5,7 @@ The CI entry point. Composes git-context, repo-analyze, the fingerprint layer,
 docs-write, docs-review, and the metadata pass. Every arrow between steps is a
 file under `.docs-gen/`, so a run can stop anywhere and resume from disk.
 
-    sync.py --repo . --since-watermark .docs-state.json --llm-cmd "claude -p"
+    sync.py --repo . --since-watermark .docs-state.json --llm-cmd "pi -p"
     sync.py --repo . --bootstrap --max-modules 20
 
 Exit codes:
@@ -269,7 +269,15 @@ def main(argv=None):
             "review": [],
         }
         (out_dir / "relevance.json").write_text(json.dumps(relevance, indent=2) + "\n")
-        run(snapshot_args(surface), "fingerprinting the public API")
+        try:
+            run(snapshot_args(surface), "fingerprinting the public API")
+        except StepFailedError as exc:
+            # The sibling branch below already reports this rather than
+            # raising. A bootstrap run is the one most likely to meet an
+            # extractor it cannot satisfy, so it is the last place a traceback
+            # belongs.
+            log(str(exc), "error")
+            return 3
         log(f"bootstrap: every module queued ({len(rebuild)})")
     else:
         base = (context.get("range") or {}).get("base")

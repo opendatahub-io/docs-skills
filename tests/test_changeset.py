@@ -28,24 +28,17 @@ REPORT = {
             "deliverable": "deploy.md",
             "kind": "update",
             "status": "written",
-            "path": "docs/changeset-x/updates/deploy.edit.md",
-            "guide_url": "https://docs.example/html/deploy",
-            "section": "8.3.3",
+            "path": "docs/guides/deploy.md",
             "summary": "Added tiering",
+            "gaps": ["Which tiers are supported"],
         },
         {
             "deliverable": "stale.md",
             "kind": "update",
             "status": "refused",
-            "reason": "the cached guide has no section 99.9",
+            "reason": "the target does not exist: docs/guides/stale.md",
         },
     ]
-}
-
-PLACEMENT = {
-    "product": "red_hat_openshift_ai_self-managed",
-    "version": "3.5",
-    "gaps": ["Which tiers are supported"],
 }
 
 
@@ -79,30 +72,24 @@ def test_a_first_run_creates_todays_dated_directory(tmp_path):
 
 
 def test_the_index_lists_both_kinds():
-    text = changeset.index(REPORT, PLACEMENT)
+    text = changeset.index(REPORT)
     assert "configure-kv-cache-tiering.md" in text
-    assert "deploy.edit.md" in text
-    assert "8.3.3" in text
-
-
-def test_the_index_names_the_product_and_version():
-    text = changeset.index(REPORT, PLACEMENT)
-    assert "red_hat_openshift_ai_self-managed" in text and "3.5" in text
+    assert "docs/guides/deploy.md" in text
 
 
 def test_a_refusal_is_visible_with_its_reason():
     """A deliverable that was not written must be visible rather than absent."""
-    text = changeset.index(REPORT, PLACEMENT)
+    text = changeset.index(REPORT)
     assert "stale.md" in text
-    assert "no section 99.9" in text
+    assert "the target does not exist" in text
 
 
 def test_the_gaps_are_carried_into_the_index():
-    assert "Which tiers are supported" in changeset.index(REPORT, PLACEMENT)
+    assert "Which tiers are supported" in changeset.index(REPORT)
 
 
 def test_the_index_is_typed_and_marked_generated():
-    text = changeset.index(REPORT, PLACEMENT)
+    text = changeset.index(REPORT)
     assert text.startswith("---\n")
     assert "managed: generated" in text
 
@@ -110,27 +97,16 @@ def test_the_index_is_typed_and_marked_generated():
 RESEARCH = {"gaps": ["Which registries are supported"]}
 
 
-def test_research_gaps_are_carried_into_the_index():
-    """Research gaps are content questions a writer acts on directly."""
-    text = changeset.index(REPORT, PLACEMENT, RESEARCH)
-    assert "Which registries are supported" in text
-
-
-def test_both_kinds_of_gap_appear_together_and_are_labelled():
-    """Research gaps come first because they are what a writer acts on;
-    placement gaps come after because they are about where a page goes."""
-    text = changeset.index(REPORT, PLACEMENT, RESEARCH)
-    assert "Which registries are supported" in text
-    assert "Which tiers are supported" in text
-    assert "(research)" in text
-    assert "(placement)" in text
-    assert text.index("Which registries are supported") < text.index("Which tiers are supported")
-
-
 def test_no_gaps_at_all_still_renders_the_closed_bullet():
-    """Neither source present must not render an empty section."""
-    text = changeset.index(REPORT, {"product": "x", "version": "1"}, {})
+    """An empty section reads as a section nobody filled in."""
+    text = changeset.index({"results": [{"deliverable": "a.md", "status": "written"}]})
     assert "The run closed every question it raised" in text
+
+
+def test_a_writer_s_gap_is_carried_into_the_index():
+    """A gap is what a page wanted and the code did not answer, so it comes
+    from the writers rather than from a research pass."""
+    assert "Which tiers are supported?" in changeset.index(REPORT)
 
 
 # ----------------------------------------------------------- pruning orphans
@@ -151,66 +127,15 @@ def make_changeset(tmp_path):
 # the other proves the blast radius stops at the changeset directory.
 
 
-def test_a_manual_draft_and_its_siblings_are_kept_not_removed(tmp_path):
-    """The narrowed rule Task 8 used for the draft: an explicit `managed:
-    manual` refuses, an unmarked file does not. `updates/*.md` and
-    `updates/*.diff` never carry frontmatter, so ownership()'s manual-by-
-    default would make pruning a permanent no-op."""
-    repo, cs = make_changeset(tmp_path)
-    updates = cs / "updates"
-    (updates / "deploy.md").write_text("guide copy")
-    (updates / "deploy.edit.md").write_text("---\nmanaged: manual\n---\n\nHand edited.\n")
-    (updates / "deploy.diff").write_text("diff")
-
-    removals = changeset.prune(repo, cs, [])
-
-    assert (updates / "deploy.md").exists()
-    assert (updates / "deploy.edit.md").exists()
-    assert (updates / "deploy.diff").exists()
-    assert len(removals) == 3
-    assert all(r["status"] == "kept" for r in removals)
-    assert any("manual" in r["reason"] for r in removals)
-
-
-def test_a_manual_file_in_updates_with_no_edit_sibling_is_kept(tmp_path):
-    """A group with no `.edit.md` must not be assumed to be the tool's own
-    output. A human's `updates/notes.md` carrying `managed: manual`, with no
-    `.edit.md` sibling at all, must survive pruning."""
-    repo, cs = make_changeset(tmp_path)
-    updates = cs / "updates"
-    (updates / "notes.md").write_text("---\nmanaged: manual\n---\n\nHand written notes.\n")
-
-    removals = changeset.prune(repo, cs, [])
-
-    assert (updates / "notes.md").exists()
-    assert len(removals) == 1
-    assert removals[0]["status"] == "kept"
-    assert "manual" in removals[0]["reason"]
-
-
-def test_an_unmarked_stray_file_in_updates_with_no_edit_sibling_is_removed(tmp_path):
-    """The other half of the same fix: a group with no `.edit.md` still gets
-    removed when nothing in it carries an explicit ownership marker."""
-    repo, cs = make_changeset(tmp_path)
-    updates = cs / "updates"
-    (updates / "orphan.md").write_text("stray file, no frontmatter at all")
-
-    removals = changeset.prune(repo, cs, [])
-
-    assert not (updates / "orphan.md").exists()
-    assert len(removals) == 1
-    assert removals[0]["status"] == "removed"
-
-
 def test_nothing_outside_the_changeset_directory_is_ever_touched(tmp_path):
-    """Only files directly inside `<changeset>/new` and `<changeset>/updates`
-    are ever candidates. A sibling changeset from a different run, and
-    anything else in the tree, must survive untouched."""
+    """Only files directly inside `<changeset>/new` are ever candidates. A
+    sibling changeset from a different run, and anything else in the tree,
+    must survive untouched."""
     repo, cs = make_changeset(tmp_path)
     sibling = repo / "docs" / "changeset-y"
     (sibling / "new").mkdir(parents=True)
     (sibling / "new" / "keep.md").write_text("keep me")
-    (cs / "new" / "stale.md").write_text("stale")
+    (cs / "new" / "stale.md").write_text("---\nmanaged: generated\n---\n\nStale.\n")
 
     changeset.prune(repo, cs, [])
 
@@ -232,24 +157,6 @@ def test_a_dropped_new_deliverable_is_removed_and_recorded(tmp_path):
     assert removals[0]["status"] == "removed"
     assert removals[0]["path"].endswith("old-page.md")
     assert "no longer in the plan" in removals[0]["reason"]
-
-
-def test_a_dropped_update_deliverable_removes_all_three_files_together(tmp_path):
-    """An update's three files are one set: `.md`, `.edit.md` and `.diff` all
-    go, or none of them do."""
-    repo, cs = make_changeset(tmp_path)
-    updates = cs / "updates"
-    (updates / "deploy.md").write_text("guide copy")
-    (updates / "deploy.edit.md").write_text("edited copy")
-    (updates / "deploy.diff").write_text("diff")
-
-    removals = changeset.prune(repo, cs, [])
-
-    assert not (updates / "deploy.md").exists()
-    assert not (updates / "deploy.edit.md").exists()
-    assert not (updates / "deploy.diff").exists()
-    assert len(removals) == 3
-    assert all(r["status"] == "removed" for r in removals)
 
 
 def test_files_this_run_produced_are_untouched(tmp_path):
@@ -335,7 +242,7 @@ def test_the_index_lists_what_was_removed():
             "reason": "no longer in the plan",
         },
     ]
-    text = changeset.index(REPORT, PLACEMENT, removals=removals)
+    text = changeset.index(REPORT, removals=removals)
     assert "old-page.md" in text
     assert "no longer in the plan" in text
     assert "(removed)" in text
@@ -349,13 +256,13 @@ def test_the_index_distinguishes_kept_from_removed():
             "reason": "managed: manual",
         },
     ]
-    text = changeset.index(REPORT, PLACEMENT, removals=removals)
+    text = changeset.index(REPORT, removals=removals)
     assert "(kept)" in text
     assert "managed: manual" in text
 
 
 def test_the_index_says_nothing_was_removed_rather_than_an_empty_section():
-    text = changeset.index(REPORT, PLACEMENT, removals=[])
+    text = changeset.index(REPORT, removals=[])
     assert "## Removed" in text
     lowered = text.lower()
     assert "nothing" in lowered
@@ -379,7 +286,7 @@ def test_unresolved_prose_is_named_in_the_index():
             }
         ]
     }
-    text = changeset.index(report, {"product": "p", "version": "1"})
+    text = changeset.index(report)
 
     assert "## Unresolved prose" in text
     assert "Direct.Length line 12" in text
@@ -402,4 +309,4 @@ def test_a_clean_run_has_no_unresolved_prose_section():
             }
         ]
     }
-    assert "Unresolved prose" not in changeset.index(report, {})
+    assert "Unresolved prose" not in changeset.index(report)

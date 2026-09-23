@@ -478,7 +478,7 @@ def main(argv=None):
     parser.add_argument("--in-schema", help="Schema the input must satisfy first")
     parser.add_argument(
         "--llm-cmd",
-        default=os.environ.get("DOCS_LLM_CMD", "claude -p"),
+        default=os.environ.get("DOCS_LLM_CMD", "pi -p"),
         help="Command reading the prompt on stdin, writing JSON to stdout",
     )
     parser.add_argument("--out", help="Where to write the result. Default stdout")

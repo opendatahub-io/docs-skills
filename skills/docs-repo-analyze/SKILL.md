@@ -24,7 +24,7 @@ ANALYZE="$(dirname "$0")/scripts/analyze.py"
 python3 "$ANALYZE" --repo /path/to/code --out .docs-gen
 
 # With summaries and the onboarding guide
-python3 "$ANALYZE" --repo /path/to/code --out .docs-gen --llm-cmd "claude -p"
+python3 "$ANALYZE" --repo /path/to/code --out .docs-gen --llm-cmd "pi -p"
 ```
 
 Omitting `--llm-cmd` is a real mode, not a degraded one. The registry and the

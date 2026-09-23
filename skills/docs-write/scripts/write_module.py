@@ -14,12 +14,10 @@ prose never reaches the model. No prompt wording can move either boundary,
 which is the point of putting them here.
 
     python3 write.py --repo . --out .docs-gen --modules pkg/queue pkg/scheduler \
-        --llm-cmd "claude -p"
+        --llm-cmd "pi -p"
 """
 
-import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -42,14 +40,13 @@ from lib.md.ownership import (  # noqa: E402
     write_assisted,
 )
 from lib.run import step  # noqa: E402
-from lib.run.engine import LANGUAGES, PROMPTS, SCHEMAS  # noqa: E402
+from lib.run.engine import GENERATOR, PROMPTS, SCHEMAS  # noqa: E402
 from lib.run.report import logger  # noqa: E402
 from lib.vale import check  # noqa: E402
 from lib.vale.repair import lint_document, repair_request  # noqa: E402
 
 log = logger("docs-write")
 
-GENERATOR = "docs-skills/0.4.0"
 
 SCHEMA = "docs-skills/write/1"
 
@@ -374,37 +371,13 @@ def write_module(repo, module, registry, out_dir, docs_dir, lang, args, git_cont
 # ------------------------------------------------------------------------ cli
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description="Write Markdown docs per module")
-    parser.add_argument("--repo", default=".")
-    parser.add_argument("--out", default=".docs-gen")
-    parser.add_argument("--docs-dir", default="docs")
-    parser.add_argument("--relevance", help="Write only the modules in rebuild[]")
-    parser.add_argument("--modules", nargs="*", help="Write these modules explicitly")
-    parser.add_argument("--llm-cmd", default=os.environ.get("DOCS_LLM_CMD", "claude -p"))
-    parser.add_argument("--timeout", type=int, default=900)
-    parser.add_argument("--floor", type=int, default=render.DEFAULT_FLOOR)
-    parser.add_argument("--max-modules", type=int, default=0, help="0 means no cap")
-    parser.add_argument(
-        "--vale-config",
-        default=os.environ.get("DOCS_VALE_CONFIG"),
-        help="Composed Vale config. Omit to write without a prose gate",
-    )
-    parser.add_argument(
-        "--vale-level",
-        default="error",
-        choices=sorted(check.SEVERITY_RANK),
-        help="Lowest severity that sends the writer back",
-    )
-    parser.add_argument(
-        "--vale-attempts",
-        type=int,
-        default=3,
-        help="Total model calls per document, including the first",
-    )
-    parser.add_argument("--languages-dir", default=str(LANGUAGES))
-    args = parser.parse_args(argv)
+def run(args):
+    """Write one document set per module, from already-parsed arguments.
 
+    `write.py` owns the parser for both modes, so this takes what it produced
+    rather than parsing a second time. Two parsers is how `--max-modules`
+    came to be rejected by the entry point that documents it.
+    """
     repo = Path(args.repo).resolve()
     out_dir = Path(args.out)
     registry_path = out_dir / "registry.json"
@@ -482,6 +455,12 @@ def main(argv=None):
     if report["failed"]:
         return 3
     return 0 if report["written"] else 1
+
+
+def main(argv=None):
+    import write
+
+    return run(write.build_parser().parse_args(argv))
 
 
 if __name__ == "__main__":

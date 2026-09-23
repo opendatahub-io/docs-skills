@@ -49,10 +49,5 @@ def test_a_corrupt_watermark_reads_as_empty_rather_than_raising(tmp_path):
     assert git_context.read_watermark(mark) == {"registry_hash": None, "modules": {}}
 
 
-def test_normalize_url_strips_the_git_suffix():
-    assert git_context.normalize_url("https://github.com/o/p.git") == "https://github.com/o/p"
-    assert git_context.normalize_url("https://github.com/o/p") == "https://github.com/o/p"
-
-
 def test_fetched_survives_the_graft():
     assert callable(git_context.fetched)

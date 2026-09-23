@@ -27,8 +27,9 @@ log = logger("docs-plan")
 
 SCHEMA = "docs-skills/plan/1"
 TYPES = ("concept", "procedure", "reference")
-# Kebab case, no directory, no traversal. The writer joins this onto docs_dir.
-PATH = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
+# Kebab case, no directory, no traversal. The writer joins a `new` path onto
+# the changeset directory, so a separator in it decides where the file lands.
+NEW_PATH = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 
 
 def validate(deliverables, known_paths):
@@ -37,9 +38,20 @@ def validate(deliverables, known_paths):
     seen = set()
     for item in deliverables:
         path = (item.get("path") or "").strip()
+        kind = item.get("kind") or "new"
         reason = None
-        if not PATH.match(path):
+        if kind == "update":
+            # An update names a page that is already there, and docs trees have
+            # subdirectories: `docs_inventory` hands the planner nested paths,
+            # so the flat rule would reject every real update target. Requiring
+            # the path verbatim is a tighter gate than a shape ever was, and
+            # the writer's `_escapes` stays as the backstop.
+            if path not in known_paths:
+                reason = "update path names no page in the docs tree"
+        elif not NEW_PATH.match(path):
             reason = "path is not a kebab-case .md file name without a directory"
+        if reason:
+            pass
         elif path in seen:
             reason = "duplicate path"
         elif item.get("type") not in TYPES:

@@ -63,7 +63,7 @@ python3 "$LIB/git/git_context.py" context --repo . --out git-context.json
 python3 "$LIB/md/docs_meta.py" validate --repo .
 python3 "$LIB/md/fences.py" check docs/*.md
 python3 "$LIB/vale/check.py" docs/guide.md --level error
-python3 "$LIB/run/step.py" --prompt P --input I --schema S --llm-cmd "claude -p"
+python3 "$LIB/run/step.py" --prompt P --input I --schema S --llm-cmd "pi -p"
 ```
 
 ## What a step says

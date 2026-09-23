@@ -82,7 +82,7 @@ flags win over it. See the file this plugin ships as an example.
 
 ```yaml
 generate:
-  llm_cmd: "claude -p"
+  llm_cmd: "pi -p"
   docs_dir: docs
   bot_author: docs-bot@example.com
   max_modules_per_run: 20

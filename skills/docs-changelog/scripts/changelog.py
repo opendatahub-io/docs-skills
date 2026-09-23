@@ -63,9 +63,9 @@ CONFIG = ENGINE / "config"
 
 from lib.md import docs_meta  # noqa: E402
 from lib.run import step  # noqa: E402
+from lib.run.engine import GENERATOR  # noqa: E402
 
 DETERMINISTIC_FLOOR = 0.7
-GENERATOR = "docs-skills/0.5.0"
 
 # Conventional-commit types, in the order a reader cares about them. Types
 # absent from this map are grouped under Other; types mapped to None never

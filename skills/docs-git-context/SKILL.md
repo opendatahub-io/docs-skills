@@ -40,17 +40,14 @@ Read `git-context.json` from disk. Do not shell out to git yourself. When someth
 | `changes` | Per-file and per-code-module rollup of adds, deletes, renames            |
 | `churn`   | Hotspot ranking by commit frequency, then volume                         |
 | `context` | All of the above in one file. The normal entry point                     |
-| `clone`   | Treeless clone that keeps full history                                   |
 
 ## Choosing a range
 
 Precedence runs `--range`, then `--since-sha`, then the default. The default walks back to the most recent tag, and where HEAD sits exactly on a tag it takes the previous tag's span instead. An untagged repository falls back to the last 200 commits, reported as `commit_count_fallback` so callers know the basis was weak.
 
-## Clone behaviour
+## Shallow checkouts
 
-`clone` uses `--filter=blob:none`, which keeps full commit history and fetches blobs lazily on first read. A shallow clone cannot answer history questions at all, so a target directory already holding one gets `fetch --unshallow` before anything else happens. GitHub Actions checks out shallow by default, so this fires on most CI runs.
-
-A fork-based pull request whose branch is absent from origin falls back to `refs/pull/N/head` or `refs/merge-requests/N/head`.
+A shallow checkout cannot answer history questions at all, so a repository in that state gets `fetch --unshallow` before anything else happens. GitHub Actions checks out shallow by default, so this fires on most CI runs.
 
 ## Code-module attribution
 

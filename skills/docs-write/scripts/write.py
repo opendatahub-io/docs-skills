@@ -19,7 +19,7 @@ if not (ENGINE / "scripts" / "lib" / "run" / "step.py").exists():
     )
 sys.path.insert(0, str(ENGINE / "scripts"))
 
-from lib.run.engine import PROMPTS, SCHEMAS  # noqa: E402
+from lib.run.engine import GENERATOR, LANGUAGES, PROMPTS, SCHEMAS  # noqa: E402
 
 REFERENCE = Path(__file__).resolve().parents[1] / "reference"
 
@@ -39,7 +39,6 @@ from lib.vale.repair import lint_document, repair_request  # noqa: E402
 
 log = logger("docs-write")
 
-GENERATOR = "docs-skills/0.4.0"
 
 SCHEMA = "docs-skills/write/1"
 
@@ -587,12 +586,8 @@ def summarize(results):
         if record.get("status") not in ("written", "unchanged"):
             continue
         path = record.get("path") or record.get("deliverable", "")
-        if record.get("kind") == "update":
-            guide = record.get("guide_url") or "?"
-            section = record.get("section") or "?"
-            lines.append(f"- {path}: update to {guide} section {section}")
-        else:
-            lines.append(f"- {path}: new page")
+        kind = "updated" if record.get("kind") == "update" else "new page"
+        lines.append(f"- {path}: {kind}")
         # Written with prose the repair loop could not clear. The page is on
         # disk either way, so the one thing that must not happen is it going
         # out without the alerts being said out loud.
@@ -659,7 +654,7 @@ def run_plan(
         ("floor", render.DEFAULT_FLOOR),
         ("vale_config", None),
         ("vale_level", "error"),
-        ("repair_attempts", 2),
+        ("vale_attempts", 3),
         ("docs_dir", docs_dir),
         ("out", str(out)),
     ):
@@ -707,7 +702,10 @@ def write_from_plan(repo, out_dir, args):
         log("the plan has no deliverables", "warning")
         return 1
 
-    changeset_dir = getattr(args, "changeset", None) or str(Path(repo) / args.docs_dir)
+    # No default. It used to be `<repo>/<docs_dir>`, and `prune` below deletes
+    # from `<changeset_dir>/new`, so a direct invocation emptied a real
+    # `docs/new/` of anything this plan did not account for.
+    changeset_dir = getattr(args, "changeset", None)
 
     # Loaded defensively: an absent file, an absent `commits` key and an empty
     # list all mean the same thing, which is nothing to ground a page in beyond
@@ -736,61 +734,83 @@ def write_from_plan(repo, out_dir, args):
         marker=marker,
     )
     report, code = write_report(out_dir, args.docs_dir, outcome["results"], plan)
+    if not changeset_dir:
+        # Writing in place: there is no changeset to prune and no index to put
+        # beside documents that are already where they belong.
+        return code
     removals = changeset.prune(repo, changeset_dir, outcome["results"])
-
     index_path = Path(changeset_dir) / "index.md"
     index_path.parent.mkdir(parents=True, exist_ok=True)
-    index_path.write_text(changeset.index(report, {}, {}, removals))
+    index_path.write_text(changeset.index(report, removals))
     return code
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description="Write Markdown documents from a plan")
+def build_parser():
+    """One parser for both modes.
+
+    Module mode and plan mode differ in what decides the document set, not in
+    what a writer does with it, so a flag of either has to be reachable through
+    the one entry point. Two parsers meant `--max-modules` was rejected by the
+    skill that documents it, and a plan-mode flag alongside `--modules` exited
+    2 from the parser nobody could see.
+    """
+    parser = argparse.ArgumentParser(description="Write Markdown documents from a code repository")
     parser.add_argument("--repo", default=".")
     parser.add_argument("--out", default=".docs-gen")
     parser.add_argument("--docs-dir", default="docs")
-    parser.add_argument(
+
+    picks = parser.add_argument_group("what to write")
+    picks.add_argument("--plan", default=None, help="plan.json. Defaults to <out>/plan.json")
+    picks.add_argument("--relevance", help="Module mode: write the modules in rebuild[]")
+    picks.add_argument("--modules", nargs="*", help="Module mode: write these modules")
+    picks.add_argument(
+        "--max-modules", type=int, default=0, help="Module mode: 0 means no cap"
+    )
+    picks.add_argument(
         "--changeset",
         default=None,
-        help="Where this run's new and updated documents land. Defaults to <repo>/<docs-dir>",
+        help=(
+            "Where this run's new documents land, and the only directory pruned. "
+            "Omit to write in place and prune nothing"
+        ),
     )
-    parser.add_argument("--plan", default=None, help="plan.json. Defaults to <out>/plan.json")
-    parser.add_argument("--relevance", help="Module mode: write only the modules in rebuild[]")
-    parser.add_argument("--modules", nargs="*", help="Module mode: write these modules explicitly")
-    parser.add_argument(
-        "--changes", help="changes.json from build.py: the commits selected as relevant"
-    )
-    parser.add_argument(
+    picks.add_argument("--changes", default=None, help="changes.json, for commit evidence")
+    picks.add_argument(
         "--topic", default=None, help="Named in each document's docs-gen marker, slugified"
     )
-    parser.add_argument("--llm-cmd", default=os.environ.get("DOCS_LLM_CMD", "pi -p"))
-    parser.add_argument("--timeout", type=int, default=900)
-    parser.add_argument("--floor", type=int, default=render.DEFAULT_FLOOR)
-    parser.add_argument(
+
+    model = parser.add_argument_group("the model and the prose gate")
+    model.add_argument("--llm-cmd", default=os.environ.get("DOCS_LLM_CMD", "pi -p"))
+    model.add_argument("--timeout", type=int, default=900)
+    model.add_argument("--floor", type=int, default=render.DEFAULT_FLOOR)
+    model.add_argument("--languages-dir", default=str(LANGUAGES))
+    model.add_argument(
         "--vale-config",
         default=os.environ.get("DOCS_VALE_CONFIG"),
         help="Composed Vale config. Omit to write without a prose gate",
     )
-    parser.add_argument(
+    model.add_argument(
         "--vale-level",
         default="error",
         choices=sorted(check.SEVERITY_RANK),
         help="Lowest severity that sends the writer back",
     )
-    parser.add_argument(
+    model.add_argument(
         "--vale-attempts",
         type=int,
         default=3,
         help="Total model calls per document, including the first",
     )
-    args = parser.parse_args(argv)
+    return parser
 
-    # Module mode and plan mode are one skill because they share the ownership
-    # contract, the renderer and the repair loop. They differ only in what
-    # decides the document set: a plan names deliverables, a relevance verdict
-    # or a module list names code modules.
-    if args.modules or args.relevance:
-        return write_module.main(argv)
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+
+    # `--modules` with no values parses as `[]`, which is falsy, so module mode
+    # is chosen on the flag being present rather than on what it carries.
+    if args.modules is not None or args.relevance:
+        return write_module.run(args)
 
     repo = Path(args.repo).resolve()
     out_dir = Path(args.out)

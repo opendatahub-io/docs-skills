@@ -24,10 +24,11 @@ python3 "$WRITE" --repo . --out .docs-gen --relevance .docs-gen/relevance.json -
 python3 "$WRITE" --repo . --out .docs-gen --modules pkg/queue pkg/scheduler
 ```
 
-The two modes are one skill because they share the ownership contract, the
-renderer and the prose repair loop. They differ only in what decides the
-document set: a plan names deliverables, a relevance verdict or a module list
-names code modules.
+The two modes are one skill, and one argument parser, because they share the
+ownership contract, the renderer and the prose repair loop. They differ only in
+what decides the document set: a plan names deliverables, a relevance verdict
+or a module list names code modules. Every flag of either mode is reachable
+through this one entry point.
 
 ## Ownership
 
@@ -52,10 +53,16 @@ tree protects every file on first contact. Only the writer promotes a file to
 
 ## New pages and updates
 
-A plan deliverable carries a `kind`. A `new` deliverable writes into the run's
-changeset directory. An `update` deliverable names a path that is already under
-`docs_dir`, and is refused when that path does not exist: a plan built before
-someone deleted a page should not put the page back.
+A plan deliverable carries a `kind`. A `new` deliverable writes into the
+changeset directory `--changeset` names, and is a flat kebab-case file name so
+that a separator in it cannot decide where the file lands. An `update`
+deliverable names a path already under `docs_dir`, nested or not, and is
+refused when that path does not exist: a plan built before someone deleted a
+page should not put the page back.
+
+Without `--changeset` the writer writes in place and prunes nothing. `prune`
+deletes from `<changeset>/new`, so a default pointing at `docs_dir` would empty
+a real `docs/new/` of anything the plan did not account for.
 
 Both produce the same kind of document, so both take the same prompt and the
 same schema. Ownership is the only thing that differs between them.

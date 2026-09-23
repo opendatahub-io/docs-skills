@@ -19,6 +19,7 @@ if not (ENGINE / "scripts" / "lib" / "run" / "step.py").exists():
     )
 sys.path.insert(0, str(ENGINE / "scripts"))
 
+from lib.git import commit_select  # noqa: E402
 from lib.git.api_surface import registry_hash  # noqa: E402
 from lib.run import step  # noqa: E402
 from lib.run.engine import LIB, PROMPTS, SCHEMAS  # noqa: E402
@@ -150,6 +151,36 @@ def narrow(registry, paths):
             for prefix in wanted
         )
     }
+    if not kept:
+        # Targeting that matches nothing is worse than reading whole: it would
+        # hand the writer an empty surface and call it the public API.
+        return registry
+    narrowed = dict(registry)
+    narrowed["modules"] = kept
+    narrowed["module_count"] = len(kept)
+    narrowed["registry_hash"] = registry_hash({n: e["paths"] for n, e in kept.items()})
+    return narrowed
+
+
+def narrow_subject(registry, subject):
+    """Keep the modules whose name or paths answer to `subject`.
+
+    `--subject` was declared, documented and passed on every topic run, and
+    read by nothing: a topic run paid the whole-repository read the flag exists
+    to avoid. extract_api runs tree-sitter over every file of every module it
+    is handed, which is where that time goes.
+
+    Matching is on the same word tokens `commit_select` scores against, so a
+    subject narrows modules and commits by one vocabulary.
+    """
+    wanted = commit_select._words(subject)
+    if not wanted:
+        return registry
+    kept = {}
+    for name, entry in registry["modules"].items():
+        haystack = " ".join([name, *entry.get("paths", [])]).lower()
+        if any(word in haystack for word in wanted):
+            kept[name] = entry
     if not kept:
         # Targeting that matches nothing is worse than reading whole: it would
         # hand the writer an empty surface and call it the public API.
@@ -450,15 +481,19 @@ def main(argv=None):
     try:
         language = args.lang or detect(repo)
         if not language:
-            log("could not detect a language", "error")
-            return 2
+            log("could not detect a language; nothing to analyze", "warning")
+            return 1
         registry = narrow(build_registry(repo, language, args.exclude), args.paths)
+        registry = narrow_subject(registry, args.subject or "")
     except RuntimeError as exc:
+        # "Unsupported language" is a repository this tool cannot read, which
+        # is nothing to do rather than a step that broke.
+        if "nsupported language" in str(exc):
+            log(f"{exc}; nothing to analyze", "warning")
+            return 1
         log(f"{exc}", "error")
         return 2
 
-    if not registry.get("module_count"):
-        log("no modules found", "warning")
 
     registry_path = out_dir / "registry.json"
     if args.skip_cached and registry_path.exists():
@@ -468,6 +503,11 @@ def main(argv=None):
             return 1
 
     registry_path.write_text(json.dumps(registry, indent=2, sort_keys=True) + "\n")
+    if not registry.get("module_count"):
+        # A repository this tool cannot read is nothing to do, not a failure.
+        # CI reads exit 3 as something broke, and nothing broke.
+        log("no modules found; nothing to analyze", "warning")
+        return 1
     extracted = extract_api(repo, registry, out_dir)
     wrote_surface = write_surface(repo, registry, out_dir)
 
@@ -483,8 +523,8 @@ def main(argv=None):
 
     only = set(args.modules) if args.modules else None
     written, failed = summarize_modules(repo, registry, out_dir, args.llm_cmd, args.timeout, only)
-    if not written:
-        log("every module summary failed", "error")
+    if not written and failed:
+        log(f"every module summary failed ({len(failed)})", "error")
         return 3
 
     graph = dep_pairs(out_dir)

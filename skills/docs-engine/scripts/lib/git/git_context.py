@@ -63,7 +63,7 @@ def fetched(repo, ref):
     git() returns stdout, so `git(..., check=False) is not None` was always
     true and every fetch read as a success. A failed fetch leaves any earlier
     FETCH_HEAD in place, and checking that out succeeds while naming a ref the
-    clone never obtained.
+    a shallow checkout never obtained.
     """
     done = subprocess.run(
         ["git", "-C", str(repo), "fetch", "origin", ref], capture_output=True, check=False
@@ -452,69 +452,6 @@ def summarize(commits):
     }
 
 
-# ---------------------------------------------------------------------- clone
-
-
-def pr_number_from_url(url):
-    if not url:
-        return None
-    match = re.search(r"/(?:pull|merge_requests)/(\d+)", url)
-    return int(match.group(1)) if match else None
-
-
-def clone(url, out, ref=None, pr_url=None, blobless=True):
-    """Treeless clone keeps full commit history at a fraction of the size."""
-    if Path(out).exists() and is_repo(out):
-        info = ensure_history(out)
-        return {"status": "existing", "path": str(out), **info}
-    args = ["clone"]
-    if blobless:
-        args.append("--filter=blob:none")
-    if ref:
-        args.extend(["--branch", ref])
-    args.extend([url, str(out)])
-    proc = subprocess.run(["git", *args], capture_output=True, text=True, check=False)
-    if proc.returncode == 0:
-        return {
-            "status": "cloned",
-            "path": str(out),
-            "ref": ref,
-            "method": "branch" if ref else "default",
-        }
-
-    # Ref may live in a fork, or the branch was deleted post-merge.
-    args = ["clone"]
-    if blobless:
-        args.append("--filter=blob:none")
-    args.extend([url, str(out)])
-    proc = subprocess.run(["git", *args], capture_output=True, text=True, check=False)
-    if proc.returncode != 0:
-        return {"status": "error", "message": proc.stderr.strip()}
-
-    if ref and fetched(out, ref):
-        if (
-            subprocess.run(
-                ["git", "-C", str(out), "checkout", "FETCH_HEAD"], capture_output=True, check=False
-            ).returncode
-            == 0
-        ):
-            return {"status": "cloned", "path": str(out), "ref": ref, "method": "fetch"}
-
-    number = pr_number_from_url(pr_url)
-    if number:
-        pr_ref = (
-            f"refs/merge-requests/{number}/head" if "gitlab" in url else f"refs/pull/{number}/head"
-        )
-        if (
-            fetched(out, pr_ref)
-            and subprocess.run(
-                ["git", "-C", str(out), "checkout", "FETCH_HEAD"], capture_output=True, check=False
-            ).returncode
-            == 0
-        ):
-            return {"status": "cloned", "path": str(out), "ref": pr_ref, "method": "pr_ref"}
-
-    return {"status": "cloned", "path": str(out), "ref": None, "method": "default_fallback"}
 
 
 # ------------------------------------------------------------------ commands
@@ -620,11 +557,6 @@ def cmd_context(args):
     return 0
 
 
-def cmd_clone(args):
-    emit(clone(args.url, args.out_dir, args.ref, args.pr_url, not args.full_clone))
-    return 0
-
-
 # ------------------------------------------------------------------ watermark
 
 
@@ -657,10 +589,6 @@ def write_watermark(path, module, sha, doc, registry_hash=None):
         state["registry_hash"] = registry_hash
     Path(path).write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
     return state
-
-
-def normalize_url(url):
-    return url[:-4] if url.endswith(".git") else url
 
 
 def oldest_of(repo, shas):
@@ -743,16 +671,9 @@ def main():
     p.add_argument("--registry-hash")
     p.set_defaults(func=cmd_watermark)
 
-    p = sub.add_parser("clone", help="Treeless clone that preserves full history")
-    p.add_argument("url")
-    p.add_argument("--out", dest="out_dir", required=True)
-    p.add_argument("--ref")
-    p.add_argument("--pr-url")
-    p.add_argument("--full-clone", action="store_true", help="Download all blobs up front")
-    p.set_defaults(func=cmd_clone)
 
     args = parser.parse_args()
-    if getattr(args, "repo", None) and not is_repo(args.repo) and args.command != "clone":
+    if getattr(args, "repo", None) and not is_repo(args.repo):
         print(json.dumps({"error": f"Not a git repository: {args.repo}"}))
         return 1
     try:

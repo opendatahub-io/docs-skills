@@ -192,7 +192,7 @@ def main(argv=None):
     parser.add_argument("question")
     parser.add_argument("--repo", default=".")
     parser.add_argument("--out", default=None, help="Artifact directory. Default <repo>/.docs-gen")
-    parser.add_argument("--llm-cmd", default=os.environ.get("DOCS_LLM_CMD", "claude -p"))
+    parser.add_argument("--llm-cmd", default=os.environ.get("DOCS_LLM_CMD", "pi -p"))
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--write", help="Write the answer here instead of stdout")
     args = parser.parse_args(argv)

@@ -18,7 +18,7 @@ REVIEW="$(dirname "$0")/scripts/review.py"
 python3 "$REVIEW" --repo . --out .docs-gen --docs-dir docs
 
 # Also judge behavioural claims that no symbol name settles
-python3 "$REVIEW" --repo . --out .docs-gen --llm-cmd "claude -p"
+python3 "$REVIEW" --repo . --out .docs-gen --llm-cmd "pi -p"
 ```
 
 ## Deterministic checks

@@ -173,27 +173,6 @@ def test_a_repository_with_no_history_at_all_still_exits_cleanly(tmp_path):
     assert done.returncode == 1
 
 
-def test_a_failed_fetch_is_not_a_successful_clone(tmp_path, monkeypatch):
-    """`git(...) is not None` was always true, because git() returns stdout. A
-    fetch that failed left any earlier FETCH_HEAD in place, and checking that
-    out reported the ref it never obtained."""
-    source = git_repo(tmp_path, count=2)
-    out = tmp_path / "clone"
-
-    real_run = subprocess.run
-
-    def fail_the_fetch(argv, **kwargs):
-        if "fetch" in [str(a) for a in argv]:
-            return subprocess.CompletedProcess(argv, 1, stdout="", stderr="no such ref\n")
-        return real_run(argv, **kwargs)
-
-    monkeypatch.setattr(git_context.subprocess, "run", fail_the_fetch)
-    result = git_context.clone(f"file://{source}", out, ref="refs/heads/does-not-exist")
-
-    assert result["method"] != "fetch"
-    assert result["ref"] != "refs/heads/does-not-exist"
-
-
 def test_fetched_reports_the_exit_status(tmp_path):
     repo = git_repo(tmp_path, count=1)
     assert git_context.fetched(repo, "refs/heads/nope") is False

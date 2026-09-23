@@ -115,7 +115,10 @@ def test_a_deliverable_with_no_sources_is_allowed():
 
 
 def test_an_update_keeps_its_kind():
-    kept, _, _ = plan.validate([deliverable(kind="update")], {MODULE})
+    """An update names a page that is there, so the page is in known_paths."""
+    kept, _, _ = plan.validate(
+        [deliverable(kind="update", path="registry.md")], {MODULE, "registry.md"}
+    )
     assert kept[0]["kind"] == "update"
 
 

@@ -8,7 +8,6 @@ from pathlib import Path
 
 from lib.md import docs_meta
 
-_EDIT_SUFFIX = ".edit.md"
 _DIFF_SUFFIX = ".diff"
 _MD_SUFFIX = ".md"
 
@@ -34,11 +33,9 @@ def directory_for(docs_dir, key, topic, today, base=None):
     return f"{docs_dir}/changeset-{today}-{name}"
 
 
-def index(report, placement, research=None, removals=None):
+def index(report, removals=None):
     """`index.md`: what the run produced, where it goes, and what it refused."""
     results = report.get("results") or []
-    product = (placement or {}).get("product", "")
-    version = (placement or {}).get("version", "")
 
     lines = [
         "---",
@@ -49,8 +46,6 @@ def index(report, placement, research=None, removals=None):
         "",
         "# Changeset",
         "",
-        f"Targeting {product} {version}.".strip(),
-        "",
         "## Documents",
         "",
         "| Deliverable | Kind | Goes | Why |",
@@ -59,12 +54,9 @@ def index(report, placement, research=None, removals=None):
     written = [r for r in results if r.get("status") in ("written", "unchanged")]
     if written:
         for row in written:
-            path = row.get("path", "")
-            if row.get("kind") == "update":
-                target = f"{row.get('guide_url', '')} section {row.get('section', '')}"
-                goes = f"{path} → {target}" if path else target
-            else:
-                goes = path
+            # An update and a new page both land at a path in this repository
+            # now, so there is one answer to where a document goes.
+            goes = row.get("path", "")
             lines.append(
                 f"| {row.get('deliverable', '')} | {row.get('kind', 'new')} | "
                 f"{goes} | {row.get('summary') or row.get('reason', '')} |"
@@ -92,11 +84,12 @@ def index(report, placement, research=None, removals=None):
         lines.append("- Every planned document was written")
 
     lines += ["", "## Gaps", ""]
-    research_gaps = (research or {}).get("gaps") or []
-    placement_gaps = (placement or {}).get("gaps") or []
-    if research_gaps or placement_gaps:
-        lines += [f"- {gap.rstrip('?')}? (research)" for gap in research_gaps]
-        lines += [f"- {gap.rstrip('?')}? (placement)" for gap in placement_gaps]
+    # What each writer could not ground in the code it was given. The planner
+    # no longer produces gaps of its own: it plans from what the repository
+    # has, so a gap is something a page wanted and the code did not answer.
+    gaps = [gap for row in results for gap in (row.get("gaps") or [])]
+    if gaps:
+        lines += [f"- {gap.rstrip('?')}?" for gap in dict.fromkeys(gaps)]
     else:
         lines.append("- The run closed every question it raised")
 
@@ -122,24 +115,18 @@ def _ownership_verdict(path):
         front, _, _ = docs_meta.parse(text)
     except Exception as exc:
         return None, f"frontmatter could not be read: {exc}"
-    if front.get("managed") == "manual":
+    # `ownership.ownership` reads an absent `managed` as `manual`, and this
+    # decides whether to delete. Two answers to who owns a file, and the
+    # destructive one taking the looser reading, is how a hand-written draft
+    # went missing.
+    managed = front.get("managed", "manual")
+    if managed == "manual":
         return True, "managed: manual"
     return False, None
 
 
 def _record(repo, path, status, reason):
     return {"path": str(path.relative_to(repo)), "status": status, "reason": reason}
-
-
-def _update_group_stem(name):
-    """Return an update file's shared stem, or None for unrelated files."""
-    if name.endswith(_EDIT_SUFFIX):
-        return name[: -len(_EDIT_SUFFIX)]
-    if name.endswith(_DIFF_SUFFIX):
-        return name[: -len(_DIFF_SUFFIX)]
-    if name.endswith(_MD_SUFFIX):
-        return name[: -len(_MD_SUFFIX)]
-    return None
 
 
 def wipe(repo, docs_dir, name):
@@ -179,7 +166,13 @@ def wipe(repo, docs_dir, name):
 
 
 def prune(repo, changeset_dir, results):
-    """Remove `new/` and `updates/` files this run's plan no longer accounts for."""
+    """Remove drafts under `new/` that this run's plan no longer accounts for.
+
+    An update writes in place, at a page already in the documentation tree, so
+    there is no `updates/` directory to reconcile: the only drafts a changeset
+    holds are its new pages. A file with no frontmatter is not this tool's
+    output, since every page it writes is stamped, so it is kept.
+    """
     repo = Path(repo)
     changeset_dir = Path(changeset_dir)
     records = []
@@ -202,48 +195,4 @@ def prune(repo, changeset_dir, results):
             else:
                 records.append(_record(repo, f, "kept", reason or "managed: manual"))
 
-    updates_dir = changeset_dir / "updates"
-    protected_stems = {
-        _update_group_stem(Path(r["path"]).name)
-        for r in results
-        if r.get("kind") == "update" and exists(r.get("path"))
-    }
-    if updates_dir.is_dir():
-        groups = {}
-        for f in sorted(updates_dir.iterdir()):
-            if not f.is_file():
-                continue
-            stem = _update_group_stem(f.name)
-            if stem is None:
-                continue
-            groups.setdefault(stem, []).append(f)
-        for stem in sorted(groups):
-            if stem in protected_stems:
-                continue
-            files = groups[stem]
-            edit = next((f for f in files if f.name == f"{stem}{_EDIT_SUFFIX}"), None)
-            if edit is not None:
-                # The normal shape of an update group: the `.edit.md` is the
-                # file a human would mark, so its verdict speaks for the
-                # whole set of three.
-                verdict, reason = _ownership_verdict(edit)
-                for f in files:
-                    if verdict is False:
-                        f.unlink()
-                        records.append(_record(repo, f, "removed", "no longer in the plan"))
-                    else:
-                        records.append(_record(repo, f, "kept", reason or "managed: manual"))
-            else:
-                # No `.edit.md` means the group is not necessarily this
-                # tool's output: it could be a bare `<stem>.md` someone put in
-                # `updates/` by hand. Unlinking on sight would delete an
-                # explicit `managed: manual` file unread, so each file stands
-                # on its own verdict.
-                for f in files:
-                    verdict, reason = _ownership_verdict(f)
-                    if verdict is False:
-                        f.unlink()
-                        records.append(_record(repo, f, "removed", "no longer in the plan"))
-                    else:
-                        records.append(_record(repo, f, "kept", reason or "managed: manual"))
     return records
