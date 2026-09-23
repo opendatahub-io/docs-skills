@@ -1,0 +1,6 @@
+extends: occurrence
+message: "Notes take short bullets. Cut this paragraph to 40 words or make it a list."
+level: error
+scope: paragraph
+max: 40
+token: '\b[\w-]+\b'

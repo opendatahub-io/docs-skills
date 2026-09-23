@@ -1,0 +1,25 @@
+{
+  "name": "docs-skills",
+  "version": "0.4.0",
+  "description": "A documentation harness for pi. Reads a code repository and writes Markdown documentation, gating every page through Vale before it ships.",
+  "keywords": ["pi-package", "documentation", "vale"],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/opendatahub-io/docs-skills.git"
+  },
+  "pi": {
+    "extensions": ["./extensions"],
+    "skills": ["./skills"]
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "//": "devDependencies exist for `npm run typecheck` only. Nothing here ships: pi aliases both @earendil-works specifiers to its own copy when it loads an extension, so the versions pinned below are read by tsc and by nothing else.",
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.85.1",
+    "@earendil-works/pi-tui": "^0.85.1",
+    "@types/node": "^22.20.3",
+    "typescript": "^7.0.2"
+  }
+}

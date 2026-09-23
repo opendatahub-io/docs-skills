@@ -1,0 +1,76 @@
+extends: script
+message: "A procedure topic needs a '## Procedure' or '## Steps' heading."
+level: error
+scope: raw
+script: |
+  text := import("text")
+  matches := []
+  lines := text.split(scope, "\n")
+  n := len(lines)
+  offset := 0
+  idx := 0
+  applies := false
+
+  if n > 0 && text.trim_space(lines[0]) == "---" {
+      offset += len(lines[0]) + 1
+      idx = 1
+      for ; idx < n; idx++ {
+          line := lines[idx]
+          trimmed := text.trim_space(line)
+          offset += len(line) + 1
+          if trimmed == "---" {
+              idx++
+              break
+          }
+          if text.has_prefix(trimmed, "type:") {
+              value := text.trim_space(text.trim_prefix(trimmed, "type:"))
+              value = text.trim(value, "\"'")
+              // `task` is the name this project used before the rename. It is
+              // still gated, because a document written under the old name is
+              // still a procedure, and exempting it is exactly the hole the
+              // rename was closing: every repo-mode procedure went unchecked
+              // while the generator wrote `task` and this rule read
+              // `procedure`.
+              if value == "procedure" || value == "task" {
+                  applies = true
+              }
+          }
+      }
+  }
+
+  found := false
+  if applies {
+      in_fence := false
+      fence_marker := ""
+      for ; idx < n; idx++ {
+          line := lines[idx]
+          trimmed := text.trim_space(line)
+
+          if in_fence {
+              if text.has_prefix(trimmed, fence_marker) {
+                  in_fence = false
+              }
+          } else if text.has_prefix(trimmed, "```") {
+              in_fence = true
+              fence_marker = "```"
+          } else if text.has_prefix(trimmed, "~~~") {
+              in_fence = true
+              fence_marker = "~~~"
+          } else if !text.has_prefix(line, "    ") && !text.has_prefix(line, "\t") {
+              // CommonMark allows up to three spaces before an ATX heading and
+              // treats four as a code block, so comparing the trimmed line read
+              // an indented example as a real heading.
+              folded := text.to_lower(trimmed)
+              if folded == "## procedure" || folded == "### procedure" ||
+                 folded == "#### procedure" || folded == "## steps" ||
+                 folded == "### steps" || folded == "#### steps" {
+                  found = true
+                  break
+              }
+          }
+      }
+  }
+
+  if applies && !found {
+      matches = append(matches, {begin: 0, end: 1})
+  }

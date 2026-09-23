@@ -1,0 +1,58 @@
+extends: script
+message: "A reference topic needs a table. If it doesn't have a table, move it to a concept topic."
+level: error
+scope: raw
+script: |
+  text := import("text")
+  matches := []
+  lines := text.split(scope, "\n")
+  n := len(lines)
+  offset := 0
+  idx := 0
+  applies := false
+
+  if n > 0 && text.trim_space(lines[0]) == "---" {
+      offset += len(lines[0]) + 1
+      idx = 1
+      for ; idx < n; idx++ {
+          line := lines[idx]
+          trimmed := text.trim_space(line)
+          offset += len(line) + 1
+          if trimmed == "---" {
+              idx++
+              break
+          }
+          if trimmed == "type: reference" {
+              applies = true
+          }
+      }
+  }
+
+  found := false
+  if applies {
+      in_fence := false
+      fence_marker := ""
+      for ; idx < n; idx++ {
+          line := lines[idx]
+          trimmed := text.trim_space(line)
+
+          if in_fence {
+              if text.has_prefix(trimmed, fence_marker) {
+                  in_fence = false
+              }
+          } else if text.has_prefix(trimmed, "```") {
+              in_fence = true
+              fence_marker = "```"
+          } else if text.has_prefix(trimmed, "~~~") {
+              in_fence = true
+              fence_marker = "~~~"
+          } else if text.has_prefix(trimmed, "|") && text.has_suffix(trimmed, "|") && len(trimmed) >= 2 {
+              found = true
+              break
+          }
+      }
+  }
+
+  if applies && !found {
+      matches = append(matches, {begin: 0, end: 1})
+  }

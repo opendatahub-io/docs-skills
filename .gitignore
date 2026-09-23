@@ -10,3 +10,17 @@ tmp/
 
 # Artifact directory, when the generator is run against this repository itself.
 .docs-gen/
+
+# Vale packages land in styles/ on sync. Only our own styles are committed.
+styles/RedHat/
+styles/Std/
+styles/Voices/
+styles/Direct/
+styles/GenZ/
+styles/Coach/
+styles/Simple/
+styles/.vale-config/
+styles/config/
+
+# npm cache, when CI or a local run is pointed at it
+.npm/
