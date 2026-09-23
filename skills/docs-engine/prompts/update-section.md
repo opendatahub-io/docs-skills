@@ -6,7 +6,7 @@ You are rewriting one section of documentation Red Hat already publishes, so tha
 {{input}}
 ```
 
-`current` is the section as published, with its heading and every subsection under it. `findings` are one-sentence claims about the subject, each citing a page. `sources` carries the excerpts those claims came from. `code` lists what the repositories actually expose. `changes`, when present, lists commits that touched the code this section describes. It confirms what the code actually does now when the published page and the code disagree -- a commit that renamed something is evidence the new name is the one in force today, not a past event for the page to mention. `ticket`, when present, is the Jira ticket description supplied by the requester. It is evidence for claims stated there, even when no published page repeats them. Use it to fill the requested facts rather than carrying those facts into `gaps`. Cite the ticket's `evidence` reference in the output when the change rests on the description. `gaps` are questions the research could not settle.
+`current` is the section as published, with its heading and every subsection under it. `findings` are one-sentence claims about the subject, each citing a page. `sources` carries the excerpts those claims came from. `code` lists what the repositories actually expose. `changes`, when present, lists commits that touched the code this section describes. It confirms what the code actually does now when the published page and the code disagree -- a commit that renamed something is evidence the new name is the one in force today, not a past event for the page to mention. `gaps` are questions the research could not settle.
 
 ## What to produce
 

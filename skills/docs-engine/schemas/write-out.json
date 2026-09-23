@@ -93,10 +93,10 @@
   },
   "evidence": {
    "type": "array",
-   "description": "What the body rests on: a repo-relative file:line, a URL from the findings, or the Jira ticket description reference. docs-review cross-checks file:line entries and recognizes ticket references.",
+   "description": "What the body rests on: a repo-relative file:line, or a URL. docs-review cross-checks file:line entries against the code.",
    "items": {
     "type": "string",
-    "pattern": "^(?:[A-Za-z][A-Za-z0-9+.-]*://.+|jira:[A-Za-z][A-Za-z0-9_]*-[0-9]+:description|.+:[0-9]+)$"
+    "pattern": "^(?:[A-Za-z][A-Za-z0-9+.-]*://.+|.+:[0-9]+)$"
    }
   },
   "gaps": {

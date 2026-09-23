@@ -1,9 +1,0 @@
-{
-  "type": "object",
-  "required": ["requirements"],
-  "properties": {
-    "requirements": {"type": "array", "items": {"type": "string", "minLength": 1}},
-    "audience": {"type": "string"},
-    "questions": {"type": "array", "items": {"type": "string", "minLength": 1}}
-  }
-}

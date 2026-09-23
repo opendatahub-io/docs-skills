@@ -1,11 +1,18 @@
 # Copy to `.docs-gen.yaml` at the root of the repository being documented.
-# One config surface per repo. Command line flags win over everything here.
+# One config surface per repo, shared by /docs and /docs-sync. Command line
+# flags win over everything here.
 
 generate:
-  # The command docs-sync pipes each prompt to on stdin, expecting JSON back.
-  # Swap it for `codex exec`, `ollama run <model>`, or a shell wrapper around a
-  # raw HTTP call; nothing else in the pipeline changes.
-  llm_cmd: "claude -p"
+  # The command each step pipes its prompt to on stdin, expecting JSON back.
+  # Swap it for `claude -p`, `codex exec`, `ollama run <model>`, or a shell
+  # wrapper around a raw HTTP call; nothing else in the pipeline changes.
+  # Inside a pi session the extension overrides this with the session's model.
+  llm_cmd: "pi -p"
+
+  # Optional. Every step not named here runs `llm_cmd`.
+  # Possible values: analyze, plan, write, review, changelog
+  llm_cmd_steps:
+    plan: "pi -p -nt --offline --model openai/gpt-5.6-luna:high"
 
   # Where generated Markdown lands, relative to the repository root.
   docs_dir: docs
@@ -17,8 +24,14 @@ generate:
   # `auto` detects the language; otherwise an explicit name.
   language: auto
 
-  # The documentation set a run targets. Results outside it are dropped
-  # before they cost a fetch.
-  product: red_hat_openshift_ai_self-managed
-  # Optional. --version wins, then the ticket's fix version, then this.
-  version: "3.5"
+  # docs-sync only. The author whose commits mean this run is looking at its
+  # own last push, and the ceiling on modules rebuilt in one run.
+  bot_author: docs-bot@example.com
+  max_modules_per_run: 20
+
+  # Word ceilings on the chain's own working notes.
+  vale:
+    budgets:
+      git_context: 6000
+      plan: 6000
+      index: 6000

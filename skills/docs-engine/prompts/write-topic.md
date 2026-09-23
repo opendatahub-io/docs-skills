@@ -28,7 +28,6 @@ A `reference` is consulted, not read. It carries a table.
 
 `changes`, when present, lists commits that touched the code this page describes. It confirms what the code actually does now when the published sources and the code disagree -- a commit that renamed something is evidence the new name is the one in force today, not a past event for the page to mention.
 
-`ticket`, when present, is the Jira ticket description supplied by the requester. It is evidence for claims stated there, even when no published page repeats them. Use it to fill the requested facts rather than carrying those facts into `gaps`. Cite the ticket's `evidence` reference in the output when the page rests on the description.
 
 `gaps` are questions the research could not settle. Where a reader would expect an answer you do not have, say so plainly and carry the question out in `gaps`.
 

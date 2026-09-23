@@ -2,7 +2,7 @@ You are checking whether a documentation page's claims are supported by the code
 
 Each claim below describes behaviour. None of them names a function or type that could be checked mechanically, which is why they reached you. The excerpts are the source lines the writer cited as its evidence.
 
-One excerpt is not source lines: a reference shaped `jira:KEY:description` carries the Jira ticket description the requester supplied. It is evidence in its own right, and a claim it states is supported even though no numbered line shows it. An excerpt that is `null` was cited and could not be read, which supports nothing.
+An excerpt that is `null` was cited and could not be read, which supports nothing.
 
 ## Input
 

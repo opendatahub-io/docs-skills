@@ -4,14 +4,13 @@
 # analysis, which presumes the registry and the API snapshot are already on
 # disk, and the grounding check reads api-surface.json on every run. Under CI
 # caching a cold cache produces a matching hash with nothing behind it.
-# Each run writes into `.docs-gen/<ticket>/`, so the durable artifacts are one
-# level deeper than the root. The clones and the downloaded Vale packages sit
-# in the root itself and are never committed.
+# Each run writes into `.docs-gen/<run>/`, so the durable artifacts are one
+# level deeper than the root. The downloaded Vale packages sit in the root
+# itself and are never committed.
 .docs-gen/*
 !.docs-gen/*/
 .docs-gen/*/*
 !.docs-gen/*/registry.json
 !.docs-gen/*/api/
 !.docs-gen/*/api-surface.json
-.docs-gen/checkouts/
 .docs-gen/vale-packages/

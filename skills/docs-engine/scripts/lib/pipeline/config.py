@@ -19,29 +19,38 @@ ARTIFACT_DIR = ".docs-gen"
 # belongs here when `build.py` calls `llm_cmd_for` for it, which is what the
 # README test checks.
 MODEL_STEPS = (
-    "requirements",
-    "research",
-    "place",
+    "analyze",
     "plan",
     "write",
     "review",
+    "changelog",
 )
 
 DEFAULTS = {
-    "llm_cmd": "claude -p",
+    "llm_cmd": "pi -p",
     "llm_cmd_steps": {},
     "docs_dir": "docs",
     "issue_prefixes": [],
     "vale": {},
-    "coverage": {},
-    "product": "",
-    "version": "",
+    # docs-sync read these from a DEFAULTS of its own. Two surfaces meant a
+    # repository could configure one entry point and not the other.
+    "bot_author": "",
+    "max_modules_per_run": 20,
+    "token_budget": 400000,
+    "write_doc_comments": False,
+    "language": "auto",
+    "changelog": True,
+    "modules": {"include": [], "exclude": []},
 }
 
-# What a `coverage:` block may say, and what each key may be set to. The gate
-# decides whether a run answered its ticket, so a typo here is a gate running
-# on a setting nobody chose.
-COVERAGE_KEYS = {"ticket_evidence": ("strict", "accept")}
+# Keys the ticket-driven and published-docs pipelines read, which nothing reads
+# now. A repository carrying one is warned rather than failed: the key means
+# nothing, and a stale config is not a reason to refuse to document a codebase.
+RETIRED = {
+    "product": "the published-documentation search is gone",
+    "version": "the published-documentation search is gone",
+    "coverage": "the ticket coverage gate is gone",
+}
 
 
 def load_config(repo):
@@ -65,6 +74,9 @@ def load_config(repo):
     generate = data.get("generate") or {}
     for key, value in generate.items():
         config[key] = value
+    retired = [key for key in RETIRED if key in generate]
+    if retired:
+        config["_warning"] = "; ".join(f"{key}: {RETIRED[key]}" for key in sorted(retired))
     return config
 
 
@@ -102,31 +114,6 @@ def check_steps(config):
         )
 
 
-def ticket_evidence_policy(config):
-    """Whether a page resting on the ticket description alone is documented.
-
-    `strict` is the default because a page whose only citation is the ticket
-    that asked for it has been checked against nothing outside the request.
-    A team whose facts reach documentation through tickets before they reach
-    anything public sets `accept`, and takes the coverage reason as the record
-    of what carried each requirement.
-    """
-    coverage = config.get("coverage") or {}
-    unknown = sorted(set(coverage) - set(COVERAGE_KEYS))
-    if unknown:
-        raise ValueError(
-            f"unknown coverage key(s): {', '.join(unknown)}. "
-            f"Known keys: {', '.join(sorted(COVERAGE_KEYS))}"
-        )
-    value = coverage.get("ticket_evidence") or "strict"
-    if value not in COVERAGE_KEYS["ticket_evidence"]:
-        raise ValueError(
-            f"coverage.ticket_evidence: {value!r} is not one of "
-            f"{', '.join(COVERAGE_KEYS['ticket_evidence'])}"
-        )
-    return value
-
-
 _BRIDGE = re.compile(r"\bask\.py\b")
 
 
@@ -160,38 +147,3 @@ def model_table(config, cli=None, env=None):
         rows.append((step, readable(resolved), source))
     width = max(len(step) for step, _, _ in rows)
     return "\n".join(f"{step:<{width}}  {cmd}  [{source}]" for step, cmd, source in rows)
-
-
-class VersionUnresolved(RuntimeError):  # noqa: N818
-    """No source answered which release this run targets."""
-
-
-_RELEASE = re.compile(r"\d+(?:\.\d+)*")
-
-
-def resolve_version(config, cli=None, fix_versions=()):
-    """Which release a run targets, resolved highest precedence to lowest."""
-    if cli:
-        return str(cli)
-    for candidate in fix_versions or ():
-        found = _RELEASE.search(str(candidate))
-        if found:
-            return found.group(0)
-    if config.get("version"):
-        value = config["version"]
-        if not isinstance(value, str):
-            # YAML reads an unquoted `version: 3.10` as the float 3.1 and
-            # the run would target the wrong release. Nothing can recover
-            # "3.10" once YAML has parsed it, so this is rejected rather
-            # than reformatted.
-            raise VersionUnresolved(
-                f"version: {value!r} in .docs-gen.yaml was read as "
-                f"{type(value).__name__}, not a string. YAML parses an unquoted "
-                "numeric value like 3.10 as the float 3.1, silently dropping the "
-                'trailing zero. Quote it: version: "3.10"'
-            )
-        return value
-    raise VersionUnresolved(
-        "no version to target. Looked at --version, the ticket's fix version, "
-        "and `version` in .docs-gen.yaml"
-    )

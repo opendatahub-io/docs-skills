@@ -40,7 +40,6 @@ scripts/lib/git/       git_context.py, api_surface.py, commit_select.py, digest.
 scripts/lib/md/        docs_meta.py, fences.py, render.py, sections.py,
                        changeset.py, language_file.py, ownership.py
 scripts/lib/pipeline/  config.py and workspace.py: what a run resolves before it starts
-scripts/lib/research/  ticket.py, rhd.py, excerpt.py: the external CLIs and what they return
 scripts/lib/run/       step.py (the single model call), engine.py (where things are),
                        report.py (what a step says), ask.py, coverage.py, evidence.py
 scripts/lib/vale/      check.py, compose.py, repair.py
