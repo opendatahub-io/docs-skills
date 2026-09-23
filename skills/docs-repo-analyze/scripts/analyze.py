@@ -428,6 +428,35 @@ def _record_failure(out_dir, command, summaries, exc, stage, batch=None):
     return path
 
 
+# The one field synthesis never reads, and the bulk of a summary's size. Shed
+# deterministically when a batch reply has to be fallen back on.
+SHED = ("public_api",)
+
+
+def reconcile(batch, returned):
+    """The batch's modules, as the model compacted them where it did.
+
+    The prompt asks for every module back and no others. A prompt instruction
+    is a request; this is the guarantee. A module the reply dropped falls back
+    to its own summary minus `public_api`, because losing it would delete a
+    module from the guide silently, and a module the reply invented is a claim
+    about code nothing analyzed.
+    """
+    wanted = {entry["module"]: entry for entry in batch}
+    kept, seen = [], set()
+    for entry in returned or []:
+        name = entry.get("module")
+        if name not in wanted or name in seen:
+            continue
+        seen.add(name)
+        kept.append(entry)
+    missing = [name for name in wanted if name not in seen]
+    for name in missing:
+        kept.append({k: v for k, v in wanted[name].items() if k not in SHED})
+    invented = len([e for e in returned or [] if e.get("module") not in wanted])
+    return kept, missing, invented
+
+
 def compact(summaries, out_dir, llm_cmd, timeout, budget):
     """Reduce a large summary set until it fits one call.
 
@@ -446,13 +475,16 @@ def compact(summaries, out_dir, llm_cmd, timeout, budget):
     for index, batch in enumerate(batches, start=1):
         log(f"[{index}/{len(batches)}] compacting {len(batch)} module(s)")
         try:
-            result, _ = step.run_step(
-                prompt, {"_kind": "batch", "modules": batch}, schema, llm_cmd, timeout
-            )
+            result, _ = step.run_step(prompt, {"modules": batch}, schema, llm_cmd, timeout)
         except (step.StepError, RuntimeError) as exc:
             _record_failure(out_dir, llm_cmd, batch, exc, "batch", batch=index)
             return None
-        compacted.extend(result.get("modules") or [])
+        kept, missing, invented = reconcile(batch, result.get("modules"))
+        if missing:
+            log(f"batch {index} returned no record for {len(missing)} module(s); kept theirs")
+        if invented:
+            log(f"batch {index} returned {invented} module(s) nothing analyzed; dropped", "warning")
+        compacted.extend(kept)
     return compacted
 
 

@@ -124,8 +124,10 @@ class FakeStep:
         self.payloads.append(payload)
         if self.fail_on is not None and len(self.payloads) == self.fail_on:
             raise analyze.step.StepError(["$: no JSON object or array found"], "not json at all")
-        if "batch" in (payload.get("_kind") or ""):
-            return {"modules": [{"module": m["module"], "purpose": "p"} for m in payload["modules"]]}, 1
+        if "reading-order" not in prompt:
+            return {
+                "modules": [{"module": m["module"], "purpose": "p"} for m in payload["modules"]]
+            }, 1
         return {
             "frontmatter": {"title": "Guide", "description": "d" * 20, "type": "overview"},
             "sections": [
@@ -223,3 +225,129 @@ def test_the_analyzer_takes_the_budget_on_the_command_line():
         REPO_ROOT / "skills" / "docs-repo-analyze" / "scripts" / "analyze.py"
     ).read_text()
     assert "--synthesis-budget" in parser_help
+
+
+# ------------------------------------------------- what compaction may shed
+
+
+def full_summary(module):
+    """A module summary with every field `analyze-module-out.json` allows."""
+    return {
+        "module": module,
+        "purpose": "p",
+        "responsibilities": ["r"],
+        "public_api": [{"name": "f", "signature": "f()"} for _ in range(50)],
+        "dependencies": ["pkg/other"],
+        "data_flow": "in at the top, out at the bottom",
+        "gotchas": ["it retries silently (mod.py:12)"],
+        "onboarding_priority": 2,
+        "evidence": [f"{module}/mod.py:1"],
+    }
+
+
+def test_the_batch_prompt_carries_every_field_synthesis_reads():
+    """synthesize-modules.md orders reading-order by `onboarding_priority` and
+    traces key-flows from `data_flow`. A compaction that drops either degrades
+    the guide on exactly the repositories batching exists for, and says
+    nothing."""
+    prompt = (analyze.PROMPTS / "synthesize-batch.md").read_text()
+    schema = json.loads((analyze.SCHEMAS / "synthesize-batch-out.json").read_text())
+    fields = schema["properties"]["modules"]["items"]["properties"]
+    for name in ("onboarding_priority", "data_flow", "gotchas", "dependencies", "evidence"):
+        assert name in fields, f"the batch schema drops {name}"
+        assert name in prompt, f"the batch prompt never mentions {name}"
+
+
+def test_public_api_is_what_compaction_sheds():
+    """It is the bulk of a summary's size and synthesis never reads it."""
+    schema = json.loads((analyze.SCHEMAS / "synthesize-batch-out.json").read_text())
+    assert "public_api" not in schema["properties"]["modules"]["items"]["properties"]
+
+
+def test_the_batch_call_sends_the_model_no_private_keys(tmp_path, monkeypatch):
+    """A key the payload carries reaches the model as part of `{{input}}`, and
+    `build_values` also exposes it as a `{{placeholder}}`. A test hook does not
+    belong in either."""
+    names = [f"pkg/m{i}" for i in range(20)]
+    out = seed(tmp_path, *(summary(n, size=400) for n in names))
+    seen = []
+
+    def run_step(prompt, payload, schema, command, timeout, **kw):
+        seen.append(payload)
+        if "reading-order" in prompt:
+            return {
+                "frontmatter": {"title": "G", "description": "d" * 20, "type": "overview"},
+                "sections": [{"id": f"s{i}", "heading": f"H{i}", "body": "b" * 40} for i in range(3)],
+            }, 1
+        return {"modules": [{"module": m["module"], "purpose": "p"} for m in payload["modules"]]}, 1
+
+    monkeypatch.setattr(analyze.step, "run_step", run_step)
+    analyze.synthesize(registry(*names), out, "fake", 10, budget=2_000)
+    for payload in seen:
+        private = [k for k in payload if k.startswith("_")]
+        assert private == [], f"payload carries {private}"
+
+
+def test_a_zero_or_negative_budget_still_makes_progress():
+    """A misconfigured budget must not produce a batch per module silently, nor
+    loop. One batch per module is the honest floor."""
+    summaries = [summary(f"pkg/m{i}") for i in range(4)]
+    for budget in (0, -1):
+        batches = analyze.partition(summaries, budget=budget)
+        placed = [e["module"] for b in batches for e in b]
+        assert sorted(placed) == sorted(e["module"] for e in summaries), budget
+
+
+# ------------------------------------------------ the batch keeps every module
+
+
+def _batching_fake(reply):
+    """A fake whose batch replies are whatever `reply(batch)` returns."""
+
+    def run_step(prompt, payload, schema, command, timeout, **kw):
+        if "reading-order" not in prompt:
+            return {"modules": reply(payload["modules"])}, 1
+        return {
+            "frontmatter": {"title": "G", "description": "d" * 20, "type": "overview"},
+            "sections": [{"id": f"s{i}", "heading": f"H{i}", "body": "b" * 40} for i in range(3)],
+        }, 1
+
+    return run_step
+
+
+def test_a_module_the_batch_reply_dropped_is_restored(tmp_path, monkeypatch):
+    """`Guards live in scripts, never in prompts`. The batch prompt asks for
+    every module back; a model that returns nine of ten would otherwise delete
+    a module from the guide and say nothing."""
+    names = [f"pkg/m{i:02d}" for i in range(20)]
+    out = seed(tmp_path, *(full_summary(n) for n in names))
+    monkeypatch.setattr(
+        analyze.step, "run_step", _batching_fake(lambda batch: [dict(b) for b in batch[:-1]])
+    )
+    reduced = analyze.compact(analyze.module_summaries(out, registry(*names)), out, "f", 10, 2_000)
+    assert {e["module"] for e in reduced} == set(names)
+
+
+def test_a_restored_module_still_sheds_its_public_api(tmp_path, monkeypatch):
+    """The fallback is the original summary minus the one field compaction
+    exists to drop, not the original whole."""
+    names = [f"pkg/m{i:02d}" for i in range(20)]
+    out = seed(tmp_path, *(full_summary(n) for n in names))
+    monkeypatch.setattr(analyze.step, "run_step", _batching_fake(lambda batch: []))
+    reduced = analyze.compact(analyze.module_summaries(out, registry(*names)), out, "f", 10, 2_000)
+    assert {e["module"] for e in reduced} == set(names)
+    assert all("public_api" not in e for e in reduced)
+    assert all(e.get("onboarding_priority") == 2 for e in reduced)
+
+
+def test_a_module_the_batch_invented_is_dropped(tmp_path, monkeypatch):
+    """A module name nothing analyzed is a claim about code that may not exist."""
+    names = [f"pkg/m{i:02d}" for i in range(20)]
+    out = seed(tmp_path, *(full_summary(n) for n in names))
+
+    def reply(batch):
+        return [dict(b) for b in batch] + [{"module": "pkg/invented", "purpose": "p"}]
+
+    monkeypatch.setattr(analyze.step, "run_step", _batching_fake(reply))
+    reduced = analyze.compact(analyze.module_summaries(out, registry(*names)), out, "f", 10, 2_000)
+    assert {e["module"] for e in reduced} == set(names)
