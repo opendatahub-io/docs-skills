@@ -37,7 +37,7 @@
             "description": "Carried verbatim. The reading-order section is told to work from it, so a batch that drops it reorders the guide silently.",
             "enum": ["first", "early", "later", "reference"]
           },
-          "evidence": {"type": "array", "items": {"type": "string", "pattern": "^.+:[0-9]+$"}}
+          "evidence": {"type": "array", "items": {"type": "string", "pattern": "^\\S+(:[0-9]+)?$"}}
         }
       }
     }

@@ -40,6 +40,7 @@ they cost nothing.
 | `api-surface.json` | no | The fingerprinted public API the planner and writer ground on |
 | `api/<slug>.json` | no | Public symbols per module, for `api_surface --api-dir` |
 | `modules/<slug>.json` | yes | Purpose, responsibilities, dependencies, gotchas |
+| `modules/<slug>.error.json` | no | Written when one module's summary fails: the errors, and the reply that failed them |
 | `dep-pairs.json` | no | Cross-module edges, from those summaries |
 | `ONBOARDING.md` | yes | The synthesis |
 | `synthesis-error.json` | no | Written when synthesis fails, or when a batch failed and the run carried on: stage, command, input size, errors, raw reply |
@@ -47,6 +48,15 @@ they cost nothing.
 A module name carries slashes and a filename cannot, so `pkg/scheduler` is
 written as `pkg__scheduler.json`. Each file names its own module in a `module`
 key, and the ingestion path reads that rather than the filename.
+
+## When one module fails
+
+A module whose summary fails is skipped and the run carries on, because one
+module is one gap in the guide rather than a reason to abandon the rest. The
+reply that failed lands in `modules/<slug>.error.json` next to the summary that
+is not there: `$.evidence[0]: does not match /.../` says what the contract
+wanted, and the record says what arrived. A later run that summarizes the module
+successfully removes it.
 
 ## The registry hash
 

@@ -39,9 +39,12 @@ an empty list rather than inventing an entry.
 **onboarding_priority** — `first`, `early`, `later`, or `reference`. Where this
 module falls in a reading order for someone new to the codebase.
 
-**evidence** — `file:line` references backing your claims, in the form
-`pkg/queue/queue.go:112`. Every gotcha needs one. Use paths exactly as they
-appear in the input.
+**evidence** — repo-relative paths backing your claims, in the form
+`pkg/queue/queue.go:112`. Where one line settles the claim, cite it. Where the
+claim is true of a file rather than of a line, as it often is for a package of
+declarations, cite the file alone: `pkg/queue/queue.go`. A gotcha is somewhere
+in particular, so `gotchas[].evidence` always carries its line. Use paths
+exactly as they appear in the input.
 
 ## Rules
 
@@ -67,6 +70,6 @@ no code fence.
   "data_flow": "string",
   "gotchas": [{"summary": "string", "evidence": "path:line"}],
   "onboarding_priority": "first|early|later|reference",
-  "evidence": ["path:line"]
+  "evidence": ["path:line, or path"]
 }
 ```

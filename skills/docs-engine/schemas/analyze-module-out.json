@@ -37,6 +37,10 @@
       }
     },
     "onboarding_priority": {"type": "string", "enum": ["first", "early", "later", "reference"]},
-    "evidence": {"type": "array", "items": {"type": "string", "pattern": "^.+:[0-9]+$"}}
+    "evidence": {
+      "type": "array",
+      "description": "Repo-relative paths backing the module's claims, with a line number where one line settles it. A module-level claim is often true of a file rather than of a line, so the line is optional here; `gotchas[].evidence` still requires one, because a trap is somewhere in particular.",
+      "items": {"type": "string", "pattern": "^\\S+(:[0-9]+)?$"}
+    }
   }
 }

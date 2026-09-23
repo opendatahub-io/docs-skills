@@ -613,3 +613,116 @@ def test_docs_sync_passes_the_configured_budget_through():
     source = (REPO_ROOT / "skills" / "docs-sync" / "scripts" / "sync.py").read_text()
     assert "--synthesis-budget" in source
     assert "synthesis_budget" in source
+
+
+# ------------------------------------------- one module's summary, when it fails
+
+
+def _module_registry(tmp_path, *names):
+    return tmp_path, {
+        "language": "python",
+        "module_count": len(names),
+        "config_files": [],
+        "modules": {n: {"kind": "library", "files": [], "paths": [n]} for n in names},
+    }
+
+
+def test_a_failed_module_summary_keeps_the_reply_that_failed(tmp_path, monkeypatch):
+    """`pkg/x failed: $.evidence[0]: does not match /.../` says what the contract
+    wanted and nothing about what arrived. StepError carries the reply, and the
+    module loop was dropping it exactly as the synthesis path used to."""
+    out, reg = _module_registry(tmp_path, "pkg/queue")
+
+    def run_step(prompt, payload, schema, command, timeout, **kw):
+        raise analyze.step.StepError(
+            ["$.evidence[0]: does not match /^\\S+(:[0-9]+)?$/"], '{"evidence": ["somewhere"]}'
+        )
+
+    monkeypatch.setattr(analyze.step, "run_step", run_step)
+    written, failed = analyze.summarize_modules(tmp_path, reg, out, "llm --key sk-live-x", 10)
+    assert written == [] and len(failed) == 1
+    record = json.loads((out / "modules" / "pkg__queue.error.json").read_text())
+    assert record["module"] == "pkg/queue"
+    assert record["raw"] == '{"evidence": ["somewhere"]}'
+    assert "does not match" in record["errors"][0]
+    assert "sk-live-x" not in record["command"]
+
+
+def test_a_module_that_succeeds_later_clears_its_error_record(tmp_path, monkeypatch):
+    out, reg = _module_registry(tmp_path, "pkg/queue")
+    (out / "modules").mkdir(parents=True)
+    stale = out / "modules" / "pkg__queue.error.json"
+    stale.write_text('{"module": "pkg/queue"}')
+
+    def run_step(prompt, payload, schema, command, timeout, **kw):
+        return {"purpose": "p", "responsibilities": ["r"]}, 1
+
+    monkeypatch.setattr(analyze.step, "run_step", run_step)
+    written, failed = analyze.summarize_modules(tmp_path, reg, out, "fake", 10)
+    assert written == ["pkg/queue"] and failed == []
+    assert not stale.exists()
+
+
+def test_a_failed_module_does_not_end_the_run(tmp_path, monkeypatch):
+    """One module is one gap in the guide, not a reason to abandon the rest."""
+    out, reg = _module_registry(tmp_path, "pkg/a", "pkg/b")
+
+    def run_step(prompt, payload, schema, command, timeout, **kw):
+        if payload["module"] == "pkg/a":
+            raise analyze.step.StepError(["$.evidence[0]: does not match"], "nope")
+        return {"purpose": "p", "responsibilities": ["r"]}, 1
+
+    monkeypatch.setattr(analyze.step, "run_step", run_step)
+    written, failed = analyze.summarize_modules(tmp_path, reg, out, "fake", 10)
+    assert written == ["pkg/b"]
+    assert [f["module"] for f in failed] == ["pkg/a"]
+
+
+# ------------------------------------------------------ what counts as evidence
+
+
+def _module_schema():
+    return json.loads((analyze.SCHEMAS / "analyze-module-out.json").read_text())
+
+
+def test_module_evidence_takes_a_file_where_no_one_line_settles_it():
+    """A package of declarations is true of a file rather than of a line. The
+    contract demanded `:line` anyway, so those modules failed validation twice
+    and dropped out of the guide."""
+    from lib.run import step as step_lib
+
+    schema = _module_schema()["properties"]["evidence"]
+    for entry in ("pkg/common/observability/semconv/attributes.go", "pkg/queue/queue.go:112"):
+        assert step_lib.validate([entry], schema) == [], entry
+
+
+def test_module_evidence_still_refuses_prose():
+    """Loosening it to a file is not loosening it to a sentence."""
+    from lib.run import step as step_lib
+
+    schema = _module_schema()["properties"]["evidence"]
+    assert step_lib.validate(["the module defines attribute keys"], schema)
+    assert step_lib.validate([""], schema)
+
+
+def test_a_gotcha_still_carries_its_line():
+    """A trap is somewhere in particular, and that is the citation worth having."""
+    from lib.run import step as step_lib
+
+    schema = _module_schema()["properties"]["gotchas"]
+    good = [{"summary": "it retries silently", "evidence": "pkg/queue/queue.go:112"}]
+    bad = [{"summary": "it retries silently", "evidence": "pkg/queue/queue.go"}]
+    assert step_lib.validate(good, schema) == []
+    assert step_lib.validate(bad, schema)
+
+
+def test_the_batch_contract_accepts_the_evidence_the_module_contract_produces():
+    """Compaction carries evidence forward untouched, so a form the module step
+    may emit and the batch step may not is a failure waiting for the repository
+    that trips it."""
+    batch = json.loads((analyze.SCHEMAS / "synthesize-batch-out.json").read_text())
+    module = _module_schema()
+    assert (
+        batch["properties"]["modules"]["items"]["properties"]["evidence"]["items"]["pattern"]
+        == module["properties"]["evidence"]["items"]["pattern"]
+    )

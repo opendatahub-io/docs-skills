@@ -331,16 +331,30 @@ def summarize_modules(repo, registry, out_dir, llm_cmd, timeout, only=None):
             "source": read_sources(repo, entry["files"]),
         }
         log(f"[{index}/{len(names)}] summarizing {name}")
+        error_path = module_dir / f"{slug(name)}.error.json"
         try:
             result, _ = step.run_step(prompt, payload, schema, llm_cmd, timeout)
         except (step.StepError, RuntimeError) as exc:
+            # A module missing from the guide is the visible half of this. The
+            # other half is `$.evidence[0]: does not match /.../` with no way to
+            # see what was actually sent, so the reply goes next to the summary
+            # that is not there.
+            record = step.error_report(
+                getattr(exc, "errors", None) or [str(exc)],
+                getattr(exc, "raw", ""),
+                module=name,
+                command=step.redact_command(llm_cmd),
+            )
+            error_path.write_text(json.dumps(record, indent=2) + "\n")
             failed.append({"module": name, "error": str(exc)})
-            log(f"{name} failed: {exc}")
+            log(f"{name} failed: {exc}; see modules/{error_path.name}")
             continue
         result["module"] = name
         (module_dir / f"{slug(name)}.json").write_text(
             json.dumps(result, indent=2, sort_keys=True) + "\n"
         )
+        # The record describes this run or it describes nothing.
+        error_path.unlink(missing_ok=True)
         written.append(name)
     return written, failed
 
