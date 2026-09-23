@@ -32,14 +32,25 @@ jobs:
     - name: Install system dependencies
       run: sudo apt-get update && sudo apt-get install -y shellcheck
 
+    - name: Set up Node
+      uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4
+      with:
+        node-version: '22'
+
+    - name: Install Node dependencies
+      run: npm ci
+
+    - name: Typecheck the pi extensions
+      run: make typecheck
+
     - name: Install Python dependencies
       run: uv pip install --system ruff
 
     - name: Run ruff check
-      run: ruff check .
+      run: ruff check --no-cache .
 
     - name: Run ruff format check
-      run: ruff format --check --diff .
+      run: ruff format --no-cache --check --diff .
 
     - name: Run shellcheck
       run: find . -name '*.sh' -type f -exec shellcheck {} +
@@ -47,7 +58,7 @@ jobs:
     - name: Reject "--" separator in uv run --script invocations
       run: |
         # uv passes a "--" after the script path straight into the script's
-        # argv; flag-first scripts (e.g. jira_reader --issue) then fail with
+        # argv; a flag-first script then fails with
         # "unrecognized arguments: --". Invoke as: uv run --script <path> <args>.
         if grep -rnE 'uv run --script [^[:space:]]+\.py +-- ' \
              --include='*.md' --include='*.py' \

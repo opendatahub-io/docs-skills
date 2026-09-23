@@ -37,7 +37,7 @@ from lib.run.report import logger  # noqa: E402
 from lib.vale import check  # noqa: E402
 from lib.vale.repair import lint_document, repair_request  # noqa: E402
 
-log = logger("docs-topic-write")
+log = logger("docs-write")
 
 GENERATOR = "docs-skills/0.4.0"
 
@@ -352,7 +352,7 @@ def code_context(out_dir, subject="", limit=400):
         # still tells the writer that every backticked identifier must appear
         # in `code`, and review.py reports this same value.
         if skipped:
-            report_once(f"docs-topic-write: no code grounding. {skipped}")
+            report_once(f"docs-write: no code grounding. {skipped}")
         return {}
 
     wanted = {
@@ -496,14 +496,12 @@ def update_deliverable(
 ):
     """Rewrite a page that is already in this repository's documentation tree.
 
-    The published-section path this replaces read a guide `rhd` had fetched
-    into a cache and spliced one numbered section of it. Nothing fetches now,
-    so an update target is a path under `docs_dir` and produces the same kind
-    of document a new page does. It therefore takes the same prompt and the
-    same schema, and `ownership()` is the only thing that decides what may
-    happen to the file: a `manual` page is never opened, an `assisted` page
-    has only its fenced regions rewritten, and a `generated` page has its body
-    regenerated with human-set frontmatter preserved.
+    An update target is a path under `docs_dir`, and it produces the same kind
+    of document a new page does, so it takes the same prompt and the same
+    schema. `ownership()` is the only thing that decides what may happen to
+    the file: a `manual` page is never opened, an `assisted` page has only its
+    fenced regions rewritten, and a `generated` page has its body regenerated
+    with human-set frontmatter preserved.
     """
     identity = {"deliverable": item["path"], "doc_type": item["type"], "kind": "update"}
     docs_root = Path(repo) / docs_dir

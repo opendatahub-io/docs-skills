@@ -6,7 +6,7 @@ the Markdown body. The frontmatter says which reference generator to defer to,
 whether doc comments may be written into source, and which doc types apply to
 a library, a service or a CLI. The body reaches the writer prompt verbatim.
 
-Frontmatter is what lets `docs-module-write` decide whether pdoc or godoc
+Frontmatter is what lets `docs-write` decide whether pdoc or godoc
 should own reference output without putting a model inside a deterministic
 step.
 

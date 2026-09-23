@@ -1,8 +1,7 @@
 """docs-write: an update deliverable names a file in this repository.
 
-The published-section path read a guide that `rhd` had fetched into a cache.
-Nothing fetches now, so an update target is a path under `docs_dir` and the
-ownership contract is what decides whether it may be written.
+An update target is a path under `docs_dir`, and the ownership contract is
+what decides whether it may be written.
 
 `run_plan` is the seam these test through. A `llm_cmd` of `None` short-circuits
 before any model call, which is what lets a refusal be tested without one: every

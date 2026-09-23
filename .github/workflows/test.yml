@@ -27,5 +27,18 @@ jobs:
     - name: Install test dependencies
       run: pip install -r requirements.txt
 
+    # The prose layer is a real dependency, not an optional extra: several
+    # suites shell out to the binary, and the ones that guard on its absence
+    # would silently stop covering anything without it.
+    - name: Install Vale
+      uses: errata-ai/vale-action@v2.1.1
+      with:
+        version: 3.21.0
+        files: README.md
+        fail_on_error: false
+
+    - name: Sync the Vale style packages
+      run: make sync-styles
+
     - name: Run tests
       run: python3 -m pytest tests/ -v

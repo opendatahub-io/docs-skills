@@ -1,17 +1,10 @@
 """One item failing must not end the step that was processing many.
 
-`rhd` folds every unfetchable URL into one message: "Not a valid Red Hat
-Documentation link (error 2001)". Measured against the live CLI, a guide that
-does not exist, a product that does not exist, a knowledge base article and a
-marketing page all answer with it. A product catalog lists cross-product links
-and knowledge base articles beside its guides, and a search ranks pages that
-have since been withdrawn, so one of these arrives in the course of an
-ordinary run rather than an unusual one.
-
-The line this file holds runs between an item that cannot be read and a tool
-that cannot work. The first is skipped and reported. The second still stops
-the step, because an expired token failing every call alike must never read as
-"every page is missing".
+The line this file holds runs between an item that cannot be handled and a
+tool that cannot work. The first is skipped and reported, because the items
+beside it were drafted at model cost and throwing them away costs that again.
+The second still stops the step, because a failure that hits every call alike
+must never read as "every item was fine".
 """
 
 from __future__ import annotations

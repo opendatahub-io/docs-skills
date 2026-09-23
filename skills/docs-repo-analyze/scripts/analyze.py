@@ -291,7 +291,7 @@ def summarize_modules(repo, registry, out_dir, llm_cmd, timeout, only=None):
             "public_api": symbols[:400],
             "source": read_sources(repo, entry["files"]),
         }
-        print(f"repo-analyze: [{index}/{len(names)}] summarizing {name}")
+        log(f"[{index}/{len(names)}] summarizing {name}")
         try:
             result, _ = step.run_step(prompt, payload, schema, llm_cmd, timeout)
         except (step.StepError, RuntimeError) as exc:
@@ -370,7 +370,7 @@ def write_surface(repo, registry, out_dir):
     """This run's `api-surface.json`, from the API files just extracted.
 
     `docs-sources` was the only thing that ever wrote this, and it went with
-    the Jira reader. Both the planner and the writer ground on it, and its
+    the ticket-driven chain. Both the planner and the writer ground on it, and its
     absence is silent: a writer with no surface grounds against nothing and
     every backticked symbol reports unverified.
 

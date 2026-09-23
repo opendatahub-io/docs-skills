@@ -62,7 +62,7 @@
     },
     "produces": {
      "type": "string",
-     "description": "Which doc type the generator covers, so docs-module-write stops producing it.",
+     "description": "Which doc type the generator covers, so docs-write stops producing it.",
      "enum": [
       "reference",
       "api",
@@ -97,7 +97,7 @@
   },
   "test_globs": {
    "type": "array",
-   "description": "Where usage evidence lives. docs-module-write reads matching files as example sources.",
+   "description": "Where usage evidence lives. docs-write reads matching files as example sources.",
    "items": {
     "type": "string",
     "minLength": 1

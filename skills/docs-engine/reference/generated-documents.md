@@ -1,6 +1,6 @@
 # Generated documents
 
-The contract every writer in this plugin shares. `docs-topic-write` and `docs-module-write` both enforce it, and `lib/md/docs_meta.py` maintains the frontmatter it reads.
+The contract every writer in this plugin shares. both writer modes enforce it, and `lib/md/docs_meta.py` maintains the frontmatter it reads.
 
 ## Ownership
 

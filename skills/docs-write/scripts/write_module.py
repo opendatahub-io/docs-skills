@@ -47,7 +47,7 @@ from lib.run.report import logger  # noqa: E402
 from lib.vale import check  # noqa: E402
 from lib.vale.repair import lint_document, repair_request  # noqa: E402
 
-log = logger("docs-module-write")
+log = logger("docs-write")
 
 GENERATOR = "docs-skills/0.4.0"
 
