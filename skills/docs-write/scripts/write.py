@@ -1,212 +1,116 @@
 #!/usr/bin/env python3
-"""Generate or update one Markdown document per module.
-
-Ownership is enforced here, in the script, not in the prompt. The four
-`managed` behaviours are the contract:
-
-    absent      create the file, stamp `managed: generated`
-    generated   regenerate the body, preserve frontmatter a human set
-    assisted    rewrite only the docs-gen fenced regions, byte-identical outside
-    manual      never open the file for writing; emit a staleness finding
-
-A `manual` file's path never reaches a write call, and an `assisted` file's
-prose never reaches the model. No prompt wording can move either boundary,
-which is the point of putting them here.
-
-    python3 write.py --repo . --out .docs-gen --relevance .docs-gen/relevance.json \
-        --llm-cmd "claude -p"
-"""
+"""Generate new Markdown topics or update published sections from a plan."""
 
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
-
-def _find_engine():
-    """Locate the docs-engine skill, which holds the generator's shared runtime.
-
-    An installer copies each skill directory on its own and drops symlinks on
-    the way, so a tree shared above the skills cannot be linked in and does not
-    survive the copy. It does land every skill as a flat sibling, and that is
-    what this walk uses: docs-engine sits two levels up from any generator
-    skill's script, in an install and in a checkout alike.
-
-    Nothing reads a plugin root from the environment, because no harness sets
-    one.
-    """
-    here = Path(__file__).resolve()
-    for base in (here.parent, *here.parents):
-        if (base / "scripts" / "lib" / "run" / "step.py").exists():
-            return base
-        sibling = base / "docs-engine"
-        if (sibling / "scripts" / "lib" / "run" / "step.py").exists():
-            return sibling
+# docs-engine carries the shared runtime and lands as a flat sibling of this
+# skill, in an install and in a checkout alike. Saying so here, rather than
+# letting the import fail, names what is missing when it is missing.
+ENGINE = Path(__file__).resolve().parents[2] / "docs-engine"
+if not (ENGINE / "scripts" / "lib" / "run" / "step.py").exists():
     raise SystemExit(
-        "docs-skills: cannot find the docs-engine skill. It ships alongside this "
-        "one and carries the shared runtime; install it, or run from a checkout."
+        "docs-skills: the docs-engine skill is missing. It ships alongside this one "
+        "and carries the shared runtime; install it, or run from a checkout."
     )
-
-
-ENGINE = _find_engine()
 sys.path.insert(0, str(ENGINE / "scripts"))
 
-PROMPTS = ENGINE / "prompts"
-SCHEMAS = ENGINE / "schemas"
-LANGUAGES = ENGINE / "languages"
-CONFIG = ENGINE / "config"
+from lib.run.engine import PROMPTS, SCHEMAS  # noqa: E402
 
-from lib.md import docs_meta, fences, language_file, render  # noqa: E402
+REFERENCE = Path(__file__).resolve().parents[1] / "reference"
+
+import write_module  # noqa: E402
+from lib.git import api_surface, commit_select  # noqa: E402
+from lib.md import changeset, docs_meta, fences, render, sections  # noqa: E402
+from lib.md.ownership import (  # noqa: E402
+    WriteRefusedError,
+    existing_summary,
+    ownership,
+    write_assisted,
+)
 from lib.run import step  # noqa: E402
+from lib.run.report import logger  # noqa: E402
+from lib.vale import check  # noqa: E402
+from lib.vale.repair import lint_document, repair_request  # noqa: E402
 
-GENERATOR = "docs-skills/0.5.0"
+log = logger("docs-topic-write")
+
+GENERATOR = "docs-skills/0.4.0"
 
 SCHEMA = "docs-skills/write/1"
 
+# Lower than commit_select.DEFAULT_LIMIT of 30, the ticket-wide cut plan.py
+# forwards. A deliverable is a narrower subject than its ticket, and by the
+# time a commit reaches this payload it sits behind the published excerpts and
+# up to 400 API symbols. More would crowd out what already carries the page.
+CHANGES_LIMIT = 8
 
-def slug(module):
-    return module.replace("/", "__").replace("\\", "__") or "root"
+ARCHETYPES = {
+    "concept": "markdown-concept.md",
+    "procedure": "markdown-task.md",
+    "task": "markdown-task.md",
+    "reference": "markdown-reference.md",
+}
 
+# Module paths that are not API. A test names the thing it tests, so it scores
+# well against any subject and is exactly what a document must not cite.
+_TEST_PATHS = ("/test", "test/", "tests/", "/tests", "conftest", "_test", "benchmark")
 
-# ------------------------------------------------------------------ ownership
-
-
-def ownership(path):
-    """Read a document's `managed` value. A file that is not there is `absent`."""
-    if not path.exists():
-        return "absent", {}, ""
-    text = path.read_text()
-    front, body, _ = docs_meta.parse(text)
-    return front.get("managed", "manual"), front, text
-
-
-def existing_summary(text, front, limit=12000):
-    """What the writer may see of an existing document.
-
-    An `assisted` file hands over only its fenced regions. The prose around
-    them is the human's, and a model that never receives it cannot restate it,
-    drift from it, or be talked into replacing it.
-    """
-    if front.get("managed") == "assisted":
-        try:
-            regions = fences.parse(text)
-        except fences.FenceError as exc:
-            raise WriteRefusedError(f"fence structure is broken: {exc}")
-        return {
-            "managed": "assisted",
-            "regions": [
-                {"section": r.section, "source": r.source, "body": r.body[:4000]} for r in regions
-            ],
-        }
-    return {
-        "managed": front.get("managed", "generated"),
-        "frontmatter": front,
-        "body": text[:limit],
-    }
+# Words that match everything and therefore select nothing.
+_SUBJECT_STOP = {
+    "the",
+    "and",
+    "for",
+    "with",
+    "how",
+    "use",
+    "using",
+    "from",
+    "into",
+    "not",
+    "does",
+    "this",
+    "that",
+    "its",
+    "can",
+    "are",
+    "was",
+}
 
 
-class WriteRefusedError(RuntimeError):
-    """The ownership contract forbids this write."""
+def _escapes(path, base):
+    """Whether `path` resolves outside `base`."""
+    try:
+        path.resolve().relative_to(base.resolve())
+        return False
+    except ValueError:
+        return True
 
 
-# --------------------------------------------------------------- writer input
+def archetype_for(doc_type):
+    """The plain Markdown example that gives a new page its type-specific shape."""
+    name = ARCHETYPES.get(doc_type)
+    if not name:
+        return ""
+    return (REFERENCE / name).read_text()
 
 
-def read_tests(repo, module_paths, globs, budget=20000):
-    """Test files under the module, as usage evidence.
-
-    Tests show the API being called for real, with the imports and setup a
-    reader needs. An example lifted from a test breaks the test suite when it
-    rots; an invented one rots silently.
-    """
-    found, used = [], 0
-    for prefix in module_paths:
-        base = Path(repo) / prefix
-        if not base.is_dir():
-            continue
-        for pattern in globs or ["test_*.py", "*_test.go", "*.test.ts"]:
-            for path in sorted(base.rglob(pattern)):
-                try:
-                    text = path.read_text(errors="replace")
-                except OSError:
-                    continue
-                if used + len(text) > budget:
-                    continue
-                found.append({"file": str(path.relative_to(repo)), "content": text})
-                used += len(text)
-    return found
-
-
-def build_input(repo, module, registry, out_dir, doc_type, target, git_context):
-    entry = registry["modules"][module]
-    api_path = Path(out_dir) / "api" / f"{slug(module)}.json"
-    surface_path = Path(out_dir) / "api-surface.json"
-
-    symbols = []
-    if api_path.exists():
-        symbols = json.loads(api_path.read_text()).get("public_api", [])
-    elif surface_path.exists():
-        surface = json.loads(surface_path.read_text())
-        for key, value in (surface["modules"].get(module, {}).get("symbols") or {}).items():
-            kind, _, name = key.partition(":")
-            symbols.append(
-                {
-                    "name": name,
-                    "kind": kind,
-                    "file": value.get("file"),
-                    "line": value.get("line"),
-                    "signature": value.get("signature"),
-                }
-            )
-
-    analysis_path = Path(out_dir) / "modules" / f"{slug(module)}.json"
-    analysis = json.loads(analysis_path.read_text()) if analysis_path.exists() else None
-
-    git_slice = {}
-    if git_context:
-        # Attribution lives in the top-level modules map as a SHA list; commit
-        # records carry no module of their own.
-        rollup = (git_context.get("modules") or {}).get(module, {})
-        shas = set(rollup.get("commits") or [])
-        commits = [
-            {
-                "subject": c.get("subject"),
-                "type": c.get("type"),
-                "scope": c.get("scope"),
-                "breaking": c.get("breaking"),
-                "pr": c.get("pr"),
-                "issues": c.get("issues"),
-                "short": c.get("short"),
-            }
-            for c in git_context.get("commits", [])
-            if c.get("sha") in shas
-        ]
-        git_slice = {
-            "commits": commits[:60],
-            "files": rollup.get("files", [])[:100],
-            "adds": rollup.get("adds", 0),
-            "dels": rollup.get("dels", 0),
-            "breaking_changes": git_context.get("summary", {}).get("breaking_changes", []),
-        }
-
-    return {
-        "module": module,
-        "kind": entry.get("kind", "library"),
-        "language": registry["language"],
-        "paths": entry["paths"],
-        "doc_type": doc_type,
-        "path": str(target),
-        "public_api": symbols[:400],
-        "analysis": analysis,
-        "git": git_slice,
-    }
+def restore(target, before):
+    """Undo a write the prose gate rejected."""
+    if before is None:
+        target.unlink(missing_ok=True)
+    else:
+        target.write_text(before)
 
 
 # ---------------------------------------------------------------- write paths
 
 
-def write_generated(target, payload, front_extra, floor):
+def write_generated(target, payload, front_extra, floor, marker=None):
     """Whole-file ownership. The writer owns the body; humans keep their keys."""
     existing_front = {}
     existing_text = None
@@ -223,6 +127,10 @@ def write_generated(target, payload, front_extra, floor):
         raise WriteRefusedError("file is managed: manual")
 
     text = render.document(payload, front_overrides=front)
+    if marker:
+        marked_front, body, _ = docs_meta.parse(text)
+        wrapped = render.wrap_marker(body, marker)
+        text = docs_meta.render(marked_front, wrapped) if marked_front else wrapped
     write, reason = render.worth_writing(existing_text, text, floor)
     if not write:
         return False, reason
@@ -231,211 +139,475 @@ def write_generated(target, payload, front_extra, floor):
     return True, reason
 
 
-def write_assisted(target, payload, sha):
-    """Within-file ownership. Only the fenced regions move."""
-    text = target.read_text()
-    try:
-        regions = {r.section for r in fences.parse(text)}
-    except fences.FenceError as exc:
-        raise WriteRefusedError(f"fence structure is broken: {exc}")
-    if not regions:
-        raise WriteRefusedError("managed: assisted but the file has no docs-gen regions")
-
-    original = text
-    touched, skipped = [], []
-    for section in payload.get("sections") or []:
-        if section["id"] not in regions:
-            skipped.append(section["id"])
-            continue
-        body = render.normalize(section.get("body") or "")
-        text = fences.replace(text, section["id"], body, sha=sha)
-        touched.append(section["id"])
-
-    if text == original:
-        return False, "no fenced region changed", skipped
-    target.write_text(text)
-    return True, f"rewrote {', '.join(touched)}", skipped
-
-
 # ------------------------------------------------------------------- the pass
 
 
-def write_module(repo, module, registry, out_dir, docs_dir, lang, args, git_context):
-    entry = registry["modules"][module]
-    doc_types = lang.doc_types(entry.get("kind", "library"))
-    if not doc_types:
-        return [{"module": module, "status": "skipped", "reason": "no doc types"}]
+def run_with_repair(prompt, payload, schema, args, values, place, lint_path, restore):
+    """Call the model, place the result, lint it, and send it back until clean."""
+    attempts = max(1, getattr(args, "vale_attempts", 1))
+    config = getattr(args, "vale_config", None)
+    level = getattr(args, "vale_level", "error")
+    attempt_prompt, attempt_payload, attempt_values = prompt, payload, values
+    fields = {}
+    result = None
+    # Whether any attempt put text on disk, rather than whether the last one
+    # did. A repair pass that repeats itself places the same bytes and reports
+    # `unchanged`, which is true of the attempt and false of the run.
+    wrote_any = False
+    # And what that write reported. A repeat attempt reports `identical`,
+    # which is true of the attempt and says nothing about a run that created
+    # the file on its first pass.
+    wrote_reason = ""
 
-    prompt = (PROMPTS / "write-module.md").read_text()
-    schema = json.loads((SCHEMAS / "write-out.json").read_text())
-    results = []
-
-    for doc_type in doc_types:
-        if doc_type == "reference" and lang.generator:
-            results.append(
-                {
-                    "module": module,
-                    "doc_type": doc_type,
-                    "status": "deferred",
-                    "reason": f"{lang.generator['tool']} generates reference",
-                }
-            )
-            continue
-
-        name = slug(module) if doc_type == "concept" else f"{slug(module)}-{doc_type}"
-        target = Path(repo) / docs_dir / f"{name}.md"
-        managed, front, text = ownership(target)
-
-        if managed == "manual":
-            results.append(
-                {
-                    "module": module,
-                    "doc_type": doc_type,
-                    "path": str(target.relative_to(repo)),
-                    "status": "refused",
-                    "reason": "managed: manual",
-                }
-            )
-            continue
-
-        payload = build_input(
-            repo,
-            module,
-            registry,
-            out_dir,
-            doc_type,
-            target.relative_to(repo),
-            git_context,
-        )
-        try:
-            if managed != "absent":
-                payload["existing"] = existing_summary(text, front)
-            payload["tests"] = read_tests(repo, entry["paths"], lang.front.get("test_globs"))
-        except WriteRefusedError as exc:
-            results.append(
-                {
-                    "module": module,
-                    "doc_type": doc_type,
-                    "path": str(target.relative_to(repo)),
-                    "status": "refused",
-                    "reason": str(exc),
-                }
-            )
-            continue
-
-        print(f"docs-write: {module} -> {target.relative_to(repo)}", file=sys.stderr)
+    for attempt in range(1, attempts + 1):
         try:
             result, _ = step.run_step(
-                prompt,
-                payload,
+                attempt_prompt,
+                attempt_payload,
                 schema,
                 args.llm_cmd,
                 args.timeout,
-                values={"language_body": lang.body, "doc_type": doc_type},
+                values=attempt_values,
             )
         except (step.StepError, RuntimeError) as exc:
-            results.append(
-                {
-                    "module": module,
-                    "doc_type": doc_type,
-                    "status": "failed",
-                    "reason": str(exc)[:400],
-                }
-            )
-            continue
+            return {"status": "failed", "reason": str(exc)[:400]}, None
 
-        sha = (git_context or {}).get("head", "")[:7]
-        record = {
-            "module": module,
-            "doc_type": doc_type,
-            "path": str(target.relative_to(repo)),
-            "evidence": result.get("evidence", []),
-            "gaps": result.get("gaps", []),
-        }
         try:
-            if managed == "assisted":
-                wrote, reason, skipped = write_assisted(target, result, sha)
-                record["unmatched_sections"] = skipped
-            else:
-                wrote, reason = write_generated(
-                    target,
-                    result,
-                    {
-                        "source_modules": [module],
-                        "source_sha": sha,
-                        "generator": GENERATOR,
-                    },
-                    args.floor,
-                )
-        except (WriteRefusedError, fences.FenceError) as exc:
-            record.update(status="refused", reason=str(exc))
-        else:
-            record.update(status="written" if wrote else "unchanged", reason=reason)
-        results.append(record)
+            wrote, reason, extra = place(result)
+        except (WriteRefusedError, fences.FenceError, sections.SectionError) as exc:
+            return {"status": "refused", "reason": str(exc)}, result
+        wrote_any = wrote_any or wrote
+        wrote_reason = reason if wrote else wrote_reason
+        fields = {
+            **extra,
+            "status": "written" if wrote_any else "unchanged",
+            "reason": wrote_reason if wrote_any else reason,
+        }
 
-    return results
+        # An unchanged first attempt is the file a previous run already gated.
+        if not wrote and attempt == 1:
+            return fields, result
+
+        alerts = lint_document(lint_path(), config, level, log=log)
+        if alerts is None:
+            return {**fields, "prose": "skipped"}, result
+        fields["prose_attempts"] = attempt
+
+        # The alerts that carry their own answer are applied here, so the model
+        # is only ever sent the ones that need a writer.
+        if alerts:
+            applied = check.apply_fixes(lint_path(), alerts)
+            if applied:
+                fields["prose_autofixed"] = fields.get("prose_autofixed", 0) + len(applied)
+                alerts = lint_document(lint_path(), config, level, log=log)
+                if alerts is None:
+                    return {**fields, "prose": "skipped"}, result
+
+        if not alerts:
+            return {**fields, "prose": "clean"}, result
+
+        if attempt == attempts:
+            # The draft stands and the alerts travel with it. A rule that has
+            # survived this many repair passes is usually reading the document
+            # wrong, and the reviewer runs the same rules over the file where
+            # a person can act on them. Discarding the page here would spend
+            # every model call that produced it for nothing.
+            named = "; ".join(f"{a.check} line {a.line}" for a in alerts[:5])
+            return (
+                {
+                    **fields,
+                    "prose": "dirty",
+                    "prose_unresolved": [f"{a.check} line {a.line}: {a.message}" for a in alerts],
+                    "prose_reason": f"prose still fails after {attempt} attempt(s): {named}",
+                },
+                result,
+            )
+
+        attempt_prompt, attempt_payload = repair_request(result, lint_path(), alerts, level)
+        attempt_values = {}
+    return fields, result
+
+
+# `write-out.json` holds the same pattern as a JSON Schema string and is
+# edited by hand, so review.py and this file judge a citation the same way.
+URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+
+
+def sourced(entries, urls, repo):
+    """Split a writer's evidence into what this run can stand over, and what not.
+
+    The prompt asks for a source behind every claim, and a prompt is a request.
+    A URL the model never received reads exactly like one it did. What the run
+    fetched is known here, and a file either exists or does not, so both halves
+    of the contract are decided rather than trusted.
+
+    Dropped entries stay beside the record: the coverage gate reads them to
+    tell a documented requirement from one that only looks documented.
+    """
+    kept, unsupported = [], []
+    known = set(urls)
+    for raw in entries or []:
+        entry = (raw or "").strip()
+        if not entry:
+            continue
+        if URL_SCHEME.match(entry):
+            (kept if entry in known else unsupported).append(entry)
+            continue
+        path, _, _line = entry.rpartition(":")
+        (kept if path and (Path(repo) / path).exists() else unsupported).append(entry)
+    return kept, unsupported
+
+
+def cited_urls(findings, excerpts):
+    """Every page this deliverable was actually shown."""
+    urls = {f.get("url") for f in findings or [] if f.get("url")}
+    urls |= {s.get("url") for s in excerpts or [] if s.get("url")}
+    return urls
+
+
+def record_evidence(record, result, urls, repo):
+    """Put the checked evidence on a write record, and name what fell away."""
+    kept, unsupported = sourced(result.get("evidence"), urls, repo)
+    record["evidence"] = kept
+    record["evidence_unsupported"] = unsupported
+    for entry in unsupported:
+        log(
+            f"{record.get('path') or record.get('deliverable')}: "
+            f"dropped evidence {entry}, which is not a source this run read",
+            "warning",
+        )
+    return record
+
+
+def generate(
+    target,
+    repo,
+    prompt,
+    payload,
+    schema,
+    args,
+    sha,
+    values,
+    identity,
+    managed,
+    front_extra,
+    marker=None,
+    urls=(),
+):
+    """Render a document, lint it, and send the writer back until it passes."""
+    before = target.read_text() if target.exists() else None
+    captured = {}
+
+    def place(result):
+        captured["result"] = result
+        if managed == "assisted":
+            wrote, reason, skipped = write_assisted(target, result, sha)
+            return wrote, reason, {"unmatched_sections": skipped}
+        wrote, reason = write_generated(
+            target,
+            result,
+            # `sha` is None in topic mode, where a document is written from
+            # published sources and a repository's HEAD does not date it.
+            {**front_extra, **({"source_sha": sha} if sha else {}), "generator": GENERATOR},
+            args.floor,
+            marker=marker,
+        )
+        return wrote, reason, {}
+
+    fields, result = run_with_repair(
+        prompt,
+        payload,
+        schema,
+        args,
+        values,
+        place,
+        lambda: target,
+        lambda: restore(target, before),
+    )
+    record = {**identity, **fields}
+    if result is not None:
+        record.setdefault("path", str(target.relative_to(repo)))
+        record["gaps"] = result.get("gaps", [])
+        record_evidence(record, result, urls, repo)
+    return record
+
+
+_REPORTED = set()
+
+
+def report_once(message):
+    """One cause, one line. code_context runs per page; its refusals are the run's."""
+    if message not in _REPORTED:
+        _REPORTED.add(message)
+        print(message, file=sys.stderr)
+
+
+def code_context(out_dir, subject="", limit=400):
+    """The public symbols most likely to matter to this page."""
+    surface, skipped = api_surface.usable_modules(out_dir)
+    modules = surface.get("modules") or {}
+    if not modules:
+        # The reason was discarded, so a page drafted with no symbol list at
+        # all looked exactly like a page whose subject matched none. The prompt
+        # still tells the writer that every backticked identifier must appear
+        # in `code`, and review.py reports this same value.
+        if skipped:
+            report_once(f"docs-topic-write: no code grounding. {skipped}")
+        return {}
+
+    wanted = {
+        word
+        for word in re.findall(r"[a-z0-9]+", subject.lower())
+        if len(word) > 2 and word not in _SUBJECT_STOP
+    }
+
+    scored = []
+    for module, entry in modules.items():
+        lowered = module.lower()
+        # A test names the thing it tests, so it scores well and is exactly
+        # what a page must not cite: `TestTieringOffloadingManager` is not API.
+        if any(part in lowered for part in _TEST_PATHS):
+            continue
+        module_hit = sum(1 for word in wanted if word in lowered)
+        for key, value in (entry.get("symbols") or {}).items():
+            kind, _, name = key.partition(":")
+            if not name:
+                continue
+            hit = module_hit + sum(1 for word in wanted if word in name.lower())
+            scored.append((hit, module, name, kind, (value or {}).get("signature", "")))
+
+    total = len(scored)
+    if wanted:
+        scored = [row for row in scored if row[0]]
+    scored.sort(key=lambda row: (-row[0], row[1], row[2]))
+    # The signature is why the merged surface keeps anything beyond names: a
+    # writer naming a function should see what it takes.
+    symbols = [
+        f"{module}: {signature or name} ({kind})"
+        for _, module, name, kind, signature in scored[:limit]
+    ]
+    return {
+        "modules": sorted({row[1] for row in scored[:limit]}),
+        "symbols": symbols,
+        "total": total,
+        "matched": len(scored),
+    }
+
+
+def relevant_changes(commits, subject):
+    """The commits worth grounding this deliverable in, or `[]` for none."""
+    if not commits:
+        return []
+    return commit_select.select_commits(commits, subject, CHANGES_LIMIT)
+
+
+def write_deliverable(
+    repo,
+    item,
+    out_dir,
+    docs_dir,
+    args,
+    commits=(),
+    marker=None,
+):
+    """Write one planned document from what the repository shows."""
+    target = Path(repo) / docs_dir / item["path"]
+    identity = {"deliverable": item["path"], "doc_type": item["type"]}
+    base_dir = Path(repo) / docs_dir
+    if _escapes(target, base_dir):
+        return {
+            **identity,
+            "path": item["path"],
+            "status": "refused",
+            "reason": f"deliverable path escapes the changeset: {item['path']}",
+        }
+    managed, _, _ = ownership(target)
+    if managed == "manual":
+        return {
+            **identity,
+            "path": str(target.relative_to(repo)),
+            "status": "refused",
+            "reason": "managed: manual",
+        }
+
+    code = code_context(out_dir, f"{item['title']} {item['rationale']}")
+    changes = relevant_changes(commits, f"{item['title']} {item['rationale']}")
+    if not code and not changes:
+        # A page with neither a symbol nor a commit behind it has only its own
+        # title to be written from, and drafting from a title is invention.
+        return {
+            **identity,
+            "path": str(target.relative_to(repo)),
+            "status": "refused",
+            "reason": "no code or commit evidence grounds a new page",
+        }
+
+    if not getattr(args, "llm_cmd", None):
+        return {
+            **identity,
+            "path": str(target.relative_to(repo)),
+            "status": "refused",
+            "reason": "no --llm-cmd, so nothing can be drafted",
+        }
+
+    payload = {
+        "title": item["title"],
+        "doc_type": item["type"],
+        "path": item["path"],
+        "rationale": item["rationale"],
+        "archetype": archetype_for(item["type"]),
+    }
+    if code:
+        payload["code"] = code
+    if changes:
+        payload["changes"] = changes
+    if managed == "assisted":
+        # Without this the model never learns which section ids exist, emits
+        # ids that match nothing, and every region is skipped: a permanent
+        # no-op reported as "unchanged".
+        _, front, text = ownership(target)
+        payload["existing"] = existing_summary(text, front)
+    log(f"{item['path']} ({item['type']})")
+    return generate(
+        target,
+        repo,
+        (PROMPTS / "write-topic.md").read_text(),
+        payload,
+        json.loads((SCHEMAS / "write-out.json").read_text()),
+        args,
+        None,
+        {"doc_type": item["type"]},
+        identity,
+        managed,
+        {},
+        marker=marker,
+        urls=set(),
+    )
+
+
+def update_deliverable(
+    repo,
+    item,
+    out_dir,
+    docs_dir,
+    args,
+    commits=(),
+    marker=None,
+):
+    """Rewrite a page that is already in this repository's documentation tree.
+
+    The published-section path this replaces read a guide `rhd` had fetched
+    into a cache and spliced one numbered section of it. Nothing fetches now,
+    so an update target is a path under `docs_dir` and produces the same kind
+    of document a new page does. It therefore takes the same prompt and the
+    same schema, and `ownership()` is the only thing that decides what may
+    happen to the file: a `manual` page is never opened, an `assisted` page
+    has only its fenced regions rewritten, and a `generated` page has its body
+    regenerated with human-set frontmatter preserved.
+    """
+    identity = {"deliverable": item["path"], "doc_type": item["type"], "kind": "update"}
+    docs_root = Path(repo) / docs_dir
+    target = docs_root / item["path"]
+    # `path` comes from a model, so it is joined and then checked rather than
+    # trusted: enough `..` segments resolve anywhere the process can read.
+    if _escapes(target, docs_root):
+        return {
+            **identity,
+            "path": item["path"],
+            "status": "refused",
+            "reason": f"the target escapes {docs_dir}: {item['path']}",
+        }
+    rel = str(target.relative_to(repo))
+    if not target.is_file():
+        # An update names a page that exists. A plan built before someone
+        # deleted it is the ordinary way here, and writing the page back would
+        # undo that deletion without anyone asking for it.
+        return {
+            **identity,
+            "path": rel,
+            "status": "refused",
+            "reason": f"the target does not exist: {rel}",
+        }
+
+    try:
+        managed, front, text = ownership(target)
+    except (OSError, UnicodeDecodeError) as exc:
+        return {**identity, "path": rel, "status": "refused", "reason": str(exc)[:200]}
+    if managed == "manual":
+        return {**identity, "path": rel, "status": "refused", "reason": "managed: manual"}
+
+    # Past every refusal that costs nothing, so a run with no model still
+    # reports what it would have refused rather than falling over first.
+    if not getattr(args, "llm_cmd", None):
+        return {
+            **identity,
+            "path": rel,
+            "status": "refused",
+            "reason": "no --llm-cmd, so nothing can be drafted",
+        }
+
+    payload = {
+        "title": item["title"],
+        "doc_type": item["type"],
+        "path": item["path"],
+        "rationale": item["rationale"],
+        "archetype": archetype_for(item["type"]),
+        "existing": existing_summary(text, front),
+    }
+    code = code_context(out_dir, f"{item['title']} {item['rationale']}")
+    if code:
+        payload["code"] = code
+    changes = relevant_changes(commits, f"{item['title']} {item['rationale']}")
+    if changes:
+        payload["changes"] = changes
+
+    log(f"{item['path']} (update, {managed})")
+    return generate(
+        target,
+        repo,
+        (PROMPTS / "write-topic.md").read_text(),
+        payload,
+        json.loads((SCHEMAS / "write-out.json").read_text()),
+        args,
+        front.get("source_sha") or None,
+        {"doc_type": item["type"]},
+        identity,
+        managed,
+        {},
+        marker=marker,
+        urls=set(),
+    )
 
 
 # ------------------------------------------------------------------------ cli
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description="Write Markdown docs per module")
-    parser.add_argument("--repo", default=".")
-    parser.add_argument("--out", default=".docs-gen")
-    parser.add_argument("--docs-dir", default="docs")
-    parser.add_argument("--relevance", help="Write only the modules in rebuild[]")
-    parser.add_argument("--modules", nargs="*", help="Write these modules explicitly")
-    parser.add_argument("--llm-cmd", default=os.environ.get("DOCS_LLM_CMD", "claude -p"))
-    parser.add_argument("--timeout", type=int, default=900)
-    parser.add_argument("--floor", type=int, default=render.DEFAULT_FLOOR)
-    parser.add_argument("--max-modules", type=int, default=0, help="0 means no cap")
-    parser.add_argument("--languages-dir", default=str(LANGUAGES))
-    args = parser.parse_args(argv)
-
-    repo = Path(args.repo).resolve()
-    out_dir = Path(args.out)
-    registry_path = out_dir / "registry.json"
-    if not registry_path.exists():
-        print(f"docs-write: no registry at {registry_path}", file=sys.stderr)
-        return 2
-    registry = json.loads(registry_path.read_text())
-
-    try:
-        lang = language_file.for_language(registry["language"], args.languages_dir)
-    except language_file.LanguageFileError as exc:
-        print(f"docs-write: {exc}", file=sys.stderr)
-        return 2
-
-    if args.modules:
-        modules = [m for m in args.modules if m in registry["modules"]]
-    elif args.relevance:
-        relevance = json.loads(Path(args.relevance).read_text())
-        modules = list(relevance.get("rebuild") or [])
-    else:
-        modules = list(registry["modules"])
-
-    if not modules:
-        print("docs-write: nothing to write", file=sys.stderr)
-        return 1
-    if args.max_modules:
-        modules = modules[: args.max_modules]
-
-    context_path = out_dir / "git-context.json"
-    git_context = json.loads(context_path.read_text()) if context_path.exists() else {}
-
-    results = []
-    for module in modules:
-        if module not in registry["modules"]:
-            results.append({"module": module, "status": "skipped", "reason": "not in registry"})
+def summarize(results):
+    """One bullet per document this run actually produced."""
+    lines = []
+    for record in results:
+        if record.get("status") not in ("written", "unchanged"):
             continue
-        results.extend(
-            write_module(repo, module, registry, out_dir, args.docs_dir, lang, args, git_context)
-        )
+        path = record.get("path") or record.get("deliverable", "")
+        if record.get("kind") == "update":
+            guide = record.get("guide_url") or "?"
+            section = record.get("section") or "?"
+            lines.append(f"- {path}: update to {guide} section {section}")
+        else:
+            lines.append(f"- {path}: new page")
+        # Written with prose the repair loop could not clear. The page is on
+        # disk either way, so the one thing that must not happen is it going
+        # out without the alerts being said out loud.
+        for alert in record.get("prose_unresolved") or []:
+            lines.append(f"  warning {alert}")
+    return lines
 
+
+def write_report(out_dir, docs_dir, results, plan=None):
+    """One report shape for both chains, and one exit code."""
     report = {
         "schema": SCHEMA,
-        "docs_dir": args.docs_dir,
+        "docs_dir": docs_dir,
         "written": [r for r in results if r.get("status") == "written"],
         "unchanged": [r for r in results if r.get("status") == "unchanged"],
         "refused": [r for r in results if r.get("status") == "refused"],
@@ -443,22 +615,190 @@ def main(argv=None):
         "deferred": [r for r in results if r.get("status") == "deferred"],
         "results": results,
     }
+    # Inside the report, so `written` is never read without what it left out.
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "write-report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
-
-    print(
-        "docs-write: {written} written, {unchanged} unchanged, {refused} refused, "
-        "{failed} failed".format(
+    log(
+        "{written} written, {unchanged} unchanged, {refused} refused, {failed} failed".format(
             written=len(report["written"]),
             unchanged=len(report["unchanged"]),
             refused=len(report["refused"]),
             failed=len(report["failed"]),
-        ),
-        file=sys.stderr,
+        )
     )
+    for line in summarize(results):
+        print(line, file=sys.stderr)
     if report["failed"]:
-        return 3
-    return 0 if report["written"] else 1
+        return report, 3
+    return report, (0 if report["written"] else 1)
+
+
+def run_plan(
+    repo,
+    plan,
+    docs_dir,
+    llm_cmd,
+    out,
+    changeset_dir=None,
+    args=None,
+    commits=(),
+    marker=None,
+):
+    """Write every deliverable in `plan`, and report one record per attempt.
+
+    The seam both entry points and the tests go through. `args` carries the
+    writer's own knobs and is built here when a caller has none; `llm_cmd` of
+    `None` means no model is available, which every deliverable refuses on
+    before a prompt is built.
+    """
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    if args is None:
+        args = argparse.Namespace()
+    args.llm_cmd = llm_cmd
+    for name, value in (
+        ("timeout", 900),
+        ("floor", render.DEFAULT_FLOOR),
+        ("vale_config", None),
+        ("vale_level", "error"),
+        ("repair_attempts", 2),
+        ("docs_dir", docs_dir),
+        ("out", str(out)),
+    ):
+        if not hasattr(args, name):
+            setattr(args, name, value)
+
+    results = []
+    for item in plan.get("deliverables") or []:
+        try:
+            if item.get("kind") == "update":
+                results.append(update_deliverable(repo, item, out, docs_dir, args, commits, marker))
+            else:
+                where = (
+                    os.path.relpath(Path(changeset_dir) / "new", repo)
+                    if changeset_dir
+                    else docs_dir
+                )
+                results.append(write_deliverable(repo, item, out, where, args, commits, marker))
+        except (OSError, ValueError, RuntimeError, KeyError) as exc:
+            # One deliverable that raises used to end the step and lose every
+            # document already drafted beside it, at the model cost they were
+            # drafted for.
+            log(f"{item.get('path')} failed: {exc}", "error")
+            results.append(
+                {
+                    "deliverable": item.get("path", ""),
+                    "title": item.get("title", ""),
+                    "kind": item.get("kind") or "new",
+                    "status": "failed",
+                    "reason": str(exc)[:300],
+                }
+            )
+    written = sum(1 for r in results if r.get("status") == "written")
+    return {"written": written, "results": results}
+
+
+def write_from_plan(repo, out_dir, args):
+    """The plan-driven writer: one document per planned deliverable."""
+    plan_path = Path(args.plan)
+    if not plan_path.is_file():
+        log(f"no plan at {plan_path}", "error")
+        return 2
+    plan = json.loads(plan_path.read_text())
+    if not (plan.get("deliverables") or []):
+        log("the plan has no deliverables", "warning")
+        return 1
+
+    changeset_dir = getattr(args, "changeset", None) or str(Path(repo) / args.docs_dir)
+
+    # Loaded defensively: an absent file, an absent `commits` key and an empty
+    # list all mean the same thing, which is nothing to ground a page in beyond
+    # what the code surface already carries.
+    commits = []
+    changes_path = getattr(args, "changes", None)
+    if changes_path and Path(changes_path).is_file():
+        try:
+            commits = json.loads(Path(changes_path).read_text()).get("commits") or []
+        except json.JSONDecodeError:
+            commits = []
+
+    # The identity named in each document's `docs-gen` comment markers, and
+    # the changeset directory's own name, computed the same way.
+    marker = changeset.marker_id("", getattr(args, "topic", None) or "")
+
+    outcome = run_plan(
+        repo,
+        plan,
+        args.docs_dir,
+        args.llm_cmd,
+        out_dir,
+        changeset_dir=changeset_dir,
+        args=args,
+        commits=commits,
+        marker=marker,
+    )
+    report, code = write_report(out_dir, args.docs_dir, outcome["results"], plan)
+    removals = changeset.prune(repo, changeset_dir, outcome["results"])
+
+    index_path = Path(changeset_dir) / "index.md"
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    index_path.write_text(changeset.index(report, {}, {}, removals))
+    return code
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Write Markdown documents from a plan")
+    parser.add_argument("--repo", default=".")
+    parser.add_argument("--out", default=".docs-gen")
+    parser.add_argument("--docs-dir", default="docs")
+    parser.add_argument(
+        "--changeset",
+        default=None,
+        help="Where this run's new and updated documents land. Defaults to <repo>/<docs-dir>",
+    )
+    parser.add_argument("--plan", default=None, help="plan.json. Defaults to <out>/plan.json")
+    parser.add_argument("--relevance", help="Module mode: write only the modules in rebuild[]")
+    parser.add_argument("--modules", nargs="*", help="Module mode: write these modules explicitly")
+    parser.add_argument(
+        "--changes", help="changes.json from build.py: the commits selected as relevant"
+    )
+    parser.add_argument(
+        "--topic", default=None, help="Named in each document's docs-gen marker, slugified"
+    )
+    parser.add_argument("--llm-cmd", default=os.environ.get("DOCS_LLM_CMD", "pi -p"))
+    parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument("--floor", type=int, default=render.DEFAULT_FLOOR)
+    parser.add_argument(
+        "--vale-config",
+        default=os.environ.get("DOCS_VALE_CONFIG"),
+        help="Composed Vale config. Omit to write without a prose gate",
+    )
+    parser.add_argument(
+        "--vale-level",
+        default="error",
+        choices=sorted(check.SEVERITY_RANK),
+        help="Lowest severity that sends the writer back",
+    )
+    parser.add_argument(
+        "--vale-attempts",
+        type=int,
+        default=3,
+        help="Total model calls per document, including the first",
+    )
+    args = parser.parse_args(argv)
+
+    # Module mode and plan mode are one skill because they share the ownership
+    # contract, the renderer and the repair loop. They differ only in what
+    # decides the document set: a plan names deliverables, a relevance verdict
+    # or a module list names code modules.
+    if args.modules or args.relevance:
+        return write_module.main(argv)
+
+    repo = Path(args.repo).resolve()
+    out_dir = Path(args.out)
+    if not args.plan:
+        args.plan = str(out_dir / "plan.json")
+    return write_from_plan(repo, out_dir, args)
 
 
 if __name__ == "__main__":

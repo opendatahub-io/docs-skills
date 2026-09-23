@@ -14,7 +14,7 @@ from pathlib import Path
 ENGINE = Path(__file__).resolve().parents[2] / "docs-engine"
 if not (ENGINE / "scripts" / "lib" / "run" / "step.py").exists():
     raise SystemExit(
-        "docs-orc: the docs-engine skill is missing. It ships alongside this one "
+        "docs-skills: the docs-engine skill is missing. It ships alongside this one "
         "and carries the shared runtime; install it, or run from a checkout."
     )
 sys.path.insert(0, str(ENGINE / "scripts"))
@@ -28,7 +28,7 @@ from lib.vale import check  # noqa: E402
 
 log = logger("docs-review")
 
-SCHEMA = "docs-orc/review/1"
+SCHEMA = "docs-skills/review/1"
 
 # Below this many words a page cannot exercise the style guidance, so the
 # call is spent for nothing.
@@ -557,14 +557,14 @@ def style_assets():
     if missing:
         raise StyleUnavailableError(
             f"the committed style files are missing ({', '.join(missing)}); "
-            "restore them or reinstall docs-orc"
+            "restore them or reinstall docs-skills"
         )
 
     topics = TOPICS.read_text()
     ids = style_topic_ids(topics)
     if not ids:
         raise StyleUnavailableError(
-            f"{TOPICS.name} carries no topic headings; restore it or reinstall docs-orc"
+            f"{TOPICS.name} carries no topic headings; restore it or reinstall docs-skills"
         )
 
     # One source for both halves of the contract: the prompt receives the
@@ -577,7 +577,7 @@ def style_assets():
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
         raise StyleUnavailableError(
             f"{schema_path.name} has no findings[].topic to constrain ({exc}); "
-            "restore it or reinstall docs-orc"
+            "restore it or reinstall docs-skills"
         ) from exc
 
     return {
@@ -728,7 +728,7 @@ def main(argv=None):
     )
     parser.add_argument(
         "--vale-config",
-        default=os.environ.get("DOCS_ORC_VALE_CONFIG"),
+        default=os.environ.get("DOCS_VALE_CONFIG"),
         help="Composed Vale config. Omit to skip prose checking entirely",
     )
     parser.add_argument(

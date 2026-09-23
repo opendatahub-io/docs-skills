@@ -103,18 +103,18 @@ export default function (pi: ExtensionAPI) {
       CHECK,
       resolve(ctx.cwd, target.path),
       "--level",
-      process.env.DOCS_ORC_VALE_LEVEL ?? "error",
+      process.env.DOCS_VALE_LEVEL ?? "error",
     ];
-    if (process.env.DOCS_ORC_VALE_CONFIG) {
-      args.push("--config", process.env.DOCS_ORC_VALE_CONFIG);
+    if (process.env.DOCS_VALE_CONFIG) {
+      args.push("--config", process.env.DOCS_VALE_CONFIG);
     }
     for (const [start, end] of target.ranges ?? []) {
       args.push("--range", `${start}-${end}`);
     }
     // A rule with one right answer carries it. Applying those here costs a
-    // string splice; relaying them would cost a turn. Set DOCS_ORC_VALE_FIX=0
+    // string splice; relaying them would cost a turn. Set DOCS_VALE_FIX=0
     // to keep the gate read-only.
-    if (process.env.DOCS_ORC_VALE_FIX !== "0") {
+    if (process.env.DOCS_VALE_FIX !== "0") {
       args.push("--fix");
     }
 

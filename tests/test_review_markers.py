@@ -1,7 +1,7 @@
 """Linting only what the tool wrote.
 
 `write.py` already lints an update's rewritten section alone, never the
-published guide around it. The `docs-orc` comment markers are the same idea
+published guide around it. The `docs-gen` comment markers are the same idea
 applied to review: once they exist, the published prose surrounding an
 edited section is never linted by review either.
 """

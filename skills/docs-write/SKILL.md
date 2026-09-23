@@ -1,28 +1,33 @@
 ---
 name: docs-write
-description: Generate or update Markdown documentation for a code module. Enforces whole-file ownership through the managed frontmatter field and within-file ownership through docs-gen fenced regions, both in script rather than in a prompt.
-argument-hint: <repo-path> [--relevance FILE | --modules NAME...] [--llm-cmd CMD]
+description: Writes Markdown documentation for a code module or a planned deliverable. Enforces whole-file ownership through the managed frontmatter field and within-file ownership through docs-gen fenced regions, both in script rather than in a prompt.
+argument-hint: <repo-path> [--plan FILE | --modules NAME... | --relevance FILE] [--llm-cmd CMD]
 allowed-tools: Bash, Read, Write
 ---
 
 # docs-write
 
-Writes one document set per module, in plain Markdown with YAML frontmatter.
+Writes one Markdown document per planned deliverable, or one document set per code module.
 
 ## Quick start
 
 ```bash
 WRITE="$(dirname "$0")/scripts/write.py"
 
-# Write only what the relevance engine named
-python3 "$WRITE" --repo . --out .docs-gen \
-  --relevance .docs-gen/relevance.json --llm-cmd "claude -p"
+# Plan mode: what /docs runs, one document per deliverable
+python3 "$WRITE" --repo . --out .docs-gen --plan .docs-gen/plan.json --llm-cmd "pi -p"
 
-# Write specific modules
+# Module mode: what /docs-sync runs, only the modules the relevance verdict named
+python3 "$WRITE" --repo . --out .docs-gen --relevance .docs-gen/relevance.json --llm-cmd "pi -p"
+
+# Module mode, named explicitly
 python3 "$WRITE" --repo . --out .docs-gen --modules pkg/queue pkg/scheduler
 ```
 
-Normally invoked by `docs-sync`, which supplies the relevance list.
+The two modes are one skill because they share the ownership contract, the
+renderer and the prose repair loop. They differ only in what decides the
+document set: a plan names deliverables, a relevance verdict or a module list
+names code modules.
 
 ## Ownership
 
@@ -35,56 +40,49 @@ The `managed` field in a document's frontmatter decides what happens to it.
 | `assisted` | Rewrites only the `docs-gen` fenced regions |
 | `manual` | Never opens the file for writing. Emits a staleness finding |
 
-These are enforced in `scripts/write.py`. A `manual` file's path never reaches a
-write call, and an `assisted` file's surrounding prose is never sent to the
-model at all. No prompt wording moves either boundary, which is why they are
-here rather than in the prompt.
+These are enforced in `scripts/write.py`, through `docs-engine`'s
+`lib/md/ownership.py`. A `manual` file's path never reaches a write call, and
+an `assisted` file's surrounding prose is never sent to the model at all. No
+prompt wording moves either boundary, which is why they are here rather than in
+the prompt.
 
 Marking sets `manual` by default, so pointing this at an existing documentation
 tree protects every file on first contact. Only the writer promotes a file to
 `generated`.
 
-## Fenced regions
+## New pages and updates
 
-```markdown
-<!-- docs-gen:begin section=api source=pkg/scheduler sha=a1b2c3d -->
-generated body
-<!-- docs-gen:end -->
-```
+A plan deliverable carries a `kind`. A `new` deliverable writes into the run's
+changeset directory. An `update` deliverable names a path that is already under
+`docs_dir`, and is refused when that path does not exist: a plan built before
+someone deleted a page should not put the page back.
 
-`docs-engine`'s `lib/md/fences.py` rewrites the inside and asserts every byte outside came back
-unchanged. A rewrite that would touch the surrounding prose raises rather than
-writing.
+Both produce the same kind of document, so both take the same prompt and the
+same schema. Ownership is the only thing that differs between them.
 
-## Determinism
+## Evidence
 
-The model returns structure: sections with stable ids, headings, and bodies.
-`docs-engine`'s `lib/md/render.py` turns that into bytes, so heading levels, blank lines, and
-frontmatter key order never vary between runs.
+A page is grounded in what the repository shows: the module registry and the
+public API from `docs-repo-analyze`, and the commits from `docs-git-context`. A
+deliverable with neither a symbol nor a commit behind it is refused rather than
+written from its own title.
 
-A rewrite below the churn floor is discarded. An LLM rewording one sentence on
-an unchanged module produces a real diff worth nothing to a reviewer, and the
-floor is what stops that from opening a pull request. Section adds and removes
-bypass the floor: structural change is always worth showing.
+## Prose
 
-Section ids are the unit of regeneration. A section declares the symbols it
-covers, so a single signature change rewrites that section and no other.
+With `--vale-config`, a draft that fails the prose gate goes back to the model
+with its alerts, up to `--vale-attempts` times. What will not clear is published
+with the page and reported against it, because a rule that has survived every
+repair pass is usually reading the document wrong.
 
-## Grounding
+## Output
 
-Every identifier the writer puts in backticks must exist in the extracted API.
-`docs-review` checks it mechanically and fails the document otherwise, at zero
-tokens.
+`write-report.json` carries one record per deliverable or module, each with a
+status and a reason. A refusal is a record, never an exception, so one
+deliverable that fails never costs the documents drafted beside it.
 
-Examples come from test files under the module path before they come from the
-model. A call lifted from a test breaks the test suite when it rots; an invented
-one rots silently.
-
-Claims the writer cannot ground land in `gaps` rather than in the prose.
-
-## Doc types
-
-Which types a module gets comes from the `artifacts` map in
-`languages/<lang>.md`, keyed by the module's kind. Where the language names a
-native reference generator, `reference` is skipped: pdoc, godoc, typedoc, and
-rustdoc produce symbol listings better than prose does, and they never go stale.
+| Exit | Meaning |
+|---|---|
+| 0 | Documents written |
+| 1 | Nothing written |
+| 2 | No plan, or nothing to write from |
+| 3 | The writer failed |
