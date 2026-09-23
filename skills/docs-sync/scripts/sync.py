@@ -197,6 +197,9 @@ def main(argv=None):
         analyze.append("--skip-cached")
     for pattern in (config.get("modules") or {}).get("exclude") or []:
         analyze += ["--exclude", pattern]
+    budget = (config.get("analyze") or {}).get("synthesis_budget")
+    if budget:
+        analyze += ["--synthesis-budget", str(budget)]
     try:
         cached = run(analyze, "mapping modules", allowed=(0, 1)) == 1
     except StepFailedError as exc:

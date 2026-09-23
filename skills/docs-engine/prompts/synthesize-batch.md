@@ -37,8 +37,8 @@ Return JSON and nothing else:
       "responsibilities": ["<short phrase>"],
       "dependencies": ["<a module path from the input>"],
       "data_flow": "<from the input, unchanged>",
-      "onboarding_priority": 2,
-      "gotchas": ["<the trap, kept whole, with its file:line>"],
+      "onboarding_priority": "<first|early|later|reference, from the input, unchanged>",
+      "gotchas": [{"summary": "<the trap, kept whole>", "evidence": "<path/to/file.py:12>"}],
       "evidence": ["<path/to/file.py:12>"]
     }
   ]

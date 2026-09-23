@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "One compacted batch of module summaries",
-  "description": "An intermediate pass, so a repository with more summaries than fit in one context window still reaches synthesis. Every field synthesize-modules.md reads is carried; `public_api` is the one it never reads and the bulk of a summary's size, so it is what compaction sheds.",
+  "description": "An intermediate pass, so a repository with more summaries than fit in one context window still reaches synthesis. Every field synthesize-modules.md reads is carried, in the shape analyze-module-out.json defines it, because a batch record and a module summary end up side by side in the final payload. `public_api` is the one field synthesis never reads and the bulk of a summary's size, so it is what compaction sheds.",
   "type": "object",
   "required": ["modules"],
   "properties": {
@@ -22,16 +22,22 @@
           },
           "gotchas": {
             "type": "array",
-            "description": "Kept whole, with the file and line references still attached.",
-            "items": {"type": "string"}
+            "description": "Kept whole, in analyze-module-out.json's shape, with the file and line still attached.",
+            "items": {
+              "type": "object",
+              "required": ["summary"],
+              "properties": {
+                "summary": {"type": "string", "minLength": 5},
+                "evidence": {"type": "string", "pattern": "^.+:[0-9]+$"}
+              }
+            }
           },
           "onboarding_priority": {
-            "type": "integer",
+            "type": "string",
             "description": "Carried verbatim. The reading-order section is told to work from it, so a batch that drops it reorders the guide silently.",
-            "minimum": 1,
-            "maximum": 5
+            "enum": ["first", "early", "later", "reference"]
           },
-          "evidence": {"type": "array", "items": {"type": "string"}}
+          "evidence": {"type": "array", "items": {"type": "string", "pattern": "^.+:[0-9]+$"}}
         }
       }
     }

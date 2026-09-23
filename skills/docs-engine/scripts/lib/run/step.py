@@ -467,6 +467,55 @@ class StepError(Exception):
         self.raw = raw
 
 
+# --------------------------------------------------------------- the artifact
+
+# A reply that is not JSON has no reason to be small, and the record goes to a
+# file inside the repository being documented. The retry prompt already works
+# from the first 4000 characters, so twice that is more than diagnosis needs.
+RAW_CAP = 8000
+
+_SECRET_NAME = re.compile(r"(?i)(key|token|secret|password|passwd|credential)")
+_SECRET_VALUE = re.compile(r"^(sk-|sk_|ghp_|gho_|ghu_|github_pat_|AIza|xox[baprs]-)")
+
+
+def redact_command(command):
+    """The command with anything that looks like a credential masked.
+
+    `llm_cmd` comes from `DOCS_LLM_CMD` or from `.docs-gen.yaml` and can carry
+    an API key in its argv. The record it lands in is written under the target
+    repository, which need not gitignore it.
+    """
+    try:
+        tokens = shlex.split(command or "")
+    except ValueError:
+        return "***"
+    safe, mask_next = [], False
+    for token in tokens:
+        name, sep, value = token.partition("=")
+        if mask_next:
+            safe.append("***")
+            mask_next = False
+        elif sep and name.startswith("-") and _SECRET_NAME.search(name):
+            safe.append(f"{name}=***")
+        elif token.startswith("-") and _SECRET_NAME.search(token):
+            safe.append(token)
+            mask_next = True
+        elif _SECRET_VALUE.match(token):
+            safe.append("***")
+        else:
+            safe.append(token)
+    return shlex.join(safe)
+
+
+def error_report(errors, raw, **extra):
+    """What a failed step leaves behind for whoever has to diagnose it.
+
+    One shape, so the CLI path and a library caller that catches `StepError`
+    record the same thing, capped and redacted the same way.
+    """
+    return {"errors": list(errors or []), "raw": (raw or "")[:RAW_CAP], **extra}
+
+
 # ------------------------------------------------------------------------- cli
 
 
@@ -551,13 +600,7 @@ def main(argv=None):
             extra,
         )
     except StepError as exc:
-        report = {
-            "schema": SCHEMA,
-            "prompt": args.prompt,
-            "ok": False,
-            "errors": exc.errors,
-            "raw": exc.raw[:8000],
-        }
+        report = error_report(exc.errors, exc.raw, schema=SCHEMA, prompt=args.prompt, ok=False)
         if args.out:
             Path(args.out).parent.mkdir(parents=True, exist_ok=True)
             Path(args.out).with_suffix(".error.json").write_text(

@@ -37,6 +37,11 @@ SCHEMA = "docs-skills/registry/1"
 # invocation that reads no config file.
 DEFAULT_SYNTHESIS_BUDGET = 240000
 
+# Under this a batch holds a single module, which is one model call per module
+# wearing compaction's clothes: a 200-module repository would make 201 calls at
+# up to `--timeout` each, and say so in one line.
+MIN_SYNTHESIS_BUDGET = 4000
+
 TREESITTER_LANGS = {"go", "javascript", "typescript"}
 
 
@@ -383,6 +388,17 @@ def module_summaries(out_dir, registry):
     return found
 
 
+def entry_size(entry):
+    """How large one summary is in the prompt that will carry it.
+
+    `step.render` serializes a payload with `indent=2, sort_keys=True`, so a
+    compact `json.dumps` undercounts the rendered prompt by around half. A
+    budget measured that way lets a repository tuned to sit just under the
+    context window overrun it.
+    """
+    return len(json.dumps(entry, indent=2, sort_keys=True))
+
+
 def partition(summaries, budget):
     """Pack summaries into batches of at most `budget` characters.
 
@@ -393,7 +409,7 @@ def partition(summaries, budget):
     """
     batches, current, used = [], [], 0
     for entry in summaries:
-        size = len(json.dumps(entry))
+        size = entry_size(entry)
         if current and used + size > budget:
             batches.append(current)
             current, used = [], 0
@@ -404,83 +420,136 @@ def partition(summaries, budget):
     return batches
 
 
-def _record_failure(out_dir, command, summaries, exc, stage, batch=None):
+def _record_failure(out_dir, command, summaries, exc, stage, batch=None, recovered=False):
     """What a failed synthesis leaves behind for whoever has to diagnose it.
 
     `$: no JSON object or array found in output` on its own says nothing about
     why. StepError carries the raw reply, and this is where it stops being
-    thrown away.
+    thrown away. `step.error_report` is what the CLI path writes too, so the
+    reply is capped and the command is masked the same way in both: this file
+    lands inside the repository being documented, and `llm_cmd` can carry an
+    API key in its argv.
     """
-    record = {
-        "stage": stage,
-        "command": command,
-        "modules": len(summaries),
-        "input_chars": sum(len(json.dumps(entry)) for entry in summaries),
-        "errors": list(getattr(exc, "errors", None) or [str(exc)]),
-        "raw": getattr(exc, "raw", ""),
-    }
+    record = step.error_report(
+        getattr(exc, "errors", None) or [str(exc)],
+        getattr(exc, "raw", ""),
+        stage=stage,
+        command=step.redact_command(command),
+        modules=len(summaries),
+        input_chars=sum(entry_size(entry) for entry in summaries),
+    )
     if batch is not None:
         record["batch"] = batch
+    if recovered:
+        record["recovered"] = True
     path = Path(out_dir) / "synthesis-error.json"
     path.write_text(json.dumps(record, indent=2) + "\n")
-    log(f"synthesis failed at {stage}: {record['errors'][0]}", "error")
+    log(f"synthesis failed at {stage}: {record['errors'][0]}", "warning" if recovered else "error")
     log(f"{record['modules']} module(s), {record['input_chars']} chars; see {path.name}")
     return path
 
 
-# The one field synthesis never reads, and the bulk of a summary's size. Shed
-# deterministically when a batch reply has to be fallen back on.
-SHED = ("public_api",)
+class SynthesisError(Exception):
+    """A synthesis that broke, as opposed to one there was nothing to do."""
 
 
-def reconcile(batch, returned):
+def reconcile(batch, returned, fields):
     """The batch's modules, as the model compacted them where it did.
 
-    The prompt asks for every module back and no others. A prompt instruction
-    is a request; this is the guarantee. A module the reply dropped falls back
-    to its own summary minus `public_api`, because losing it would delete a
-    module from the guide silently, and a module the reply invented is a claim
-    about code nothing analyzed.
+    The prompt asks for every module back, no others, and `public_api` gone. A
+    prompt instruction is a request; this is the guarantee. Every record is
+    filtered to `fields`, the keys the batch contract names, so a reply that
+    echoes `public_api` back does not carry the bulk of the input into the
+    final call: the contract does not forbid extra keys, and rejecting a batch
+    over one would cost a run its guide.
+
+    A module the reply dropped falls back to its own summary through the same
+    filter, because losing it would delete a module from the guide silently,
+    and a module the reply invented is a claim about code nothing analyzed.
+
+    Records come back in the batch's own order, which `module_summaries` sorted
+    and `partition` preserved. The guide orders its reading list from this
+    input, so returning the model's order followed by the fallbacks would churn
+    the guide between two runs that differ only in what a batch dropped.
     """
     wanted = {entry["module"]: entry for entry in batch}
-    kept, seen = [], set()
+    compacted = {}
     for entry in returned or []:
         name = entry.get("module")
-        if name not in wanted or name in seen:
-            continue
-        seen.add(name)
-        kept.append(entry)
-    missing = [name for name in wanted if name not in seen]
-    for name in missing:
-        kept.append({k: v for k, v in wanted[name].items() if k not in SHED})
+        if name in wanted and name not in compacted:
+            compacted[name] = {k: v for k, v in entry.items() if k in fields}
+    kept = [
+        compacted.get(name) or {k: v for k, v in wanted[name].items() if k in fields}
+        for name in wanted
+    ]
+    missing = [name for name in wanted if name not in compacted]
     invented = len([e for e in returned or [] if e.get("module") not in wanted])
     return kept, missing, invented
 
 
-def compact(summaries, out_dir, llm_cmd, timeout, budget):
+def compact(summaries, out_dir, llm_cmd, timeout, budget, passes=2):
     """Reduce a large summary set until it fits one call.
 
-    Returns the summaries to synthesize from, or None when a batch failed. A
-    set that already fits comes back untouched, so a small repository makes
-    exactly the one call it always did.
-    """
-    batches = partition(summaries, budget)
-    if len(batches) < 2:
-        return summaries
+    A set that already fits comes back untouched, so a small repository makes
+    exactly the one call it always did. Anything larger is compacted a batch at
+    a time, and the result is measured again: one pass is not a guarantee, and
+    a set still over the budget would reach the call this exists to avoid.
+    A pass that sheds nothing ends the loop, so the cost is bounded whatever
+    the model returns.
 
-    log(f"{len(summaries)} summaries over the {budget} char budget; {len(batches)} batches")
+    A batch that fails falls back to its own summaries through the batch
+    filter and the run carries on. Five compacted batches and one uncompacted
+    is a larger final payload; it is not a reason to finish with no guide.
+    """
+    if budget < MIN_SYNTHESIS_BUDGET:
+        log(
+            f"synthesis budget {budget} is below the {MIN_SYNTHESIS_BUDGET} char floor, "
+            f"which is a model call per module; using the floor",
+            "warning",
+        )
+        budget = MIN_SYNTHESIS_BUDGET
+
     prompt = (PROMPTS / "synthesize-batch.md").read_text()
     schema = json.loads((SCHEMAS / "synthesize-batch-out.json").read_text())
+    fields = set(schema["properties"]["modules"]["items"]["properties"])
+
+    reduced = summaries
+    for attempt in range(passes):
+        batches = partition(reduced, budget)
+        if len(batches) < 2:
+            return reduced
+        before = sum(entry_size(entry) for entry in reduced)
+        log(f"{len(reduced)} summaries over the {budget} char budget; {len(batches)} batches")
+        reduced = _compact_once(batches, out_dir, llm_cmd, timeout, prompt, schema, fields)
+        after = sum(entry_size(entry) for entry in reduced)
+        if after >= before:
+            log(f"compaction pass {attempt + 1} shed nothing ({after} chars); stopping", "warning")
+            break
+
+    if len(partition(reduced, budget)) > 1:
+        chars = sum(entry_size(entry) for entry in reduced)
+        log(
+            f"{chars} chars after compaction, still over the {budget} char budget; "
+            f"the synthesis call may not fit the context window",
+            "warning",
+        )
+    return reduced
+
+
+def _compact_once(batches, out_dir, llm_cmd, timeout, prompt, schema, fields):
+    """One compaction pass over a list of batches."""
     compacted = []
     for index, batch in enumerate(batches, start=1):
         log(f"[{index}/{len(batches)}] compacting {len(batch)} module(s)")
         try:
             result, _ = step.run_step(prompt, {"modules": batch}, schema, llm_cmd, timeout)
+            returned = result.get("modules")
         except (step.StepError, RuntimeError) as exc:
-            _record_failure(out_dir, llm_cmd, batch, exc, "batch", batch=index)
-            return None
-        kept, missing, invented = reconcile(batch, result.get("modules"))
-        if missing:
+            _record_failure(out_dir, llm_cmd, batch, exc, "batch", batch=index, recovered=True)
+            log(f"batch {index} failed; carrying its {len(batch)} summaries uncompacted", "warning")
+            returned = None
+        kept, missing, invented = reconcile(batch, returned, fields)
+        if missing and returned is not None:
             log(f"batch {index} returned no record for {len(missing)} module(s); kept theirs")
         if invented:
             log(f"batch {index} returned {invented} module(s) nothing analyzed; dropped", "warning")
@@ -496,6 +565,11 @@ def synthesize(
     One call sees the shape the dependency pairs make, which is what an
     onboarding guide is about. Where the summaries are too large for one call,
     they are compacted in batches first and the final call reads those.
+
+    Returns the guide's path, or None when there was nothing to synthesize.
+    A synthesis that broke raises `SynthesisError`: the caller has to tell the
+    two apart, and `None` for both made a narrowed run and a failed call look
+    identical from the outside.
     """
     out_dir = Path(out_dir)
     if narrowed:
@@ -513,9 +587,11 @@ def synthesize(
         log("no module summaries to synthesize")
         return None
 
+    # The record describes this run or it describes nothing. One an earlier
+    # failure left behind reads as a current one, against a guide that is fine.
+    (out_dir / "synthesis-error.json").unlink(missing_ok=True)
+
     reduced = compact(summaries, out_dir, llm_cmd, timeout, budget)
-    if reduced is None:
-        return None
 
     pairs_path = out_dir / "dep-pairs.json"
     pairs = {}
@@ -539,7 +615,7 @@ def synthesize(
         result, _ = step.run_step(prompt, payload, schema, llm_cmd, timeout)
     except (step.StepError, RuntimeError) as exc:
         _record_failure(out_dir, llm_cmd, reduced, exc, "synthesis")
-        return None
+        raise SynthesisError(str(exc)) from exc
 
     from lib.md import render  # local import: only the model path needs it
 
@@ -593,6 +669,20 @@ def write_surface(repo, registry, out_dir):
     return (out_dir / "api-surface.json").is_file()
 
 
+def synthesis_budget(value):
+    """`--synthesis-budget`, rejected below the floor rather than degraded at it."""
+    try:
+        budget = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a number: {value!r}")
+    if budget < MIN_SYNTHESIS_BUDGET:
+        raise argparse.ArgumentTypeError(
+            f"{budget} is below the {MIN_SYNTHESIS_BUDGET} char floor, under which "
+            f"every module gets a batch and a model call of its own"
+        )
+    return budget
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Map a repository and extract its public API")
     parser.add_argument("--repo", required=True)
@@ -617,11 +707,11 @@ def main(argv=None):
     parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument(
         "--synthesis-budget",
-        type=int,
+        type=synthesis_budget,
         default=DEFAULT_SYNTHESIS_BUDGET,
         help=(
             "Characters of module summaries per synthesis call. Over this, the "
-            "summaries are compacted in batches first"
+            f"summaries are compacted in batches first. Minimum {MIN_SYNTHESIS_BUDGET}"
         ),
     )
     parser.add_argument(
@@ -684,6 +774,14 @@ def main(argv=None):
         return 0
 
     only = set(args.modules) if args.modules else None
+    if only is not None:
+        unknown = sorted(only - set(registry["modules"]))
+        if unknown:
+            # Summarizing nothing and synthesizing nothing is indistinguishable
+            # from a clean run once it reaches the exit code, and `--modules`
+            # takes module paths, which are easy to mistype.
+            log(f"--modules names no module in the registry: {', '.join(unknown)}", "error")
+            return 2
     written, failed = summarize_modules(repo, registry, out_dir, args.llm_cmd, args.timeout, only)
     if not written and failed:
         log(f"every module summary failed ({len(failed)})", "error")
@@ -692,17 +790,19 @@ def main(argv=None):
     graph = dep_pairs(out_dir, registry)
     log(f"{graph.get('total_pairs', 0)} dependency pairs")
 
-    target = synthesize(
-        registry,
-        out_dir,
-        args.llm_cmd,
-        args.timeout,
-        budget=args.synthesis_budget,
-        narrowed=only is not None,
-    )
-    if target is None and only is None:
-        # A narrowed run declines to synthesize and says so; anything else
-        # reaching here failed, and left synthesis-error.json behind.
+    try:
+        target = synthesize(
+            registry,
+            out_dir,
+            args.llm_cmd,
+            args.timeout,
+            budget=args.synthesis_budget,
+            narrowed=only is not None,
+        )
+    except SynthesisError:
+        # _record_failure left synthesis-error.json behind. A narrowed run and
+        # a repository with no summaries return None instead: both are nothing
+        # to do, and neither wrote a record to read.
         return 3
 
     log(f"{len(written)} summarized, {len(failed)} failed, wrote {target or 'no guide'}")

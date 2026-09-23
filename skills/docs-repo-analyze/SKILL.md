@@ -42,7 +42,7 @@ they cost nothing.
 | `modules/<slug>.json` | yes | Purpose, responsibilities, dependencies, gotchas |
 | `dep-pairs.json` | no | Cross-module edges, from those summaries |
 | `ONBOARDING.md` | yes | The synthesis |
-| `synthesis-error.json` | no | Written only when synthesis fails: stage, command, input size, errors, raw reply |
+| `synthesis-error.json` | no | Written when synthesis fails, or when a batch failed and the run carried on: stage, command, input size, errors, raw reply |
 
 A module name carries slashes and a filename cannot, so `pkg/scheduler` is
 written as `pkg__scheduler.json`. Each file names its own module in a `module`
@@ -72,11 +72,28 @@ Characters rather than tokens: `read_sources` already budgets that way, a token
 count needs either a tokenizer dependency or a chars-per-token guess that is a
 character budget wearing a hat, and this runtime is the standard library plus
 PyYAML. Roughly four characters to a token, so the 240,000 default is about
-60,000 tokens of summaries per call.
+60,000 tokens of summaries per call. A summary is measured as the prompt will
+carry it, indented and key-sorted, because that is what reaches the window.
+
+The compacted set is measured again against the budget. One pass is not a
+guarantee, and a set still over it would reach exactly the call batching
+exists to avoid; a pass that sheds nothing ends the loop rather than paying for
+another round of it. A batch that fails carries its own summaries forward
+instead, so a repository does not lose its guide over one timed-out call.
+
+`--synthesis-budget` has a floor. Below it every module lands in a batch of its
+own, which is a model call per module rather than compaction, so the value is
+rejected at the command line rather than honoured into a bill.
+
+Configure it per repository under `generate.analyze.synthesis_budget` in
+`.docs-gen.yaml`; `docs-sync` passes it through.
 
 A failed synthesis writes `synthesis-error.json`: the stage, the command, the
 module count, the input size in characters, the errors, and the raw reply the
-model actually sent.
+model actually sent. A batch failure the run recovered from writes the same
+record with `"recovered": true`. The reply is capped and anything in the
+command that looks like a credential is masked, because the file is written
+inside the repository being documented.
 
 `--modules` narrows which modules are summarized, and a guide built from three
 of fifty describes a repository nobody has, so a narrowed run skips synthesis
