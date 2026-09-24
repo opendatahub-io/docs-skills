@@ -52,6 +52,25 @@ def test_package_scripts_and_project_scripts_are_commands(tmp_path):
     assert found["python"] == ["mytool"]
 
 
+def test_a_pyproject_with_a_non_table_project_degrades_to_no_python_commands(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("project = 5\n")
+    found = commands.declared_commands(tmp_path)
+    assert found["python"] == []
+
+
+def test_the_3_10_fallback_also_degrades_on_a_non_table_project(tmp_path, monkeypatch):
+    monkeypatch.setattr(commands, "tomllib", None)
+    (tmp_path / "pyproject.toml").write_text("project = 5\n")
+    found = commands.declared_commands(tmp_path)
+    assert found["python"] == []
+
+
+def test_a_package_json_with_non_table_scripts_degrades_to_no_npm_commands(tmp_path):
+    (tmp_path / "package.json").write_text('{"scripts": ["dev", "lint"]}')
+    found = commands.declared_commands(tmp_path)
+    assert found["npm"] == []
+
+
 def test_the_allowlist_is_full_command_strings(tmp_path):
     (tmp_path / "Makefile").write_text("build: ## Compile\n\tgo build ./...\n")
     (tmp_path / "package.json").write_text('{"scripts": {"dev": "vite"}}')
