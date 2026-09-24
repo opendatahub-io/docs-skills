@@ -346,7 +346,7 @@ def main(argv=None):
 
     if not rebuild:
         log(f"nothing to do: no module changed ({len(relevance.get('skip') or [])} skipped)")
-        write_watermark(repo, watermark, head, registry, {})
+        write_watermark(watermark, head, registry, {})
         return 1
 
     if max_modules and len(rebuild) > max_modules:
@@ -364,7 +364,7 @@ def main(argv=None):
     targets = [record["doc"] for record in queued["queued"]]
     if not targets:
         log(f"{len(rebuild)} module(s) moved, but no document cites them")
-        write_watermark(repo, watermark, head, registry, {})
+        write_watermark(watermark, head, registry, {})
         return 1
     log(f"{len(targets)} document(s) to rewrite: {', '.join(targets[:10])}")
 
@@ -488,17 +488,14 @@ def main(argv=None):
         )
 
     # 7. Watermark and the pull request body.
-    # A write record no longer names a module -- a document can cite several
-    # -- so a module's watermark advances when at least one of the documents
-    # `docs_meta.stale()` queued for it was actually written this run.
     written_docs = {r["path"] for r in report["written"]}
-    written = {
-        module: record["doc"]
-        for record in queued["queued"]
-        if record["doc"] in written_docs
-        for module in record["modules"]
-    }
-    write_watermark(repo, watermark, head, registry, written)
+    advanced, stranded = modules_fully_written(queued["queued"], written_docs)
+    if stranded:
+        log(
+            f"{len(stranded)} module(s) held back; a document citing each was not written: "
+            f"{', '.join(stranded[:5])}"
+        )
+    write_watermark(watermark, head, registry, advanced)
     render_pr_body(out_dir, relevance, report, context, queued["queued"])
 
     if review_code == 3:
@@ -507,7 +504,29 @@ def main(argv=None):
     return 0 if report["written"] else 1
 
 
-def write_watermark(repo, path, head, registry, written):
+def modules_fully_written(queued, written_docs):
+    """`(advanced, stranded)` from the queue and what this run actually wrote.
+
+    A write record no longer names a module, because one document can cite
+    several, so the watermark is joined back through the queue instead.
+
+    A module advances only when every document queued for it was written.
+    Advancing on one success strands the rest: the next run's fingerprint diff
+    finds the module unchanged, never queues those documents again, and they
+    stay stale for good. Only writable pages reach the queue, so a `manual`
+    page citing the module cannot hold it back forever.
+    """
+    by_module = {}
+    for record in queued:
+        for module in record["modules"]:
+            by_module.setdefault(module, set()).add(record["doc"])
+    advanced = {
+        module: sorted(docs)[0] for module, docs in by_module.items() if docs <= written_docs
+    }
+    return advanced, sorted(set(by_module) - set(advanced))
+
+
+def write_watermark(path, head, registry, written):
     """Record what is now documented, per module.
 
     Only modules whose documents were actually written advance. A module that

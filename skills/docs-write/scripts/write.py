@@ -105,7 +105,8 @@ def archetype_for(doc_type, foundation=None):
     else falls back to the archetype for its type, which is what a `--topic`
     deliverable has always used.
     """
-    name = FOUNDATION_ARCHETYPES.get(foundation) or ARCHETYPES.get(doc_type)
+    name = FOUNDATION_ARCHETYPES.get(foundation) if foundation else None
+    name = name or ARCHETYPES.get(doc_type)
     if not name:
         return ""
     return (REFERENCE / name).read_text()
