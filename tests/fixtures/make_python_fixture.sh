@@ -48,6 +48,51 @@ PY
 echo 'def helper(a): return a' > util/tools.py
 echo '# docs' > docs/guide.md
 
+# Enough for each foundation gate to reach a verdict. `cli` is an entry
+# point, the Makefile declares runnable targets, `legacy` carries a
+# deprecation, and the policy file suppresses SECURITY.md the way a real
+# repository's hand-written one does.
+mkdir -p cli
+cat > cli/__init__.py <<'CLIPY'
+"""Command line entry point."""
+
+
+def main():
+    """Run the tool."""
+    return 0
+
+
+def legacy():
+    """Deprecated: use main instead."""
+    return main()
+CLIPY
+
+cat > Makefile <<'MAKEEOF'
+build: ## Build the package
+	python3 -m build
+
+test: ## Run the suite
+	python3 -m pytest
+MAKEEOF
+
+cat > SECURITY.md <<'SECEOF'
+# Security policy
+
+Report a vulnerability to security@example.com.
+SECEOF
+
+mkdir -p .docs-gen
+cat > .docs-gen/registry.json <<'REGEOF'
+{"modules": {"cli": {"kind": "cli"}, "core": {"kind": "library"}, "util": {"kind": "library"}}}
+REGEOF
+cat > .docs-gen/dep-pairs.json <<'DEPEOF'
+{"pairs": [{"from": "cli", "to": "core"}, {"from": "core", "to": "util"}]}
+DEPEOF
+cat > .docs-gen/api-surface.json <<'APIEOF'
+{"modules": {"cli": {"symbols": {"main": {"doc": "Run the tool."},
+  "legacy": {"doc": "Deprecated: use main instead."}}}}}
+APIEOF
+
 cat > registry.json <<'JSON'
 {"core": ["core"], "util": ["util"], "docs": ["docs"]}
 JSON

@@ -192,3 +192,28 @@ def test_an_unknown_skip_name_is_rejected(tmp_path):
         assert "raodmap" in str(exc)
     else:
         raise AssertionError("an unknown skip name must stop the run")
+
+
+def test_the_fixture_repository_passes_four_of_five_gates(tmp_path):
+    """Every gate that can pass, against a repository that actually exists.
+
+    SECURITY is the one that cannot: the fixture carries a policy file, which
+    is the case llm-d-router demonstrated and the one most likely to regress,
+    because the evidence half of that gate passes and only the suppression
+    stops it.
+    """
+    import subprocess
+
+    script = _ROOT / "tests" / "fixtures" / "make_python_fixture.sh"
+    built = tmp_path / "repo"
+    subprocess.run(["bash", str(script), str(built)], check=True, capture_output=True)
+
+    written, skipped = gates.evaluate(built, built / ".docs-gen", "docs")
+
+    assert sorted(item["path"].rsplit("/", 1)[-1] for item in written) == [
+        "ARCHITECTURE.md",
+        "GET-STARTED.md",
+        "README.md",
+        "ROADMAP.md",
+    ]
+    assert [entry["gate"] for entry in skipped] == ["policy_exists"]
