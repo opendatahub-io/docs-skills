@@ -129,3 +129,44 @@ def test_roadmap_carries_deprecations_grouped_by_package(tmp_path):
     got = evidence.payload("roadmap", tmp_path, out, ["pkg/a"])
     assert got["deprecations"][0]["module"] == "pkg/a"
     assert sorted(got["deprecations"][0]["symbols"]) == ["Old", "Older"]
+
+
+def test_architecture_edges_are_bounded_by_the_module_cap(tmp_path):
+    """The graph was the one field that grew with the repository.
+
+    Every other field here is capped. `edges` used to pass the whole of
+    dep-pairs.json through, so a large graph would dominate the payload and
+    undo the cap sitting beside it.
+
+    An edge is kept when both its endpoints survived the cut, because an edge
+    naming an absent module is one the model cannot ground and the diagram
+    cannot draw.
+    """
+    count = evidence.MODULE_CAP + 5
+    modules = {f"pkg/m{index:03d}": {"kind": "library"} for index in range(count)}
+    hub = "pkg/m000"
+    # Every module depends on the hub, which gives it the highest fan-in and a
+    # place in the kept set. The final two modules rank last and fall outside.
+    pairs = [{"from": name, "to": hub} for name in modules if name != hub]
+    outsider = f"pkg/m{count - 1:03d}"
+    pairs.append({"from": outsider, "to": f"pkg/m{count - 2:03d}"})
+
+    out = _out(tmp_path, modules, **{"dep-pairs.json": {"pairs": pairs}})
+    got = evidence.payload("architecture", tmp_path, out, sorted(modules))
+
+    kept = {record["module"] for record in got["modules"]}
+    assert len(kept) == evidence.MODULE_CAP
+    for pair in got["edges"]:
+        assert pair["from"] in kept, f"{pair} names a module absent from the payload"
+        assert pair["to"] in kept, f"{pair} names a module absent from the payload"
+    assert len(got["edges"]) < len(pairs), "the uncapped graph reached the payload"
+    assert {"from": outsider, "to": f"pkg/m{count - 2:03d}"} not in got["edges"]
+
+
+def test_a_small_repository_keeps_every_edge(tmp_path):
+    """Filtering must not shrink output for a repository under the cap."""
+    modules = {"pkg/a": {"kind": "library"}, "pkg/b": {"kind": "library"}, "pkg/c": {}}
+    pairs = [{"from": "pkg/a", "to": "pkg/b"}, {"from": "pkg/b", "to": "pkg/c"}]
+    out = _out(tmp_path, modules, **{"dep-pairs.json": {"pairs": pairs}})
+    got = evidence.payload("architecture", tmp_path, out, sorted(modules))
+    assert got["edges"] == pairs

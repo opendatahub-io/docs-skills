@@ -61,6 +61,23 @@ def _tail(modules, kept):
     }
 
 
+def _edges_within(pairs, kept):
+    """The edges whose endpoints both survived the module cap.
+
+    Every other field here is bounded, and this one used to pass the whole
+    dependency graph through. A large repository's graph holds thousands of
+    edges, which would grow the payload with the repository and defeat the cap
+    beside it.
+
+    Filtering rather than truncating, because an edge naming a module that did
+    not survive the cut refers to something absent from the payload: the model
+    can say nothing grounded about it and the diagram cannot draw it. Both
+    endpoints present bounds the field by construction.
+    """
+    inside = set(kept)
+    return [pair for pair in pairs if pair.get("from") in inside and pair.get("to") in inside]
+
+
 def _module_records(names, modules, summaries):
     records = []
     for name in names:
@@ -117,7 +134,7 @@ def payload(stem, repo, out_dir, sources):
         kept = _ranked(modules, pairs, summaries, sources)[:MODULE_CAP]
         return {
             "modules": _module_records(kept, modules, summaries),
-            "edges": pairs,
+            "edges": _edges_within(pairs, kept),
             "tail": _tail(modules, kept),
         }
 
