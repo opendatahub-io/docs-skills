@@ -1,34 +1,34 @@
 ---
 name: docs-write
-description: Writes Markdown documentation for a code module or a planned deliverable. Enforces whole-file ownership through the managed frontmatter field and within-file ownership through docs-gen fenced regions, both in script rather than in a prompt.
-argument-hint: <repo-path> [--plan FILE | --modules NAME... | --relevance FILE] [--llm-cmd CMD]
+description: Writes Markdown documentation from a planned deliverable, including the foundation set (README, get-started, architecture, security, roadmap), or rewrites an already-published document by its path. Enforces whole-file ownership through the managed frontmatter field and within-file ownership through docs-gen fenced regions, both in script rather than in a prompt.
+argument-hint: <repo-path> [--plan FILE | --documents PATH...] [--llm-cmd CMD]
 allowed-tools: Bash, Read, Write
 ---
 
 # docs-write
 
-Writes one Markdown document per planned deliverable, or one document set per code module.
+Writes one Markdown document per planned deliverable, or rewrites the documents named explicitly.
 
 ## Quick start
 
 ```bash
 WRITE="$(dirname "$0")/scripts/write.py"
 
-# Plan mode: what /docs runs, one document per deliverable
+# What /docs runs: one document per planned deliverable
 python3 "$WRITE" --repo . --out .docs-gen --plan .docs-gen/plan.json --llm-cmd "pi -p"
 
-# Module mode: what /docs-sync runs, only the modules the relevance verdict named
-python3 "$WRITE" --repo . --out .docs-gen --relevance .docs-gen/relevance.json --llm-cmd "pi -p"
-
-# Module mode, named explicitly
-python3 "$WRITE" --repo . --out .docs-gen --modules pkg/queue pkg/scheduler
+# What /docs-sync runs: the documents a changed module is cited by
+python3 "$WRITE" --repo . --out .docs-gen --documents docs/ARCHITECTURE.md --llm-cmd "pi -p"
 ```
 
-The two modes are one skill, and one argument parser, because they share the
-ownership contract, the renderer and the prose repair loop. They differ only in
-what decides the document set: a plan names deliverables, a relevance verdict
-or a module list names code modules. Every flag of either mode is reachable
-through this one entry point.
+One writer, one ownership contract. A plan names the deliverables. For an
+incremental run, `sync.py` turns a relevance verdict into document paths
+through `docs_meta.stale()` and passes those, so the writer never needs to know
+what a module is.
+
+A foundation deliverable carries a `foundation` key naming which of the five
+documents it is. That picks the archetype and the evidence slice, and it lands
+in the frontmatter alongside `source_modules`.
 
 ## Ownership
 

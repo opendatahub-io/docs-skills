@@ -196,12 +196,11 @@ def test_the_written_summary_names_the_page_an_update_changed():
 # ---------------------------------------------------- I3/I4: the writer's args
 
 
-def test_module_mode_accepts_its_own_flags():
+def test_document_mode_accepts_its_own_flags():
     """Both modes parse through one parser, so a flag of either is reachable."""
     parser = write.build_parser()
-    args = parser.parse_args(["--repo", ".", "--modules", "pkg/queue", "--max-modules", "1"])
-    assert args.max_modules == 1
-    assert args.modules == ["pkg/queue"]
+    args = parser.parse_args(["--repo", ".", "--documents", "docs/README.md"])
+    assert args.documents == ["docs/README.md"]
 
 
 def test_plan_mode_flags_are_reachable_too():
@@ -291,7 +290,7 @@ def test_the_standalone_model_default_is_pi():
     """The package dropped the Claude Code plugin; a standalone invocation
     should not still spawn `claude -p`."""
     for rel in (
-        "skills/docs-write/scripts/write_module.py",
+        "skills/docs-write/scripts/write.py",
         "skills/docs-query-code/scripts/query.py",
         "skills/docs-engine/scripts/lib/run/step.py",
     ):
@@ -307,7 +306,6 @@ def test_the_generator_stamp_is_derived_from_the_package_version():
     assert engine.GENERATOR == f"docs-skills/{version}"
     for rel in (
         "skills/docs-write/scripts/write.py",
-        "skills/docs-write/scripts/write_module.py",
         "skills/docs-changelog/scripts/changelog.py",
     ):
         assert "GENERATOR = " not in (REPO_ROOT / rel).read_text(), rel

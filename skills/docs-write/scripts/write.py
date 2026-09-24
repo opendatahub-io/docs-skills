@@ -23,7 +23,7 @@ from lib.run.engine import GENERATOR, LANGUAGES, PROMPTS, SCHEMAS  # noqa: E402
 
 REFERENCE = Path(__file__).resolve().parents[1] / "reference"
 
-import write_module  # noqa: E402
+from lib.foundation import evidence as foundation_evidence  # noqa: E402
 from lib.git import api_surface, commit_select  # noqa: E402
 from lib.md import changeset, docs_meta, fences, render  # noqa: E402
 from lib.md.ownership import (  # noqa: E402
@@ -413,6 +413,37 @@ def relevant_changes(commits, subject):
     return commit_select.select_commits(commits, subject, CHANGES_LIMIT)
 
 
+def foundation_payload(item, repo, out_dir):
+    """The model input for one foundation deliverable.
+
+    A foundation document is grounded in the slice its gate chose. The symbol
+    list a topic deliverable carries is the wrong evidence here: ARCHITECTURE
+    wants the dependency graph, and a signature in its payload is a signature
+    in its prose.
+    """
+    stem = item["foundation"]
+    payload = {
+        "title": item["title"],
+        "doc_type": item["type"],
+        "path": item["path"],
+        "rationale": item["rationale"],
+        "foundation": stem,
+        "archetype": archetype_for(item["type"], stem),
+    }
+    payload.update(foundation_evidence.payload(stem, repo, out_dir, item.get("sources") or []))
+    return payload
+
+
+def foundation_frontmatter(stem, sources):
+    """What a foundation document carries beyond the writer's usual keys.
+
+    `source_modules` is what `docs_meta.stale()` joins against a relevance
+    verdict, so a changed module rewrites the documents citing it and nothing
+    else.
+    """
+    return {"foundation": stem, "source_modules": sorted(sources)}
+
+
 def write_deliverable(
     repo,
     item,
@@ -442,18 +473,6 @@ def write_deliverable(
             "reason": "managed: manual",
         }
 
-    code = code_context(out_dir, f"{item['title']} {item['rationale']}")
-    changes = relevant_changes(commits, f"{item['title']} {item['rationale']}")
-    if not code and not changes:
-        # A page with neither a symbol nor a commit behind it has only its own
-        # title to be written from, and drafting from a title is invention.
-        return {
-            **identity,
-            "path": str(target.relative_to(repo)),
-            "status": "refused",
-            "reason": "no code or commit evidence grounds a new page",
-        }
-
     if not getattr(args, "llm_cmd", None):
         return {
             **identity,
@@ -462,17 +481,38 @@ def write_deliverable(
             "reason": "no --llm-cmd, so nothing can be drafted",
         }
 
-    payload = {
-        "title": item["title"],
-        "doc_type": item["type"],
-        "path": item["path"],
-        "rationale": item["rationale"],
-        "archetype": archetype_for(item["type"]),
-    }
-    if code:
-        payload["code"] = code
-    if changes:
-        payload["changes"] = changes
+    if item.get("foundation"):
+        # The gate that queued this deliverable already established its
+        # evidence; the "no code or commit evidence" refusal below is about a
+        # topic page invented from a title, which does not apply here.
+        payload = foundation_payload(item, repo, out_dir)
+        extra_front = foundation_frontmatter(item["foundation"], item.get("sources") or [])
+    else:
+        code = code_context(out_dir, f"{item['title']} {item['rationale']}")
+        changes = relevant_changes(commits, f"{item['title']} {item['rationale']}")
+        if not code and not changes:
+            # A page with neither a symbol nor a commit behind it has only its
+            # own title to be written from, and drafting from a title is
+            # invention.
+            return {
+                **identity,
+                "path": str(target.relative_to(repo)),
+                "status": "refused",
+                "reason": "no code or commit evidence grounds a new page",
+            }
+        payload = {
+            "title": item["title"],
+            "doc_type": item["type"],
+            "path": item["path"],
+            "rationale": item["rationale"],
+            "archetype": archetype_for(item["type"]),
+        }
+        if code:
+            payload["code"] = code
+        if changes:
+            payload["changes"] = changes
+        extra_front = {}
+
     if managed == "assisted":
         # Without this the model never learns which section ids exist, emits
         # ids that match nothing, and every region is skipped: a permanent
@@ -488,10 +528,10 @@ def write_deliverable(
         json.loads((SCHEMAS / "write-out.json").read_text()),
         args,
         None,
-        {"doc_type": item["type"]},
+        {**{"doc_type": item["type"]}, **extra_front},
         identity,
         managed,
-        {},
+        extra_front,
         marker=marker,
         urls=set(),
     )
@@ -680,11 +720,19 @@ def run_plan(
             if item.get("kind") == "update":
                 results.append(update_deliverable(repo, item, out, docs_dir, args, commits, marker))
             else:
-                where = (
-                    os.path.relpath(Path(changeset_dir) / "new", repo)
-                    if changeset_dir
-                    else docs_dir
-                )
+                if item.get("foundation"):
+                    # A fixed destination, not a page staged for review: it
+                    # writes at its repo-relative path, `docs/README.md`, and
+                    # never enters the changeset directory. `docs_dir` (here
+                    # ".") makes `write_deliverable`'s join a no-op and its
+                    # `_escapes` backstop guard the repository root instead.
+                    where = "."
+                else:
+                    where = (
+                        os.path.relpath(Path(changeset_dir) / "new", repo)
+                        if changeset_dir
+                        else docs_dir
+                    )
                 results.append(write_deliverable(repo, item, out, where, args, commits, marker))
         except (OSError, ValueError, RuntimeError, KeyError) as exc:
             # One deliverable that raises used to end the step and lose every
@@ -758,14 +806,90 @@ def write_from_plan(repo, out_dir, args):
     return code
 
 
+def _deliverable_from_document(repo, rel):
+    """A `--documents` path turned into a deliverable, or a refusal record.
+
+    Everything a foundation deliverable needs already lives in the document's
+    own frontmatter, stamped there the run that first wrote it: `foundation`
+    names which of the five documents this is, `type` and `title` are its
+    own, and `source_modules` is what a changed module was joined against to
+    queue it here. A path whose frontmatter carries no `foundation` key names
+    something this writer no longer owns the shape of, so it is refused with
+    that as the reason rather than guessed at.
+    """
+    identity = {"deliverable": rel, "path": rel}
+    target = Path(repo) / rel
+    if _escapes(target, Path(repo)):
+        reason = f"path escapes the repository: {rel}"
+        return None, {**identity, "status": "refused", "reason": reason}
+    if not target.is_file():
+        return None, {**identity, "status": "refused", "reason": f"no such document: {rel}"}
+    try:
+        front, _, _ = docs_meta.parse(target.read_text())
+    except OSError as exc:
+        return None, {**identity, "status": "refused", "reason": str(exc)[:200]}
+
+    stem = front.get("foundation")
+    if not stem:
+        return None, {**identity, "status": "refused", "reason": "no foundation key in frontmatter"}
+
+    deliverable = {
+        "path": rel,
+        "type": front.get("type", ""),
+        "title": front.get("title", stem),
+        "kind": "new",
+        "rationale": "a changed module this document cites",
+        "sources": front.get("source_modules") or [],
+        "foundation": stem,
+    }
+    return deliverable, None
+
+
+def write_from_documents(repo, out_dir, args):
+    """Rewrite already-published documents named explicitly, by their path.
+
+    This is what an incremental run takes: `sync.py` turns a relevance
+    verdict into the document paths a changed module is cited by, through
+    `docs_meta.stale()`, and hands them here rather than a plan. A plan names
+    what does not exist yet; this names what already does.
+    """
+    deliverables, refusals = [], []
+    for rel in args.documents:
+        deliverable, refusal = _deliverable_from_document(repo, rel)
+        if refusal is not None:
+            refusals.append(refusal)
+        else:
+            deliverables.append(deliverable)
+
+    commits = []
+    changes_path = getattr(args, "changes", None)
+    if changes_path and Path(changes_path).is_file():
+        try:
+            commits = json.loads(Path(changes_path).read_text()).get("commits") or []
+        except json.JSONDecodeError:
+            commits = []
+
+    outcome = run_plan(
+        repo,
+        {"deliverables": deliverables},
+        args.docs_dir,
+        args.llm_cmd,
+        out_dir,
+        changeset_dir=None,
+        args=args,
+        commits=commits,
+        marker=changeset.marker_id("", getattr(args, "topic", None) or ""),
+    )
+    report, code = write_report(out_dir, args.docs_dir, refusals + outcome["results"])
+    return code
+
+
 def build_parser():
     """One parser for both modes.
 
-    Module mode and plan mode differ in what decides the document set, not in
-    what a writer does with it, so a flag of either has to be reachable through
-    the one entry point. Two parsers meant `--max-modules` was rejected by the
-    skill that documents it, and a plan-mode flag alongside `--modules` exited
-    2 from the parser nobody could see.
+    Plan mode and document mode differ in what decides the document set, not
+    in what a writer does with it, so a flag of either has to be reachable
+    through the one entry point.
     """
     parser = argparse.ArgumentParser(description="Write Markdown documents from a code repository")
     parser.add_argument("--repo", default=".")
@@ -774,9 +898,11 @@ def build_parser():
 
     picks = parser.add_argument_group("what to write")
     picks.add_argument("--plan", default=None, help="plan.json. Defaults to <out>/plan.json")
-    picks.add_argument("--relevance", help="Module mode: write the modules in rebuild[]")
-    picks.add_argument("--modules", nargs="*", help="Module mode: write these modules")
-    picks.add_argument("--max-modules", type=int, default=0, help="Module mode: 0 means no cap")
+    picks.add_argument(
+        "--documents",
+        nargs="*",
+        help="Rewrite these existing documents, named by their path under the repo root",
+    )
     picks.add_argument(
         "--changeset",
         default=None,
@@ -818,13 +944,14 @@ def build_parser():
 def main(argv=None):
     args = build_parser().parse_args(argv)
 
-    # `--modules` with no values parses as `[]`, which is falsy, so module mode
-    # is chosen on the flag being present rather than on what it carries.
-    if args.modules is not None or args.relevance:
-        return write_module.run(args)
-
     repo = Path(args.repo).resolve()
     out_dir = Path(args.out)
+
+    # `--documents` with no values parses as `[]`, which is falsy, so document
+    # mode is chosen on the flag being present rather than on what it carries.
+    if args.documents is not None:
+        return write_from_documents(repo, out_dir, args)
+
     if not args.plan:
         args.plan = str(out_dir / "plan.json")
     return write_from_plan(repo, out_dir, args)

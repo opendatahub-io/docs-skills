@@ -36,6 +36,7 @@ if not (ENGINE / "scripts" / "lib" / "run" / "step.py").exists():
     )
 sys.path.insert(0, str(ENGINE / "scripts"))
 
+from lib.md import docs_meta  # noqa: E402
 from lib.pipeline import workspace  # noqa: E402
 from lib.pipeline.config import (  # noqa: E402
     ARTIFACT_DIR,
@@ -356,6 +357,17 @@ def main(argv=None):
     if args.dry_run:
         return 0
 
+    # A changed module rewrites the documents citing it, which
+    # `source_modules` records and `docs_meta.stale` joins. Writing per module
+    # is what the foundation set replaced.
+    queued = docs_meta.stale(repo, relevance, docs_dir)
+    targets = [record["doc"] for record in queued["queued"]]
+    if not targets:
+        log(f"{len(rebuild)} module(s) moved, but no document cites them")
+        write_watermark(repo, watermark, head, registry, {})
+        return 1
+    log(f"{len(targets)} document(s) to rewrite: {', '.join(targets[:10])}")
+
     # 4. Write. Ownership guards live inside write.py, not here.
     write_args = [
         SKILLS / "docs-write" / "scripts" / "write.py",
@@ -367,8 +379,8 @@ def main(argv=None):
         docs_dir,
         "--llm-cmd",
         llm_cmd,
-        "--modules",
-        *rebuild,
+        "--documents",
+        *targets,
     ]
     # Late, because the workspace writes style files into the artifact
     # directory and nothing that scans the tree may run after it, and just
@@ -476,9 +488,18 @@ def main(argv=None):
         )
 
     # 7. Watermark and the pull request body.
-    written = {r["module"]: r.get("path") for r in report["written"] if r.get("module")}
+    # A write record no longer names a module -- a document can cite several
+    # -- so a module's watermark advances when at least one of the documents
+    # `docs_meta.stale()` queued for it was actually written this run.
+    written_docs = {r["path"] for r in report["written"]}
+    written = {
+        module: record["doc"]
+        for record in queued["queued"]
+        if record["doc"] in written_docs
+        for module in record["modules"]
+    }
     write_watermark(repo, watermark, head, registry, written)
-    render_pr_body(out_dir, relevance, report, context)
+    render_pr_body(out_dir, relevance, report, context, queued["queued"])
 
     if review_code == 3:
         log("review found errors; the pull request body records them")
@@ -507,7 +528,7 @@ def write_watermark(repo, path, head, registry, written):
     log(f"watermark: {len(written)} module(s) advanced to {head[:7]}")
 
 
-def render_pr_body(out_dir, relevance, report, context):
+def render_pr_body(out_dir, relevance, report, context, queued=()):
     """Why each module was rebuilt, and what a human still has to look at.
 
     Reviewers who see the reasoning read the diff differently from reviewers
@@ -517,6 +538,11 @@ def render_pr_body(out_dir, relevance, report, context):
     review = json.loads(review_path.read_text()) if review_path.exists() else {}
     summary = context.get("summary") or {}
     rng = context.get("range") or {}
+
+    # A write record names the document, not the module: a document can cite
+    # several. `queued` (from `docs_meta.stale()`) is the join back to what
+    # moved.
+    doc_modules = {record["doc"]: record["modules"] for record in queued}
 
     lines = [
         "## What changed",
@@ -531,18 +557,22 @@ def render_pr_body(out_dir, relevance, report, context):
         lines += ["### Documents written", ""]
         modules = relevance.get("modules") or {}
         for record in report["written"]:
-            why = (modules.get(record.get("module")) or {}).get("reason") or record.get(
-                "reason", ""
+            cited = doc_modules.get(record["path"], [])
+            why = next(
+                (
+                    (modules.get(m) or {}).get("reason")
+                    for m in cited
+                    if (modules.get(m) or {}).get("reason")
+                ),
+                record.get("reason", ""),
             )
-            lines.append(f"- `{record['path']}` — {record['module']}: {why}")
+            lines.append(f"- `{record['path']}` — {', '.join(cited) or 'unattributed'}: {why}")
         lines.append("")
 
     for label, key in (("Unchanged", "unchanged"), ("Deferred to a native generator", "deferred")):
         if report.get(key):
             lines += [f"### {label}", ""]
-            lines += [
-                f"- {r.get('path') or r['module']}: {r.get('reason', '')}" for r in report[key]
-            ]
+            lines += [f"- {r.get('path', '')}: {r.get('reason', '')}" for r in report[key]]
             lines.append("")
 
     blocked = [f for f in review.get("findings", []) if f["severity"] == "error"]

@@ -255,6 +255,35 @@ def fake_llm(tmp_path):
     return f"{sys.executable} {script}"
 
 
+def _plan_path(artifacts):
+    """A one-deliverable plan, a foundation document standing in for `core`.
+
+    The per-module writer this replaced picked its own document set and
+    stamped `source_modules` on every page it wrote; a foundation deliverable
+    is what carries that same contract now, so the ownership and staleness
+    tests below still exercise it.
+    """
+    path = artifacts / "plan.json"
+    path.write_text(
+        json.dumps(
+            {
+                "deliverables": [
+                    {
+                        "path": "docs/core.md",
+                        "type": "concept",
+                        "title": "Core",
+                        "rationale": "the registry holds 2 module(s)",
+                        "sources": ["core"],
+                        "foundation": "architecture",
+                        "kind": "new",
+                    }
+                ]
+            }
+        )
+    )
+    return path
+
+
 @pytest.fixture
 def written(repo, artifacts, fake_llm):
     """A registry plus one generated document, ready for the ownership tests."""
@@ -273,8 +302,8 @@ def written(repo, artifacts, fake_llm):
         artifacts,
         "--docs-dir",
         "docs",
-        "--modules",
-        "core",
+        "--plan",
+        _plan_path(artifacts),
         "--llm-cmd",
         fake_llm,
     )
@@ -300,8 +329,8 @@ def test_a_second_run_with_no_source_change_writes_nothing(repo, artifacts, fake
         artifacts,
         "--docs-dir",
         "docs",
-        "--modules",
-        "core",
+        "--plan",
+        _plan_path(artifacts),
         "--llm-cmd",
         fake_llm,
         check=False,
@@ -324,8 +353,8 @@ def test_a_manual_document_is_never_written(repo, artifacts, fake_llm, written):
         artifacts,
         "--docs-dir",
         "docs",
-        "--modules",
-        "core",
+        "--plan",
+        _plan_path(artifacts),
         "--llm-cmd",
         fake_llm,
         check=False,
@@ -355,8 +384,8 @@ def test_an_assisted_document_keeps_everything_outside_its_fences(
         artifacts,
         "--docs-dir",
         "docs",
-        "--modules",
-        "core",
+        "--plan",
+        _plan_path(artifacts),
         "--llm-cmd",
         fake_llm,
         check=False,
@@ -589,12 +618,39 @@ def stub_writer(tmp_path):
     return f"{sys.executable} {script}"
 
 
+def _seed_foundation_doc(repo, path="docs/core.md", modules=("core",)):
+    """A foundation document already published, as `/docs` would have left it.
+
+    `sync.py` no longer writes a per-module document set: it turns a
+    relevance verdict into the *existing* documents a changed module is cited
+    by, through `docs_meta.stale()`, and rewrites only those. There is
+    nothing for it to rewrite unless something is already there declaring
+    `source_modules`.
+    """
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    front = [
+        "title: Core",
+        "description: Before the change.",
+        "type: concept",
+        "managed: generated",
+        "foundation: architecture",
+        "source_modules:",
+    ]
+    front += [f"  - {module}" for module in modules]
+    body = "## Before\n\nReplaced by the next run.\n"
+    target.write_text("---\n" + "\n".join(front) + "\n---\n\n" + body)
+    return target
+
+
 def test_sync_runs_the_whole_chain(repo, stub_writer):
     """Every step in order, against a repository with a known history.
 
     This is the test that catches ordering and argument bugs between steps.
     A dry run reaches none of them.
     """
+    doc = _seed_foundation_doc(repo)
+    before = doc.read_text()
     result = run(
         SKILLS / "docs-sync" / "scripts" / "sync.py",
         "--repo",
@@ -606,8 +662,8 @@ def test_sync_runs_the_whole_chain(repo, stub_writer):
     )
     assert result.returncode == 0, result.stderr[-3000:]
 
-    doc = repo / "docs" / "core.md"
     assert doc.exists()
+    assert doc.read_text() != before
     assert "managed: generated" in doc.read_text()
     assert (repo / ".docs-state.json").exists()
     assert (repo / ".docs-gen" / "pr-body.md").exists()
@@ -638,6 +694,7 @@ def test_sync_attributes_commits_to_modules(repo, stub_writer):
 
 def test_sync_second_run_reports_nothing_to_do(repo, stub_writer):
     """The idempotency requirement, end to end."""
+    _seed_foundation_doc(repo)
     argv = (
         SKILLS / "docs-sync" / "scripts" / "sync.py",
         "--repo",
@@ -656,6 +713,7 @@ def test_sync_second_run_reports_nothing_to_do(repo, stub_writer):
 
 
 def test_sync_pr_body_explains_each_rebuild(repo, stub_writer):
+    _seed_foundation_doc(repo)
     run(
         SKILLS / "docs-sync" / "scripts" / "sync.py",
         "--repo",
@@ -740,6 +798,7 @@ def test_generator_runs_from_a_flat_install(repo, tmp_path, stub_writer):
     dest.mkdir()
     installed = _flat_install(dest)
     assert "docs-engine" in installed
+    _seed_foundation_doc(repo)
 
     result = run(
         dest / "docs-sync" / "scripts" / "sync.py",
