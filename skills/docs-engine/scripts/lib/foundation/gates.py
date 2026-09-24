@@ -175,6 +175,14 @@ def evaluate(repo, out_dir, docs_dir, skip=()):
 
     registry = _load(Path(out_dir) / "registry.json", {})
     modules = registry.get("modules") or {}
+    if not isinstance(modules, dict):
+        # A registry whose `modules` is a list reaches `.items()` several
+        # frames later as an AttributeError, which the caller cannot tell
+        # apart from an empty repository. Say what is wrong instead.
+        raise ValueError(
+            "registry.json: `modules` must be an object keyed by module path, "
+            f"found {type(modules).__name__}. Re-run docs-repo-analyze."
+        )
     surface = (_load(Path(out_dir) / "api-surface.json", {}).get("modules")) or {}
     pairs = (_load(Path(out_dir) / "dep-pairs.json", {}).get("pairs")) or []
 

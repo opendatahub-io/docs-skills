@@ -217,3 +217,20 @@ def test_the_fixture_repository_passes_four_of_five_gates(tmp_path):
         "ROADMAP.md",
     ]
     assert [entry["gate"] for entry in skipped] == ["policy_exists"]
+
+
+def test_a_registry_whose_modules_is_not_an_object_says_so(tmp_path):
+    """An AttributeError several frames later reads as an empty repository.
+
+    A caller cannot tell "nothing to document" from "the registry is corrupt",
+    and the two want opposite responses.
+    """
+    out = tmp_path / ".docs-gen"
+    out.mkdir(parents=True)
+    (out / "registry.json").write_text(json.dumps({"modules": ["pkg/a", "pkg/b"]}))
+    try:
+        gates.evaluate(tmp_path, out, "docs")
+    except ValueError as exc:
+        assert "modules" in str(exc) and "list" in str(exc)
+    else:
+        raise AssertionError("a malformed registry must be named, not guessed at")

@@ -95,7 +95,9 @@ def _api_versions(modules):
     way `_deprecations` does, so a document can say how many it is not naming
     instead of implying the list is complete.
     """
-    found = sorted(name for name in modules if "alpha" in name or "beta" in name)
+    # The gate's own predicate, so a module named `pkg/alphabet` cannot reach
+    # the model as an API version the gate never counted.
+    found = sorted(name for name in modules if gates.API_VERSION.search(name))
     return {"versions": found[:API_VERSION_CAP], "total": len(found)}
 
 

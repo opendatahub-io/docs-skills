@@ -511,8 +511,14 @@ def build(repo, root, docs_dir, config, args, env_cmd):
         write_args += ["--changes", changes_path]
     if topic:
         write_args += ["--topic", topic]
-    where = changeset_lib.directory_for(docs_dir, "", topic, date.today().isoformat(), base=repo)
-    write_args += ["--changeset", str(Path(repo) / where)]
+    # A changeset stages proposed pages for review and writes an index beside
+    # them. The foundation set has fixed destinations and writes in place, so
+    # staging it would add a sixth file to a run whose whole point is five.
+    if topic or not foundation.get("enabled", True):
+        where = changeset_lib.directory_for(
+            docs_dir, "", topic, date.today().isoformat(), base=repo
+        )
+        write_args += ["--changeset", str(Path(repo) / where)]
     try:
         code = run(write_args, "writing the plan", allowed=(0, 1, 2, 3))
     except StepFailedError as exc:

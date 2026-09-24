@@ -488,7 +488,11 @@ def main(argv=None):
         )
 
     # 7. Watermark and the pull request body.
+    # `unchanged` means the rewrite produced the same bytes, so the document
+    # is current. Counting only `written` held its modules back and queued the
+    # same document next run to produce the same bytes again, for ever.
     written_docs = {r["path"] for r in report["written"]}
+    written_docs |= {r.get("path") for r in report.get("unchanged") or [] if r.get("path")}
     advanced, stranded = modules_fully_written(queued["queued"], written_docs)
     if stranded:
         log(

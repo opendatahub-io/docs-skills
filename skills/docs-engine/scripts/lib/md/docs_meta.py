@@ -333,7 +333,13 @@ def validate(root, strict=False, docs_dir=None):
 def build_index(root, docs_dir=None):
     entries = []
     for path in walk(root, docs_dir):
-        front, _, had = parse(path.read_text(encoding="utf-8", errors="replace"))
+        try:
+            front, _, had = parse(path.read_text(encoding="utf-8", errors="replace"))
+        except (OSError, UnicodeDecodeError, MetaError):
+            # This join gates the whole incremental chain, so one page nobody
+            # can parse must not end the run for every page that parses. The
+            # reviewer reports it; skipping it here is what lets them.
+            continue
         if not had:
             continue
         entries.append(

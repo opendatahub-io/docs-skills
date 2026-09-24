@@ -787,7 +787,7 @@ def write_from_plan(repo, out_dir, args):
     )
     results = outcome["results"]
     if getattr(args, "prune_orphans", False):
-        pruned = prune_orphans(repo, args.docs_dir, plan)
+        pruned = prune_orphans(repo, args.docs_dir, plan, changeset_dir)
         if pruned:
             log(f"pruned {len(pruned)} orphaned document(s)")
         results = results + pruned
@@ -803,7 +803,30 @@ def write_from_plan(repo, out_dir, args):
     return code
 
 
-def prune_orphans(repo, docs_dir, plan):
+def claimed_paths(repo, docs_dir, plan, changeset_dir=None):
+    """Every repo-relative path this plan accounts for.
+
+    A deliverable's `path` is not a destination. A foundation deliverable's is
+    repo-relative and already carries the docs directory; a topic deliverable's
+    is a bare file name that `run_plan` joins onto the changeset directory, or
+    onto `docs_dir` when there is none. Comparing the raw field against a path
+    on disk matches neither, which is how a prune deleted the pages the same
+    run had just written.
+    """
+    claimed = set()
+    for item in plan.get("deliverables") or []:
+        path = item.get("path")
+        if not path:
+            continue
+        if item.get("foundation") or item.get("kind") == "update":
+            claimed.add(path)
+            continue
+        base = os.path.relpath(Path(changeset_dir) / "new", repo) if changeset_dir else docs_dir
+        claimed.add(str(Path(base) / path))
+    return claimed
+
+
+def prune_orphans(repo, docs_dir, plan, changeset_dir=None):
     """Delete pages this tool generated that the plan no longer claims.
 
     `docs-review` reports these and never removes them, because a generated
@@ -816,7 +839,7 @@ def prune_orphans(repo, docs_dir, plan):
     root = Path(repo) / docs_dir
     if not root.is_dir():
         return []
-    claimed = {item["path"] for item in (plan.get("deliverables") or []) if item.get("path")}
+    claimed = claimed_paths(repo, docs_dir, plan, changeset_dir)
     removed = []
     for path in sorted(root.rglob("*.md")):
         rel = str(path.relative_to(repo))
@@ -855,7 +878,11 @@ def _deliverable_from_document(repo, rel):
         return None, {**identity, "status": "refused", "reason": f"no such document: {rel}"}
     try:
         front, _, _ = docs_meta.parse(target.read_text())
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError, docs_meta.MetaError) as exc:
+        # A `.md` file is not necessarily Markdown, and `MetaError` subclasses
+        # `RuntimeError` rather than `ValueError`. Either escaping here ends
+        # the run before `write-report.json` exists, and the caller then fails
+        # reading a report that was never written.
         return None, {**identity, "status": "refused", "reason": str(exc)[:200]}
 
     stem = front.get("foundation")

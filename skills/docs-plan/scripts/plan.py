@@ -158,6 +158,13 @@ def module_evidence(out_dir):
     """The modules this repository has, and what each one exposes."""
     registry = json.loads((Path(out_dir) / "registry.json").read_text())
     modules = registry.get("modules") or {}
+    if not isinstance(modules, dict):
+        # `.items()` below would raise several frames from the cause, and the
+        # caller cannot tell a corrupt registry from an empty repository.
+        raise ValueError(
+            "registry.json: `modules` must be an object keyed by module path, "
+            f"found {type(modules).__name__}. Re-run docs-repo-analyze."
+        )
 
     surface = {}
     surface_path = Path(out_dir) / "api-surface.json"
@@ -277,7 +284,7 @@ def main(argv=None):
         return 2
     try:
         registry, modules = module_evidence(out_dir)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         log(f"registry.json is not readable ({exc}); re-run docs-repo-analyze", "error")
         return 2
 

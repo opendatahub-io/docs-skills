@@ -195,3 +195,21 @@ def test_the_tail_prefix_count_is_bounded_for_flat_module_names(tmp_path):
     got = evidence.payload("architecture", tmp_path, out, sorted(modules))
     assert len(got["tail"]["by_prefix"]) <= evidence.TAIL_PREFIX_CAP
     assert got["tail"]["count"] == count - evidence.MODULE_CAP
+
+
+def test_a_module_merely_containing_alpha_is_not_an_api_version(tmp_path):
+    """The payload must use the gate's own predicate.
+
+    `pkg/alphabet` and `internal/betamax` contain the substrings but are not
+    versioned packages. Reporting them to the model as API versions invents a
+    stability story the gate never counted.
+    """
+    modules = {
+        "apix/v1alpha2": {"kind": "library"},
+        "pkg/alphabet": {"kind": "library"},
+        "internal/betamax": {"kind": "library"},
+    }
+    out = _out(tmp_path, modules)
+    got = evidence.payload("roadmap", tmp_path, out, sorted(modules))
+    assert got["api_versions"]["versions"] == ["apix/v1alpha2"]
+    assert got["api_versions"]["total"] == 1

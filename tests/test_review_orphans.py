@@ -93,7 +93,7 @@ def test_pruning_removes_only_unclaimed_generated_pages(tmp_path):
     (docs / "architecture.md").write_text("---\ntitle: A\nmanaged: manual\n---\n\n# A\n")
     (docs / "notes.md").write_text("---\ntitle: N\nmanaged: generated\n---\n\n# N\n")
 
-    plan = {"deliverables": [{"path": "docs/README.md"}]}
+    plan = {"deliverables": [{"path": "docs/README.md", "foundation": "readme"}]}
     removed = write.prune_orphans(tmp_path, "docs", plan)
 
     assert [entry["path"] for entry in removed] == ["docs/pkg__queue.md"]
@@ -108,6 +108,42 @@ def test_pruning_a_tree_with_nothing_orphaned_removes_nothing(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
     (docs / "README.md").write_text(_GENERATED.format(title="Readme"))
-    removed = write.prune_orphans(tmp_path, "docs", {"deliverables": [{"path": "docs/README.md"}]})
+    plan = {"deliverables": [{"path": "docs/README.md", "foundation": "readme"}]}
+    removed = write.prune_orphans(tmp_path, "docs", plan)
     assert removed == []
     assert (docs / "README.md").exists()
+
+
+def test_a_topic_page_the_same_run_wrote_is_not_pruned(tmp_path):
+    """The defect this join exists to prevent.
+
+    A topic deliverable's `path` is a bare name that the writer joins onto the
+    changeset directory. Comparing that field against a path on disk matched
+    nothing, so a prune deleted every page the same run had just paid a model
+    to write.
+    """
+    write = _write_py()
+    new = tmp_path / "docs" / "changeset-2026-09-24-x" / "new"
+    new.mkdir(parents=True)
+    page = new / "configure-the-scheduler.md"
+    page.write_text(_GENERATED.format(title="Configure the scheduler"))
+
+    plan = {"deliverables": [{"path": "configure-the-scheduler.md", "kind": "new"}]}
+    removed = write.prune_orphans(
+        tmp_path, "docs", plan, changeset_dir=tmp_path / "docs" / "changeset-2026-09-24-x"
+    )
+
+    assert removed == []
+    assert page.exists(), "the page this run just wrote must survive its own prune"
+
+
+def test_a_topic_page_written_in_place_is_not_pruned(tmp_path):
+    """Without a changeset the writer joins onto docs_dir instead."""
+    write = _write_py()
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    page = docs / "configure-the-scheduler.md"
+    page.write_text(_GENERATED.format(title="Configure the scheduler"))
+    plan = {"deliverables": [{"path": "configure-the-scheduler.md", "kind": "new"}]}
+    assert write.prune_orphans(tmp_path, "docs", plan) == []
+    assert page.exists()

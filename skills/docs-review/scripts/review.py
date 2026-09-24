@@ -956,7 +956,16 @@ def main(argv=None):
     # an empty `claimed` set would report every generated page in the tree.
     plan = load(out_dir / "plan.json", None)
     if plan is not None:
-        claimed = {item["path"] for item in (plan.get("deliverables") or []) if item.get("path")}
+        # The write report says where each deliverable actually landed. A
+        # deliverable's `path` field is not a destination: a topic one is a
+        # bare name the writer joins onto a changeset directory, so comparing
+        # the raw field against disk reported every page just written.
+        claimed = {r["path"] for r in (write_report or {}).get("results", []) if r.get("path")}
+        claimed |= {
+            item["path"]
+            for item in (plan.get("deliverables") or [])
+            if item.get("path") and (item.get("foundation") or item.get("kind") == "update")
+        }
         findings += orphans(repo, args.docs_dir, claimed)
 
     if args.vale_config:
