@@ -726,3 +726,20 @@ def test_the_batch_contract_accepts_the_evidence_the_module_contract_produces():
         batch["properties"]["modules"]["items"]["properties"]["evidence"]["items"]["pattern"]
         == module["properties"]["evidence"]["items"]["pattern"]
     )
+
+
+def test_the_synthesis_reply_is_written_as_json_beside_the_markdown(tmp_path, monkeypatch):
+    """`onboarding.json` is the grounding tier's copy of the synthesis.
+
+    The Markdown is a rendered convenience and stays transient. The JSON is
+    what README's payload reads and what a commit keeps, so a rewrite after a
+    code change costs one call per changed module rather than one per module.
+    """
+    out = seed(tmp_path, *(summary(f"pkg/m{i}") for i in range(3)))
+    monkeypatch.setattr(analyze.step, "run_step", FakeStep().run_step)
+    reg = registry(*(f"pkg/m{i}" for i in range(3)))
+    target = analyze.synthesize(reg, out, "fake", 10, budget=100_000)
+    assert target is not None and target.is_file()
+    written = json.loads((out / "onboarding.json").read_text())
+    assert written["sections"], "the reply's sections must survive into the JSON"
+    assert (out / "ONBOARDING.md").exists()

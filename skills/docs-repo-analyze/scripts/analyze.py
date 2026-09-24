@@ -633,6 +633,13 @@ def synthesize(
 
     from lib.md import render  # local import: only the model path needs it
 
+    # The reply itself is the grounding tier's copy, and the one a committed
+    # artifact keeps. README's payload reads it, so a rewrite after a code
+    # change costs the changed modules rather than every module.
+    (out_dir / "onboarding.json").write_text(json.dumps(result, indent=2) + "\n")
+
+    # The Markdown is the rendered form, for a person reading a run by hand.
+    # It stays transient, which is why the Vale entry keyed on it is unchanged.
     target = out_dir / "ONBOARDING.md"
     target.write_text(render.document(result))
     return target

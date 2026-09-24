@@ -42,7 +42,8 @@ they cost nothing.
 | `modules/<slug>.json` | yes | Purpose, responsibilities, dependencies, gotchas |
 | `modules/<slug>.error.json` | no | Written when one module's summary fails: the errors, and the reply that failed them |
 | `dep-pairs.json` | no | Cross-module edges, from those summaries |
-| `ONBOARDING.md` | yes | The synthesis |
+| `onboarding.json` | yes | The synthesis reply. Committed, and what the foundation writer reads |
+| `ONBOARDING.md` | yes | The same synthesis rendered for a person. Transient |
 | `synthesis-error.json` | no | Written when synthesis fails, or when a batch failed and the run carried on: stage, command, input size, errors, raw reply |
 
 A module name carries slashes and a filename cannot, so `pkg/scheduler` is
