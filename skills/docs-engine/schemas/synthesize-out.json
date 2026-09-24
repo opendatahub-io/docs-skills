@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Onboarding synthesis output",
+  "description": "One pass over every module summary and the dependency graph. Rendered to ONBOARDING.md by lib/md/render.py, so this carries structure and the renderer decides bytes.",
+  "type": "object",
+  "required": ["frontmatter", "sections"],
+  "properties": {
+    "path": {"type": "string"},
+    "frontmatter": {
+      "type": "object",
+      "required": ["title", "description", "type"],
+      "properties": {
+        "title": {"type": "string", "minLength": 3},
+        "description": {"type": "string", "minLength": 10, "maxLength": 300},
+        "type": {"type": "string", "enum": ["overview", "concept"]},
+        "managed": {"type": "string", "enum": ["generated"]}
+      }
+    },
+    "sections": {
+      "type": "array", "minItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["id", "heading", "body"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+          "heading": {"type": "string", "minLength": 2},
+          "body": {"type": "string", "minLength": 20},
+          "level": {"type": "integer", "minimum": 2, "maximum": 4}
+        }
+      }
+    },
+    "reading_order": {"type": "array", "items": {"type": "string"}},
+    "evidence": {"type": "array", "items": {"type": "string"}}
+  }
+}

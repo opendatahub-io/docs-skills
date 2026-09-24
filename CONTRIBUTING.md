@@ -1,6 +1,6 @@
 # Contributing to docs-skills
 
-Thank you for your interest in contributing to docs-skills! This plugin provides documentation review, writing, and workflow tools for Claude Code.
+Thank you for your interest in contributing to docs-skills. This package generates documentation from a code repository, and runs inside [pi](https://pi.dev).
 
 ## Getting Started
 
@@ -18,22 +18,27 @@ Thank you for your interest in contributing to docs-skills! This plugin provides
 ## Repository Layout
 
 ```text
-.claude-plugin/plugin.json   Plugin packaging metadata
-skills/                      Skill directories (SKILL.md + scripts/)
-agents/                      Subagent definitions
-reference/                   Shared domain knowledge
-hooks/                       Claude Code event hooks
-eval/                        Evaluation test cases
+package.json                 pi package manifest: name, version, pi.extensions, pi.skills
+extensions/                  pi extensions: the two commands, and the lint-on-write hook
+vale/docs.ini                The Vale packages and rule levels a run composes from
+styles/                      The Vale styles this package owns
+skills/docs-engine/          Shared runtime: lib, prompts, schemas, languages, reference
+skills/<skill>/SKILL.md      Skill definitions with frontmatter
+tests/                       pytest suite and the synthetic fixture repository
 ```
 
 Read [AGENTS.md](AGENTS.md) for architecture details and conventions.
 
 ## Ways to Contribute
 
+- **Add a language** — two files under `skills/docs-engine/`: an entry in
+  `scripts/lib/ast/languages.yaml` for the parse rules, and a
+  `languages/<lang>.md` for the documentation conventions the writer prompt reads
 - **Add or improve a skill** in `skills/<skill-name>/`
-- **Add or improve an agent** in `agents/`
-- **Add or fix a script** in `skills/<skill-name>/scripts/`
-- **Add evaluation test cases** in `eval/cases/`
+- **Add or fix a script** in `skills/<skill-name>/scripts/`, or in the engine's
+  `scripts/lib/` when several skills need it
+- **Improve a prompt or schema** in `skills/docs-engine/prompts/` and
+  `skills/docs-engine/schemas/`
 - **Fix a bug** or improve existing functionality
 - **Improve documentation**
 
@@ -55,18 +60,28 @@ make lint
 ```
 
 The `lint` target runs:
-- **skillsaw** validates plugin structure and skill frontmatter
+- **skillsaw** validates package structure and skill frontmatter
+- **tsc** typechecks the pi extensions against the pinned pi types
 - **ruff** checks and formats Python code
 - **shellcheck** lints shell scripts
 
-### Test Locally (Claude Code)
+### Test locally
 
-To test a skill with Claude Code before submitting:
+A local source is a pi settings entry pointing at the directory. Nothing is
+copied, so this is run once and edits to the checkout are live:
 
-1. Open `claude`
-2. Install the local plugin: `claude plugin install /path/to/docs-skills`
-3. Test your skill
-4. Remove the local plugin when done
+```bash
+npm ci
+pi install .
+```
+
+Skills, extensions and prompts are read when a session starts, so run `/reload`
+in an open session to pick up a change. Every script also runs from a plain
+shell, which is the faster loop for anything below the command layer:
+
+```bash
+python3 skills/docs/scripts/build.py --repo . --topic "the chain" --dry-run
+```
 
 ## Submitting Your Contribution
 
@@ -86,7 +101,7 @@ Write concise commit messages that explain *why* the change was made:
 - `docs:` for documentation changes
 - `chore:` for maintenance tasks
 
-Example: `feat: add retry logic to docs-orchestrator workflow resumption`
+Example: `feat: add a Rust language file to the writer`
 
 ## Style and Conventions
 
@@ -110,7 +125,14 @@ Example: `feat: add retry logic to docs-orchestrator workflow resumption`
 ### Skills
 
 - Each skill lives in `skills/<name>/` with a `SKILL.md` and optional `scripts/` directory
-- `SKILL.md` must include YAML frontmatter with at least `name` and `description`
+- `SKILL.md` must include YAML frontmatter with at least `name` and `description`,
+  and `name` must match the directory name
+- Every skill name carries a `docs-` prefix, with `docs` itself as the entry
+  point. Skills install into one flat directory shared with other packages, and
+  a name collision makes the installer skip this package whole rather than the
+  colliding skill
+- No subagent dispatch and no harness variables. Model steps go through the
+  engine's `lib/run/step.py`; paths resolve from the file that uses them
 
 ## License
 

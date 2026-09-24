@@ -1,197 +1,254 @@
 # docs-skills
 
-Claude Code plugin for documentation workflows. Provides orchestrator skills, review agents, code analysis tools, and style guide compliance checking for AsciiDoc and Markdown documentation.
+Documentation tooling for [pi](https://pi.dev).
 
-## Overview
+* Reads a code repository: its history, its modules, and its public API
+* Decides which documents to write and which existing pages to change
+* Writes and reviews with Vale hooks keeping token consumption lean
 
-This plugin provides the documentation automation layer for Claude Code. It includes skills for requirements analysis, documentation planning and writing, code-grounded technical review, style guide compliance, and CI/CD integration with JIRA and Git platforms.
+Claims about code are checked against the public API the analyzer extracted. Prose is checked by [Vale](https://vale.sh): a draft goes back to the model with its alerts until they clear. What will not clear after the last attempt is published with the page and reported against it, because a rule that has survived every repair pass is usually reading the document wrong rather than finding prose that is wrong. The reviewer reports rather than blocks wherever its verdict rests on matching text, which covers both the style findings and the check that compares backticked words against the extracted API. A run fails on what the tool can check structurally: a document it cannot parse, a broken fenced region, frontmatter naming a module the registry does not hold. `--strict` turns every finding back into a gate.
 
-### Skills
+## Two entry points
 
-| Category | Skills | Description |
-|----------|--------|-------------|
-| **Workflow** | `docs-orchestrator`, `docs-workflow-start`, `docs-workflow-requirements`, `docs-workflow-planning`, `docs-workflow-writing`, `docs-workflow-code-analysis`, `docs-workflow-pr-analysis`, `docs-workflow-scope-req-audit`, `docs-workflow-style-review`, `docs-workflow-tech-review`, `docs-workflow-create-merge-request`, `docs-workflow-create-jira`, `docs-workflow-jira-ready` | End-to-end documentation pipeline with YAML-defined step lists, conditional execution, and resume capability |
-| **Code Analysis** | `learn-code`, `query-code`, `understand-pull-request` | Tree-sitter AST parsing, module registry, cross-module relationships, PR impact analysis |
-| **Review** | `docs-review-style`, `docs-review-technical`, `docs-review-content-quality`, `docs-review-modular-docs` | Multi-agent style and technical review with confidence scoring and claim validation |
-| **Style Guides** | `ibm-sg-*` (8 skills), `rh-ssg-*` (8 skills) | IBM Style Guide and Red Hat Supplementary Style Guide compliance |
-| **Integration** | `jira-reader`, `jira-writer`, `git-pr-reader`, `article-extractor`, `docs-convert-gdoc-md`, `redhat-docs-toc` | JIRA, GitHub/GitLab, Google Docs, and web content integration |
-| **Other** | `rn-known-issues` | Release notes known issues audit |
+`/docs` documents a repository from where it stands now. It reads the history, maps the modules, extracts the public API, and writes the foundation set: README, GET-STARTED, ARCHITECTURE, SECURITY and ROADMAP.
 
-### Agents
+Each of the five is written only where the repository holds evidence for it, and the gates are deterministic, so deciding costs no model call:
 
-| Agent | Description |
-|-------|-------------|
-| `docs-planner` | Documentation architecture using JTBD framework |
-| `docs-writer` | Content creation (CONCEPT/PROCEDURE/REFERENCE/ASSEMBLY) |
-| `docs-reviewer` | Style and modular docs compliance review |
-| `technical-reviewer` | Technical accuracy review with code-aware validation |
-| `repo-mapper` | Codebase module detection and registry creation |
-| `module-analyzer` | Deep analysis of single codebase module |
-| `relationship-analyzer` | Cross-module coupling and dependency analysis |
-| `synthesis-writer` | Combine module analyses into ONBOARDING.md |
-| `code-questioner` | Answer questions about analyzed codebases |
-| `requirements-discoverer` | Lightweight JIRA/PR/spec requirement enumeration |
-| `requirements-analyst` | Deep per-requirement analysis with acceptance criteria |
-| `requirement-classifier` | Classify requirements by code evidence status |
-| `pr-repo-summarizer` | Quick repository overview for PR context |
-| `pr-change-analyzer` | Analyze PR changes against module registry |
-| `pr-synthesis-writer` | Combine PR data into PR-ANALYSIS.md |
+| Document | Written when |
+|---|---|
+| `README.md` | the registry holds at least one module |
+| `GET-STARTED.md` | a module of kind `cli` or `service` exists, and a manifest declares a runnable target |
+| `ARCHITECTURE.md` | three or more modules, and at least one dependency edge between them |
+| `SECURITY.md` | a module path or public symbol matches the security vocabulary, or a security tool config is present, and no policy file exists where GitHub reads one |
+| `ROADMAP.md` | a deprecated symbol, an alpha or beta API version, or unreleased release notes |
 
-## Installation
+A document whose gate fails is skipped with the gate named, never scaffolded with blanks. Five documents is what a 300-module repository produces and what a three-module one produces: the payload behind each is capped, so the output does not grow with the code.
 
-### From GitHub (marketplace)
+Module detail is not published. It persists as committed JSON under `.docs-gen/<run>/`, where it grounds the five documents. A stale entry there is a cache miss the registry hash detects, rather than a sentence a reader believes.
 
-Add the repo as a marketplace, then install the plugin:
+`/docs-sync` keeps that documentation current. It compares an API fingerprint
+against a watermark, rewrites the documents citing a module that moved, and
+stops early when nothing changed. You can call it from CI. Each repository owns
+its triggers, secret handling, permissions, and pull-request behavior.
 
-```bash
-claude plugin marketplace add opendatahub-io/docs-skills
-claude plugin install docs-skills@opendatahub-docs
+```cmd
+/docs: --help
+
+options:
+  -h, --help           show this help message and exit
+  --repo REPO          The repository to document
+  --topic TOPIC        Narrow the run to a subject. Without it, the whole
+                       repository
+  --out OUT            The artifact root, one directory per run inside it.
+                       Default .docs-gen
+  --docs-dir DOCS_DIR
+  --llm-cmd LLM_CMD
+  --models             Print the resolved per-step models and exit
+  --no-review
+  --dry-run            Plan only, write nothing
+  --sync-styles        Download the Vale packages used by the default prose
+                       checks
 ```
 
-### From local clone
+## Reducing model token wastage with Vale
 
-```bash
-git clone git@github.com:opendatahub-io/docs-skills.git
-claude --plugin-dir ./docs-skills
-```
+Vale acts as a cheap deterministic layer around expensive LLM work.
 
-### For development
+Vale replaces large standing prompt instructions for mechanical matters such as terminology, punctuation, passive voice, inflated wording, and document structure. Savings come from:
 
-Use `--plugin-dir` to load the plugin without installing. Run `/reload-plugins` after making changes:
-
-```bash
-claude --plugin-dir /path/to/docs-skills
-```
+- Mechanical review findings cost no tokens at all.
+- Repair calls send the draft and the alerts. It does not resend the write prompt, the module summaries or the symbol list, none of which decide whether a sentence hedges.
+- Compactness rules constrain intermediate outputs, reducing material repeated in downstream responses.
+- In interactive `pi` use, clean writes produce no Vale feedback and require no separate reviewer response.
+- An edit is answered for the block it changed, so a narrow fix does not hand back alerts from the rest of the page.
 
 ## Prerequisites
 
-### Environment variables
+- Python 3.10 or later, and git
+- Vale 3.21 or later
+- Pi 0.85.1 or later, with an authenticated provider
 
-Create an `.env` file with your tokens. Use either `~/.env` (global) or `.env` in the project root (overrides global):
+## Install
 
-```bash
-JIRA_API_TOKEN=your_jira_api_token
-JIRA_EMAIL=you@example.com
-# Optional: defaults to https://redhat.atlassian.net
-JIRA_URL=https://your-jira-instance.atlassian.net
-# Required scopes: "repo" for private repos, "public_repo" for public repos
-GITHUB_TOKEN=your_github_pat
-# Required scope: "api"
-GITLAB_TOKEN=your_gitlab_pat
-```
-
-### Software dependencies
-
-#### Required
-
-| Tool | Min version | Install | Purpose |
-|------|-------------|---------|---------|
-| Python | 3.10+ | [python.org](https://www.python.org/) | Script execution |
-| [uv](https://docs.astral.sh/uv/) | — | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | Runs PEP 723 scripts with auto-managed deps |
-| git | 2.0+ | System package manager | Version control |
-| jq | — | System package manager | JSON processing in shell scripts |
-| curl | — | System package manager | HTTP requests |
-
-#### Conditional (per-feature)
-
-| Tool | Install | Required for |
-|------|---------|--------------|
-| `gh` | `dnf install gh` / [cli.github.com](https://cli.github.com/) | GitHub PR/issue workflows |
-| `glab` | `dnf install glab` / [gitlab.com](https://gitlab.com/gitlab-org/cli) | GitLab MR workflows |
-| `gcloud` | [cloud.google.com/sdk](https://cloud.google.com/sdk/docs/install) | Google Docs export (`docs-convert-gdoc-md`) — alternative: configure [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials) |
-| [Vale](https://vale.sh/) | `dnf copr enable mczernek/vale && dnf install vale` / `brew install vale` | `lint-with-vale` style linting |
-
-#### Development / linting
-
-| Tool | Install | Used by |
-|------|---------|---------|
-| [ruff](https://docs.astral.sh/ruff/) | `uv tool install ruff` | `make lint` |
-| [shellcheck](https://www.shellcheck.net/) | `dnf install shellcheck` | `make lint` |
-
-#### Python packages (auto-managed by uv)
-
-These are declared as PEP 723 inline metadata in their scripts and installed automatically by `uv run --script` — no manual `pip install` needed:
-
-| Script | Packages |
-|--------|----------|
-| `jira-reader/scripts/jira_reader.py` | `jira`, `urllib3`, `ratelimit` |
-| `jira-writer/scripts/jira_writer.py` | `jira`, `ratelimit` |
-| `git-pr-reader/scripts/git_pr_reader.py` | `PyGithub`, `python-gitlab`, `pyyaml` |
-| `article-extractor/scripts/article_extractor.py` | `requests`, `beautifulsoup4`, `html2text` |
-| `redhat-docs-toc/scripts/toc_extractor.py` | `requests`, `beautifulsoup4` |
-| `learn-code/scripts/extract_public_api_treesitter.py` | `tree-sitter`, `tree-sitter-go`, `tree-sitter-javascript`, `tree-sitter-python`, `tree-sitter-typescript` |
-| `docs-convert-gdoc-md/scripts/gdoc2md.py` | `google-auth`, `python-pptx` |
-
-## Quick Start
-
-Run the docs orchestrator from the root of your documentation repository:
+docs-skills runs inside [pi](https://pi.dev). Install pi and authenticate a provider:
 
 ```bash
-# Basic workflow from a JIRA ticket
-/docs-orchestrator PROJ-123
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 
-# With source code analysis
-/docs-orchestrator PROJ-123 --repo https://github.com/org/repo
-
-# With PR context
-/docs-orchestrator PROJ-123 --pr https://github.com/org/repo/pull/456
-
-# Interactive guided start
-/docs-workflow-start PROJ-123
+pi
 ```
 
-## Workflow Customization
-
-The orchestrator runs a YAML-defined step list. Customize per-repo by placing a workflow YAML in `.agent_workspace/`:
+In pi, run `/login` and select a provider. Then install the package:
 
 ```bash
-mkdir -p .agent_workspace
-# Copy the default workflow and edit it
-cp $(claude plugin path docs-skills)/skills/docs-orchestrator/defaults/docs-workflow.yaml \
-   .agent_workspace/docs-workflow.yaml
+pi install git:git@github.com:opendatahub-io/docs-skills@v0.4.0
 ```
 
-See the workflow YAML for available steps, conditional execution (`when:` field), and dependency graph (`inputs:` field).
+To develop and test it, install from a local checkout of the repo:
 
-### Key flags
+```bash
+pi install .
+```
 
-| Flag | Description |
-|------|-------------|
-| `--repo <url-or-path>` | Source code repository for learn-code analysis |
-| `--pr <url>` | PR/MR URL to include in requirements analysis (repeatable) |
-| `--no-source-repo` | Skip source resolution and all source-dependent steps |
-| `--auto-discover-repos` | Skip confirmation when secondary repos are discovered |
-| `--max-secondary-repos <N>` | Maximum secondary repos to clone (default: 3) |
-| `--mkdocs` | Generate Material for MkDocs Markdown instead of AsciiDoc |
-| `--create-merge-request` | Create branch, commit, push, and open MR/PR |
-| `--workflow <name>` | Use a named workflow variant |
-| `--draft` | Write output to `artifacts/` staging area |
+Install using one or the other method, never both.
+
+### Working on docs-skills
+
+A local source is a settings entry pointing at the directory. Nothing is copied, so `pi install .` is run once and edits to the checkout are live.
+
+Skills, extensions and prompts are read when a session starts, so run `/reload` in an open session to pick up a change.
+
+The extensions are typechecked against the pi version `package.json` pins, which is how a renamed tool schema is caught before it quietly stops a hook from firing:
+
+```bash
+npm ci
+make typecheck
+```
+
+Nothing in `node_modules` ships. pi aliases both `@earendil-works` specifiers to its own copy when it loads an extension.
+
+## Run it
+
+Launch `pi` in the repository you want documented. In a new directory, sync the Vale styles first:
+
+```bash
+/docs --sync-styles
+```
+
+This creates `.vale.ini` and `.docs-gen/vale-packages` in pi's current directory. Style syncing needs no model.
+
+Then run:
+
+```bash
+/docs "hierarchical KV cache tiering"
+```
+
+A bare first word is the topic, which narrows the run to a subject. Without one the whole repository is read.
+
+Example output:
+
+```bash
+docs/changeset-2026-09-13-hierarchical-kv-cache-tiering/
+  index.md
+  new/
+    configure-kv-cache-tiering.md
+```
+
+Re-running a topic clears its changeset first, so what you are looking at is only ever this run's work. Mark a draft `managed: manual` and it is kept, and the run says so.
+
+The reasoning behind those drafts lands in `.docs-gen`, one directory per run, keyed the way the changeset is keyed:
+
+```bash
+.docs-gen/
+  vale-packages/                             # what --sync-styles downloaded
+  hierarchical-kv-cache-tiering/
+    git-context.json   git-context.md   changes.json
+    registry.json      api/             api-surface.json
+    modules/           dep-pairs.json   ONBOARDING.md
+    plan.json          plan.md
+    write-report.json  review.json      vale-run/
+```
+
+Each step writes its answer as JSON and its own working notes as Markdown beside it. The Markdown is what the word budgets under `vale.budgets` apply to, and what the next step reads.
+
+A run reads only its own directory and empties it before it starts, so neither another topic nor the same topic's last run can leave an answer behind to be picked up as this run's own. Only what a run downloads is shared, since re-fetching a style package per run spends time on bytes that do not differ.
+
+### Keeping documentation current
+
+`/docs-sync` is the incremental half. It writes a watermark recording which commit each module's documentation was written from, and the next run compares an API fingerprint against it.
+
+```bash
+/docs-sync --bootstrap --max-modules 20    # the first run, on a repo with no state
+/docs-sync                                 # every run after that
+```
+
+Three signals stop it documenting its own last commit: HEAD authored by the configured `bot_author`, a change set confined to the paths this tool writes, and a watermark already level with HEAD for every module. `--force` skips the guard. Use it when debugging, not in CI.
+
+### Run it unattended
+
+The same commands work without a session, which is how they run from cron or a pipeline:
+
+```bash
+pi -p "/docs-sync --repo ."
+```
+
+`-p` processes the command and exits, and every line the chain writes goes to stdout as plain text. A step prefixes its own name, and a line reporting an outcome carries its severity after that, so a pipeline can grep for one without reading the wording:
+
+```
+docs: warning: no repository context: nothing committed yet
+docs-review: error: 4 documents, 1 errors, 0 warnings
+warning docs/guide.md: preview technology: say this once, near the top
+```
+
+Inside a session the same severities pick the colour each line is drawn in. Exit codes:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Documents written |
+| 1 | Nothing to write |
+| 2 | A configuration error |
+| 3 | A step failed |
+| 5 | Every write was refused by the ownership contract (`/docs-sync`) |
+
+Add `--offline` to pi to skip its startup network calls once the model catalog is cached.
+
+## Configuration
+
+Place a `.docs-gen.yaml` file at the root of the repository being documented. Every key has a default:
+
+```yaml
+generate:
+  docs_dir: docs
+  llm_cmd: "pi -p"
+  # Optional. Every step not named here runs `llm_cmd`.
+  # Possible values: analyze, plan, write, review, changelog
+  llm_cmd_steps:
+    plan:   "pi -p -nt --offline --model openai/gpt-5.6-sol:high"
+    review: "pi -p -nt --offline --model anthropic/claude-opus-5:high"
+  # Bare issue keys are scanned out of commit bodies only for these prefixes.
+  issue_prefixes: [RHOAIENG]
+  # /docs-sync only.
+  bot_author: docs-bot@example.com
+  max_modules_per_run: 20
+  # Word ceilings on the chain's own working notes (default values shown).
+  vale:
+    budgets:
+      git_context: 6000
+      onboarding: 6000
+      plan: 6000
+      index: 6000
+```
+
+### Choosing a model per step
+
+`llm_cmd` is the command every step runs. `llm_cmd_steps` overrides it for the steps you name.
+
+A named step spawns the command it names as its own process. Every step you do
+not name uses the session's model. For a pinned Pi command, add `-nt` so the
+process returns one JSON completion instead of entering its tool loop.
+`--offline` skips Pi's startup network calls.
+
+## Ownership
+
+The `managed` field in a document's frontmatter decides what a run may do to it.
+
+| `managed` | What the writer does |
+| --- | --- |
+| absent | Creates the file. Stamps `managed: generated` |
+| `generated` | Regenerates the body. Keeps frontmatter a human set |
+| `assisted` | Rewrites only the `docs-gen` fenced regions |
+| `manual` | Never opens the file for writing. Emits a staleness finding |
+
+Marking sets `manual` by default, so pointing this at an existing documentation tree protects every file on first contact. These are enforced in `docs-write`'s script, not in a prompt.
 
 ## Development
 
-### Validate changes
-
 ```bash
+python3 -m pip install -r requirements.txt
+npm ci
 make lint
+python3 -m pytest tests/ -q
 ```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow.
-
-### Prerequisites
-
-See [Software dependencies](#software-dependencies) above. For linting, also install `ruff` and `shellcheck`.
-
-## Evaluation
-
-The `eval/` directory contains test cases for evaluating skill quality using the [agent-eval-harness](https://github.com/opendatahub-io/agent-eval-harness).
-
-## Architecture
-
-See [AGENTS.md](AGENTS.md) for architecture details and conventions.
-
-## Versioning
-
-Use git tags (`v0.1.0`, `v0.2.0`, etc.) for releases. The `main` branch is the development head.
 
 ## License
 

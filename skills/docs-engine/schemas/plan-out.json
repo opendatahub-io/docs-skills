@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "required": ["deliverables"],
+  "properties": {
+    "deliverables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "type", "title", "rationale"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "type": {"type": "string", "enum": ["concept", "procedure", "reference"]},
+          "title": {"type": "string", "minLength": 1},
+          "rationale": {"type": "string", "minLength": 1},
+          "sources": {
+            "type": "array",
+            "description": "Module paths from the registry, or the page path for an update. The planner drops any that name neither.",
+            "items": {"type": "string"}
+          },
+          "kind": {"type": "string", "enum": ["new", "update"]}
+        }
+      }
+    },
+    "covered": {"type": "array", "items": {"type": "string"}}
+  }
+}

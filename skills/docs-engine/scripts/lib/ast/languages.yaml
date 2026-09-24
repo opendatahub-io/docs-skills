@@ -1,0 +1,133 @@
+# Per-language parse rules: how a repository is partitioned, what counts as
+# public, and what couples two modules without an import between them.
+#
+# Nothing reads this file. It is reference for whoever teaches the extractors a
+# language, and the fields it used to carry that code also holds -- extensions,
+# config filenames, the exclusion lists -- are gone from here rather than kept
+# in two places: they had already drifted. Those live in, and only in:
+#
+#   lib/ast/build_module_map.py   LANG_EXTENSIONS, CONFIG_FILES
+#   lib/ast/exclusions.py         EXCLUDED_DIRS
+#   lib/ast/detect_language.py    the detection order
+#
+# A language is added by teaching the extractor, adding it to those constants,
+# and describing it here. tests/test_language_reference.py holds the two in
+# step.
+
+schema: docs-skills/languages/1
+
+languages:
+
+  python:
+    # Namespace packages are real, so __init__.py marks a package without being
+    # required to constitute one.
+    module_boundary:
+      rule: directory
+      description: Each directory holding .py files is one module.
+      marker_files: [__init__.py]
+      marker_required: false
+    public_api:
+      rule: not_underscore_prefixed
+      description: Functions and classes whose names do not start with an underscore.
+      extractor: stdlib_ast
+      kinds: [function, class, method, constant]
+    imports:
+      patterns: ["import X", "from X import Y"]
+      resolves: internal_module_dependencies
+    coupling_types: [data-shape, interface-contract, config, inheritance, event, none]
+    notes:
+      - A py.typed marker makes annotations part of the public contract.
+
+  go:
+    module_boundary:
+      rule: directory
+      description: Each directory holding .go files is one package. go.mod marks the module root.
+      marker_files: [go.mod]
+      marker_required: false
+    public_api:
+      rule: exported_identifier
+      description: Identifiers beginning with an uppercase letter.
+      extractor: treesitter
+      kinds: [function, method, type, struct, interface, variable, constant]
+    imports:
+      patterns: ["import blocks"]
+      resolves: internal_package_dependencies
+    coupling_types: [interface-contract, data-shape, config, embedding, channel, none]
+    notes:
+      - Interface satisfaction is implicit. A type in package A may implement an
+        interface in package B with no import between them, so import graphs
+        understate coupling.
+
+  javascript:
+    module_boundary:
+      rule: src_slice
+      description: Each directory or feature slice under src/ is one module.
+      marker_files: [index.js, package.json]
+      marker_required: false
+    public_api:
+      rule: exported
+      description: export function, export class, export const, export default, re-exports.
+      extractor: treesitter
+      kinds: [function, class, constant, re-export]
+    imports:
+      patterns: ["import ... from", "require()"]
+      resolves: internal_module_dependencies
+    coupling_types: [data-shape, event, config, duck-typing, callback, none]
+    notes:
+      - Callback shape and duck-typing assumptions cross module boundaries
+        without appearing in any import.
+
+  typescript:
+    module_boundary:
+      rule: src_slice
+      description: Each directory or feature slice under src/. Barrel files define the contract.
+      marker_files: [index.ts, package.json, tsconfig.json]
+      marker_required: false
+    public_api:
+      rule: exported
+      description: >-
+        export function, class, const, default, interface, type, enum, abstract
+        classes, and re-exports.
+      extractor: treesitter
+      kinds: [function, class, constant, interface, type, enum, re-export]
+    imports:
+      patterns: ["import", "import type"]
+      resolves: internal_module_dependencies
+      notes: Type-only imports reveal interface contracts rather than runtime coupling.
+    coupling_types:
+      - explicit-type-import
+      - structural-subtype
+      - data-shape
+      - event
+      - config
+      - generic-constraint
+      - none
+    notes:
+      - Structural subtyping couples modules with no shared import. An object
+        literal in module A can satisfy an interface in module B, so an import
+        graph alone misses the dependency.
+
+  yaml:
+    # Configuration repositories: Kubernetes manifests, CI definitions, Helm
+    # values. detect_language and build_module_map both accept one, and the
+    # file said nothing about it.
+    module_boundary:
+      rule: directory
+      description: Each directory holding .yaml or .yml files is one module.
+      marker_files: [kustomization.yaml, Chart.yaml]
+      marker_required: false
+    public_api:
+      rule: top_level_keys
+      description: >-
+        The keys a consumer sets. There is no extractor: a manifest has no
+        exported symbols, so api-surface.json stays empty for one of these.
+      extractor: none
+      kinds: []
+    imports:
+      patterns: ["$ref", "kustomize resources", "Helm dependencies"]
+      resolves: internal_file_references
+    coupling_types: [config, data-shape, none]
+    notes:
+      - A value in one file is read by a controller defined in another
+        repository, so coupling here is almost never visible in the tree.
+

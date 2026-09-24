@@ -1,0 +1,28 @@
+# Append to the .gitignore of the repository being documented.
+#
+# The durable artifacts are committed. A registry_hash match skips module
+# analysis, which presumes the registry and the API snapshot are already on
+# disk, and the grounding check reads api-surface.json on every run. Under CI
+# caching a cold cache produces a matching hash with nothing behind it.
+#
+# The module summaries, the dependency pairs and the synthesis join them,
+# because the foundation documents are written from those rather than from a
+# symbol list. A rewrite after a code change then costs one call per changed
+# module plus the synthesis, rather than a call per module in the repository.
+# A stale summary is a cache miss the registry hash detects. None of these is
+# rendered for a reader, which is why they are JSON: nobody browses them, so a
+# stale one is a cache entry rather than a sentence somebody believes.
+#
+# Each run writes into `.docs-gen/<run>/`, so the durable artifacts are one
+# level deeper than the root. The downloaded Vale packages sit in the root
+# itself and are never committed.
+.docs-gen/*
+!.docs-gen/*/
+.docs-gen/*/*
+!.docs-gen/*/registry.json
+!.docs-gen/*/api/
+!.docs-gen/*/api-surface.json
+!.docs-gen/*/modules/
+!.docs-gen/*/dep-pairs.json
+!.docs-gen/*/onboarding.json
+.docs-gen/vale-packages/

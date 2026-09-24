@@ -1,0 +1,14 @@
+{
+  "//": "Typechecks the pi extensions against the pi version package.json pins. The tree-sitter fixtures under tests/ are deliberately odd TypeScript and are not ours to satisfy.",
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["extensions/**/*.ts"]
+}

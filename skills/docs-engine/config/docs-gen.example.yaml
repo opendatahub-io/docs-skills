@@ -1,0 +1,54 @@
+# Copy to `.docs-gen.yaml` at the root of the repository being documented.
+# One config surface per repo, shared by /docs and /docs-sync. Command line
+# flags win over everything here.
+
+generate:
+  # The command each step pipes its prompt to on stdin, expecting JSON back.
+  # Swap it for `claude -p`, `codex exec`, `ollama run <model>`, or a shell
+  # wrapper around a raw HTTP call; nothing else in the pipeline changes.
+  # Inside a pi session the extension overrides this with the session's model.
+  llm_cmd: "pi -p"
+
+  # Optional. Every step not named here runs `llm_cmd`.
+  # Possible values: analyze, plan, write, review, changelog
+  llm_cmd_steps:
+    plan: "pi -p -nt --offline --model openai/gpt-5.6-luna:high"
+
+  # Where generated Markdown lands, relative to the repository root.
+  docs_dir: docs
+
+  # The foundation document set: README, GET-STARTED, ARCHITECTURE, SECURITY
+  # and ROADMAP, each written only where the repository holds evidence for it.
+  # A document with no evidence is skipped and the gate is named in the run's
+  # foundation.json, rather than being written as a template to fill in.
+  foundation:
+    enabled: true
+    # Leave a document unwritten whatever the evidence says. One of readme,
+    # get-started, architecture, security, roadmap. An unknown name stops the
+    # run rather than being ignored.
+    skip: []
+
+  # Bare issue keys are scanned out of commit bodies only for prefixes named
+  # here. An unscoped [A-Z]+-\d+ pattern matches CWE-22, SHA-256, and UTF-8.
+  issue_prefixes: [RHOAIENG]
+
+  # `auto` detects the language; otherwise an explicit name.
+  language: auto
+
+  # Characters of module summaries the onboarding synthesis sends in one call.
+  # Over this, the summaries are compacted in batches first, so a repository
+  # with more modules than fit a context window still produces a guide.
+  analyze:
+    synthesis_budget: 240000
+
+  # docs-sync only. The author whose commits mean this run is looking at its
+  # own last push, and the ceiling on modules rebuilt in one run.
+  bot_author: docs-bot@example.com
+  max_modules_per_run: 20
+
+  # Word ceilings on the chain's own working notes.
+  vale:
+    budgets:
+      git_context: 6000
+      plan: 6000
+      index: 6000

@@ -1,0 +1,81 @@
+# Paths excluded from git-context file rollups and churn rankings.
+# One Python regex per line, matched against the repository-relative path.
+# Blank lines and lines starting with # are ignored.
+#
+# Filter here rather than in a caller, so every harness sees the same hotspots.
+# Adapted from docs-git-pr-reader's git_filters.yaml.
+
+# Build and task files
+^Makefile$
+^Tiltfile$
+
+# Hidden files and directories
+^\.
+
+# Tests: high churn, low documentation signal. Test files still reach the
+# writer as usage evidence; they just do not rank as hotspots.
+^tests?/
+/__tests__/
+[Tt]est\.py$
+\.spec\.ts$
+\.test\.[jt]sx?$
+_test\.go$
+^src/test/
+/testdata/
+
+# Virtual environments
+^\.?venv/
+^env/
+
+# Coverage and build output
+^coverage/
+^cypress/
+^dist/
+^build/
+^target/
+^bin/
+^out/
+\.class$
+
+# Dependencies and vendored code
+^node_modules/
+(^|/)vendor/
+
+# Lock and manifest files
+package-lock\.json$
+yarn\.lock$
+pnpm-lock\.yaml$
+Pipfile\.lock$
+Gemfile\.lock$
+Cargo\.lock$
+^go\.mod$
+^go\.sum$
+\.lock$
+
+# CI and tooling configuration
+\.gitlab-ci\.yml$
+\.travis\.yml$
+(?i)jenkinsfile
+\.eslintrc(\.js|\.json)?$
+\.prettierrc(\.js|\.json)?$
+^pyproject\.toml$
+
+# Container and infrastructure
+(^|/)Dockerfile
+docker-compose\.ya?ml$
+\.tfstate(\.backup)?$
+
+# Generated code
+\.pb\.go$
+\.gen\.go$
+_pb2\.py$
+\.generated\.[a-z]+$
+
+# Utility scripts
+^hack/
+
+# Documentation. Excluded from churn so a docs commit never ranks as a
+# hotspot; docs-sync's loop guard reads changed paths separately.
+^CHANGELOG\.md$
+^LICENSE$
+\.(png|jpe?g|svg|gif|webp|ico)$

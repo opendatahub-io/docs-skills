@@ -1,0 +1,124 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "Language file frontmatter",
+ "description": "Machine fields in the YAML frontmatter of languages/<lang>.md. The Markdown body below the frontmatter is prose the writer prompt reads verbatim and is not described here.",
+ "type": "object",
+ "required": [
+  "language",
+  "extensions",
+  "artifacts"
+ ],
+ "properties": {
+  "language": {
+   "type": "string",
+   "description": "Canonical language name. Matches detect_language.py output.",
+   "pattern": "^[a-z][a-z0-9+#-]*$"
+  },
+  "extensions": {
+   "type": "array",
+   "description": "Source file extensions this language claims, leading dot included.",
+   "minItems": 1,
+   "items": {
+    "type": "string",
+    "pattern": "^\\.[A-Za-z0-9]+$"
+   }
+  },
+  "artifacts": {
+   "type": "object",
+   "description": "Doc types to request per module kind. Keys are the kinds classify_modules.py emits; library is the fallback for an unrecognised kind.",
+   "required": [
+    "library"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "library": {
+     "$ref": "#/$defs/docTypes"
+    },
+    "service": {
+     "$ref": "#/$defs/docTypes"
+    },
+    "cli": {
+     "$ref": "#/$defs/docTypes"
+    }
+   }
+  },
+  "reference_generator": {
+   "type": "object",
+   "description": "Native reference generator to defer to. Omit when the language has none worth deferring to.",
+   "required": [
+    "tool",
+    "command"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "tool": {
+     "type": "string",
+     "minLength": 1
+    },
+    "command": {
+     "type": "string",
+     "description": "Shell command with {name} placeholders filled by generator_command().",
+     "minLength": 1
+    },
+    "produces": {
+     "type": "string",
+     "description": "Which doc type the generator covers, so docs-write stops producing it.",
+     "enum": [
+      "reference",
+      "api",
+      "none"
+     ]
+    },
+    "url": {
+     "type": "string"
+    }
+   }
+  },
+  "doc_comment": {
+   "type": "object",
+   "description": "In-source doc comment convention. writable stays false by default: writing doc comments means a pull request against code, a different review and risk class than a docs PR.",
+   "additionalProperties": false,
+   "properties": {
+    "format": {
+     "type": "string",
+     "minLength": 1
+    },
+    "writable": {
+     "type": "boolean"
+    },
+    "url": {
+     "type": "string"
+    }
+   }
+  },
+  "docs_dir": {
+   "type": "string",
+   "description": "Conventional documentation directory for this language, used when .docs-gen.yaml does not set docs_dir."
+  },
+  "test_globs": {
+   "type": "array",
+   "description": "Where usage evidence lives. docs-write reads matching files as example sources.",
+   "items": {
+    "type": "string",
+    "minLength": 1
+   }
+  }
+ },
+ "additionalProperties": false,
+ "$defs": {
+  "docTypes": {
+   "type": "array",
+   "minItems": 1,
+   "items": {
+    "type": "string",
+    "enum": [
+     "concept",
+     "procedure",
+     "reference",
+     "overview",
+     "changelog"
+    ]
+   }
+  }
+ }
+}

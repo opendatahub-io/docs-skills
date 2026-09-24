@@ -1,4 +1,7 @@
-docs/
+# Anchored to the root. An unanchored `docs/` matches at any depth, which
+# silently excluded `skills/docs/` -- the /docs entry point itself -- from
+# every commit this repository has ever made.
+/docs/
 node_modules/
 __pycache__/
 *.pyc
@@ -6,3 +9,21 @@ __pycache__/
 .agent_workspace/
 tmp/
 .claude
+
+
+# Artifact directory, when the generator is run against this repository itself.
+.docs-gen/
+
+# Vale packages land in styles/ on sync. Only our own styles are committed.
+styles/RedHat/
+styles/Std/
+styles/Voices/
+styles/Direct/
+styles/GenZ/
+styles/Coach/
+styles/Simple/
+styles/.vale-config/
+styles/config/
+
+# npm cache, when CI or a local run is pointed at it
+.npm/

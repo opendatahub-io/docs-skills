@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Code question answer",
+  "description": "One answer about an analyzed codebase, grounded in cited source lines.",
+  "type": "object",
+  "required": ["answer"],
+  "properties": {
+    "heading": {"type": "string", "minLength": 3, "maxLength": 120},
+    "answer": {"type": "string", "minLength": 20},
+    "evidence": {
+      "type": "array",
+      "description": "file:line references the answer relies on.",
+      "items": {"type": "string", "pattern": "^.+:[0-9]+$"}
+    },
+    "uncertain": {
+      "type": "string",
+      "description": "What the supplied source does not settle. Omitted when it settles everything."
+    }
+  }
+}

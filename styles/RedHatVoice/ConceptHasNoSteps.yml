@@ -1,0 +1,75 @@
+extends: script
+message: "A concept topic must not carry a Procedure or Steps section. If the content is a procedure, move it to a procedure topic."
+level: error
+scope: raw
+script: |
+  text := import("text")
+  matches := []
+  lines := text.split(scope, "\n")
+  n := len(lines)
+  offset := 0
+  idx := 0
+  applies := false
+
+  if n > 0 && text.trim_space(lines[0]) == "---" {
+      offset += len(lines[0]) + 1
+      idx = 1
+      for ; idx < n; idx++ {
+          line := lines[idx]
+          trimmed := text.trim_space(line)
+          offset += len(line) + 1
+          if trimmed == "---" {
+              idx++
+              break
+          }
+          if text.has_prefix(trimmed, "type:") {
+              value := text.trim_space(text.trim_prefix(trimmed, "type:"))
+              value = text.trim(value, "\"'")
+              if value == "concept" {
+                  applies = true
+              }
+          }
+      }
+  }
+
+  if applies {
+      in_fence := false
+      fence_marker := ""
+      for ; idx < n; idx++ {
+          line := lines[idx]
+          line_len := len(line)
+          trimmed := text.trim_space(line)
+
+          if in_fence {
+              if text.has_prefix(trimmed, fence_marker) {
+                  in_fence = false
+              }
+              offset += line_len + 1
+              continue
+          }
+          if text.has_prefix(trimmed, "```") {
+              in_fence = true
+              fence_marker = "```"
+              offset += line_len + 1
+              continue
+          }
+          if text.has_prefix(trimmed, "~~~") {
+              in_fence = true
+              fence_marker = "~~~"
+              offset += line_len + 1
+              continue
+          }
+          // CommonMark allows up to three spaces before an ATX heading and
+          // treats four as a code block, so a trimmed comparison read an
+          // indented example as a real heading.
+          indented := text.has_prefix(line, "    ") || text.has_prefix(line, "\t")
+          folded := text.to_lower(trimmed)
+          is_steps := folded == "## procedure" || folded == "### procedure" ||
+                      folded == "#### procedure" || folded == "## steps" ||
+                      folded == "### steps" || folded == "#### steps"
+          if is_steps && !indented {
+              matches = append(matches, {begin: offset, end: offset + line_len})
+          }
+          offset += line_len + 1
+      }
+  }
