@@ -18,6 +18,7 @@ if not (ENGINE / "scripts" / "lib" / "run" / "step.py").exists():
     )
 sys.path.insert(0, str(ENGINE / "scripts"))
 
+from lib.foundation import gates  # noqa: E402
 from lib.md import docs_meta  # noqa: E402
 from lib.run import step  # noqa: E402
 from lib.run.engine import PROMPTS, SCHEMAS  # noqa: E402
@@ -103,7 +104,8 @@ def render(topic, deliverables, covered, rejected):
     ]
     if deliverables:
         for item in deliverables:
-            sources = f" [src:{item['sources'][0]}]" if item["sources"] else " [src:registry.json]"
+            first = item["sources"][0] if item["sources"] else "registry.json"
+            sources = f" [src:{first}]"
             lines.append(
                 f"- `{item['path']}` ({item['type']}): {item['title']}."
                 f" {item['rationale'].rstrip('.')}.{sources}"
@@ -197,6 +199,53 @@ def module_evidence(out_dir):
     return registry, evidence
 
 
+def _foundation(args, out_dir):
+    """Plan the foundation set. Deterministic, so no model call is made."""
+    try:
+        written, skipped = gates.evaluate(
+            args.repo, out_dir, args.docs_dir, skip=tuple(args.skip_doc)
+        )
+    except ValueError as exc:
+        log(f"{exc}", "error")
+        return 2
+
+    for entry in skipped:
+        log(f"skipped {entry['doc']}: {entry['reason']}", "warning")
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "foundation.json").write_text(
+        json.dumps(
+            {
+                "schema": "docs-skills/foundation/1",
+                "written": [
+                    {"doc": item["path"], "sources": item["sources"], "gate": "pass"}
+                    for item in written
+                ],
+                "skipped": skipped,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    (out_dir / "plan.md").write_text(render("the foundation set", written, [], []))
+    (out_dir / "plan.json").write_text(
+        json.dumps(
+            {
+                "schema": SCHEMA,
+                "topic": "",
+                "deliverables": written,
+                "covered": [],
+                "rejected": [],
+                "adjusted": [],
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    log(f"{len(written)} document(s) planned, {len(skipped)} skipped")
+    return 0 if written else 1
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Plan documents from what a repository shows")
     parser.add_argument("--repo", default=".")
@@ -205,6 +254,18 @@ def main(argv=None):
     parser.add_argument("--llm-cmd", required=True)
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--topic", default="", help="Narrow the plan to a subject")
+    parser.add_argument(
+        "--foundation",
+        action="store_true",
+        help="Plan the foundation document set from the evidence, with no model call",
+    )
+    parser.add_argument(
+        "--skip-doc",
+        action="append",
+        default=[],
+        metavar="STEM",
+        help="A foundation document to leave unwritten. Repeatable",
+    )
     parser.add_argument("--context", help="git-context.md, the history the plan reads")
     parser.add_argument("--changes", help="changes.json, the commits matching the subject")
     args = parser.parse_args(argv)
@@ -219,6 +280,9 @@ def main(argv=None):
     except json.JSONDecodeError as exc:
         log(f"registry.json is not readable ({exc}); re-run docs-repo-analyze", "error")
         return 2
+
+    if args.foundation:
+        return _foundation(args, out_dir)
 
     if not modules:
         # Asking a model to plan from a topic phrase and nothing else is asking

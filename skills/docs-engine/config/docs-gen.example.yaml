@@ -17,6 +17,17 @@ generate:
   # Where generated Markdown lands, relative to the repository root.
   docs_dir: docs
 
+  # The foundation document set: README, GET-STARTED, ARCHITECTURE, SECURITY
+  # and ROADMAP, each written only where the repository holds evidence for it.
+  # A document with no evidence is skipped and the gate is named in the run's
+  # foundation.json, rather than being written as a template to fill in.
+  foundation:
+    enabled: true
+    # Leave a document unwritten whatever the evidence says. One of readme,
+    # get-started, architecture, security, roadmap. An unknown name stops the
+    # run rather than being ignored.
+    skip: []
+
   # Bare issue keys are scanned out of commit bodies only for prefixes named
   # here. An unscoped [A-Z]+-\d+ pattern matches CWE-22, SHA-256, and UTF-8.
   issue_prefixes: [RHOAIENG]

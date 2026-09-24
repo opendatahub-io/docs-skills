@@ -17,6 +17,32 @@ python3 scripts/plan.py --repo . --out .docs-gen --llm-cmd "pi -p"
 
 Run `docs-repo-analyze` first. This step reads its artifacts and exits 2 with an explanation when `registry.json` is missing.
 
+## The foundation set
+
+```bash
+python3 scripts/plan.py --repo . --out .docs-gen --docs-dir docs --foundation --llm-cmd "pi -p"
+```
+
+`--foundation` plans five documents and spends no model call, because every
+gate is decided from the registry, the API surface, the dependency graph and
+the working tree.
+
+| Document | Gate |
+|---|---|
+| `README.md` | the registry holds at least one module |
+| `GET-STARTED.md` | a module of kind `cli` or `service`, and a manifest declaring a runnable target |
+| `ARCHITECTURE.md` | 3 or more modules and at least one dependency edge |
+| `SECURITY.md` | security vocabulary or a security tool config, and no policy file where GitHub reads one |
+| `ROADMAP.md` | a deprecated symbol, an alpha or beta API version, or unreleased notes |
+
+A document that fails its gate is skipped rather than scaffolded, and
+`foundation.json` names the gate so a maintainer knows whether to supply the
+evidence or switch the document off in `.docs-gen.yaml`.
+
+`--skip-doc` leaves a document unwritten whatever the evidence says. An
+unrecognised name exits 2 rather than being ignored, so a typo cannot silently
+leave a document enabled.
+
 ## What it reads
 
 | Source | What it contributes | Required |
