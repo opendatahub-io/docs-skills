@@ -53,6 +53,30 @@ POLICY_LOCATIONS = ("SECURITY.md", ".github/SECURITY.md", "docs/SECURITY.md")
 API_VERSION = re.compile(r"(?:^|/)v\d+(?:alpha|beta)\d*(?:/|$)")
 ENTRY_KINDS = ("cli", "service")
 
+_SECURITY_WORDS = frozenset(SECURITY_WORDS)
+_NON_ALNUM = re.compile(r"[^A-Za-z0-9]+")
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+
+
+def _tokens(text):
+    """Lowercase whole-word tokens: split on non-alphanumerics and camelCase.
+
+    `internal/authoring` yields `{internal, authoring}`, not a substring hit
+    on `auth`; `AuthToken` yields `{auth, token}`. Vocabulary membership is
+    tested against this set, never against the raw string, so `cert` does not
+    fire on `concert` and `secret` does not fire on `secretary`.
+    """
+    tokens = []
+    for chunk in _NON_ALNUM.split(text):
+        if not chunk:
+            continue
+        tokens.extend(_CAMEL_BOUNDARY.sub(" ", chunk).casefold().split())
+    return tokens
+
+
+def _has_security_word(text):
+    return bool(_SECURITY_WORDS & set(_tokens(text)))
+
 
 def _load(path, default):
     try:
@@ -81,12 +105,11 @@ def _exists_insensitive(root, relative):
 
 def _security_evidence(repo, modules, surface):
     for name in modules:
-        lowered = name.casefold()
-        if any(word in lowered for word in SECURITY_WORDS):
+        if _has_security_word(name):
             return f"module {name}"
     for name, entry in (surface or {}).items():
         for symbol in entry.get("symbols") or {}:
-            if any(word in symbol.casefold() for word in SECURITY_WORDS):
+            if _has_security_word(symbol):
                 return f"symbol {symbol} in {name}"
     for config in SECURITY_CONFIGS:
         if (Path(repo) / config).is_file():
@@ -114,8 +137,6 @@ def _forward_markers(modules, surface):
             if "Deprecated:" in (meta.get("doc") or ""):
                 found.append(f"deprecated {symbol} in {name}")
                 break
-        if found and found[-1].startswith("deprecated"):
-            break
     return found
 
 
@@ -210,9 +231,7 @@ def _decide(doc, repo, docs_dir, modules, surface, pairs):
         evidence = _security_evidence(repo, modules, surface)
         if not evidence:
             return "no_security_surface", "no security vocabulary and no tool config", []
-        matched = sorted(
-            name for name in modules if any(word in name.casefold() for word in SECURITY_WORDS)
-        )
+        matched = sorted(name for name in modules if _has_security_word(name))
         return "", f"security evidence in {evidence}", matched
 
     markers = _forward_markers(modules, surface)

@@ -108,6 +108,50 @@ def test_roadmap_refuses_todo_comments_as_evidence(tmp_path):
     assert any(entry["gate"] == "no_forward_marker" for entry in skipped)
 
 
+def test_security_gate_matches_whole_vocabulary_tokens(tmp_path):
+    out = _artifacts(tmp_path, {"internal/tls": {}, "pkg/authz": {}})
+    written, _ = gates.evaluate(tmp_path, out, "docs")
+    assert "SECURITY.md" in _stems(written, "path")
+
+
+def test_security_gate_matches_camelcase_symbol_tokens(tmp_path):
+    out = _artifacts(
+        tmp_path,
+        {"pkg/a": {}},
+        symbols={"pkg/a": {"symbols": {"AuthToken": {"doc": ""}}}},
+    )
+    written, _ = gates.evaluate(tmp_path, out, "docs")
+    assert "SECURITY.md" in _stems(written, "path")
+
+
+def test_security_gate_ignores_words_that_merely_contain_the_vocabulary(tmp_path):
+    out = _artifacts(
+        tmp_path,
+        {"internal/authoring": {}, "cmd/concert": {}, "cmd/secretary": {}},
+    )
+    _, skipped = gates.evaluate(tmp_path, out, "docs")
+    assert any(
+        entry["gate"] == "no_security_surface"
+        for entry in skipped
+        if entry["doc"].endswith("SECURITY.md")
+    )
+
+
+def test_roadmap_rationale_reflects_deprecations_from_every_module(tmp_path):
+    out = _artifacts(
+        tmp_path,
+        {"pkg/a": {}, "pkg/b": {}},
+        symbols={
+            "pkg/a": {"symbols": {"Old": {"doc": "Deprecated: use New instead."}}},
+            "pkg/b": {"symbols": {"Older": {"doc": "Deprecated: use Newer instead."}}},
+        },
+    )
+    written, _ = gates.evaluate(tmp_path, out, "docs")
+    roadmap = next(entry for entry in written if entry["path"].endswith("ROADMAP.md"))
+    assert "pkg/a" in roadmap["rationale"]
+    assert "pkg/b" in roadmap["rationale"]
+
+
 def test_a_skipped_name_is_reported_as_configured(tmp_path):
     out = _artifacts(tmp_path, {"pkg/a": {}})
     _, skipped = gates.evaluate(tmp_path, out, "docs", skip=("readme",))
