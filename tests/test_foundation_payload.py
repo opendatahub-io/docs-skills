@@ -170,3 +170,28 @@ def test_a_small_repository_keeps_every_edge(tmp_path):
     out = _out(tmp_path, modules, **{"dep-pairs.json": {"pairs": pairs}})
     got = evidence.payload("architecture", tmp_path, out, sorted(modules))
     assert got["edges"] == pairs
+
+
+def test_roadmap_api_versions_are_capped_with_the_true_count(tmp_path):
+    """A generated client holds a versioned package per API group.
+
+    This field scans the whole registry, so it cannot be bounded by the module
+    cap the way the graph is. It carries the true total instead of truncating
+    silently, so a document can say how many it is not naming.
+    """
+    count = evidence.API_VERSION_CAP + 7
+    modules = {f"apix/v1alpha{index}": {"kind": "library"} for index in range(count)}
+    out = _out(tmp_path, modules)
+    got = evidence.payload("roadmap", tmp_path, out, sorted(modules))
+    assert len(got["api_versions"]["versions"]) == evidence.API_VERSION_CAP
+    assert got["api_versions"]["total"] == count
+
+
+def test_the_tail_prefix_count_is_bounded_for_flat_module_names(tmp_path):
+    """Flat names give one prefix each, which this codebase's own fixtures use."""
+    count = evidence.MODULE_CAP + evidence.TAIL_PREFIX_CAP + 10
+    modules = {f"mod{index:03d}": {"kind": "library"} for index in range(count)}
+    out = _out(tmp_path, modules)
+    got = evidence.payload("architecture", tmp_path, out, sorted(modules))
+    assert len(got["tail"]["by_prefix"]) <= evidence.TAIL_PREFIX_CAP
+    assert got["tail"]["count"] == count - evidence.MODULE_CAP

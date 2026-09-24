@@ -19,6 +19,12 @@ MODULE_CAP = 20
 # Deprecation groups, and symbols named inside one group.
 DEPRECATION_GROUP_CAP = 20
 DEPRECATION_SYMBOL_CAP = 10
+# Versioned API packages named in the roadmap. A generated client can hold
+# dozens of them, so the list is capped and the true count travels beside it.
+API_VERSION_CAP = 20
+# Path prefixes counted in the tail. A repository whose modules are flat names
+# has one prefix per module, so this bounds what is otherwise one key each.
+TAIL_PREFIX_CAP = 20
 
 
 def _load(path, default):
@@ -57,7 +63,9 @@ def _tail(modules, kept):
     return {
         "count": len(rest),
         "by_kind": dict(Counter((modules[name] or {}).get("kind", "library") for name in rest)),
-        "by_prefix": dict(Counter(name.split("/", 1)[0] for name in rest)),
+        "by_prefix": dict(
+            Counter(name.split("/", 1)[0] for name in rest).most_common(TAIL_PREFIX_CAP)
+        ),
     }
 
 
@@ -76,6 +84,19 @@ def _edges_within(pairs, kept):
     """
     inside = set(kept)
     return [pair for pair in pairs if pair.get("from") in inside and pair.get("to") in inside]
+
+
+def _api_versions(modules):
+    """The versioned API packages, capped, with the true count beside them.
+
+    A generated Kubernetes client holds a versioned package per group, so this
+    scans the whole registry and cannot be bounded by the module cap the way
+    the graph is. It reports `total` rather than silently truncating, the same
+    way `_deprecations` does, so a document can say how many it is not naming
+    instead of implying the list is complete.
+    """
+    found = sorted(name for name in modules if "alpha" in name or "beta" in name)
+    return {"versions": found[:API_VERSION_CAP], "total": len(found)}
 
 
 def _module_records(names, modules, summaries):
@@ -150,7 +171,7 @@ def payload(stem, repo, out_dir, sources):
 
     return {
         "deprecations": _deprecations(surface),
-        "api_versions": sorted(name for name in modules if "alpha" in name or "beta" in name),
+        "api_versions": _api_versions(modules),
         "unreleased": _unreleased_entries(repo),
     }
 
