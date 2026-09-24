@@ -135,3 +135,58 @@ def test_the_frontmatter_fill_survives_a_page_that_will_not_parse(tmp_path):
     )
     assert [entry["doc"] for entry in result["skipped"]] == ["docs/broken.md"]
     assert "source_sha: abcdef123456" in (docs / "fine.md").read_text()
+
+
+# ------------------------------------------------- which pages the walk sees
+
+
+_FOUNDATION_PAGE = (
+    "---\ntitle: What this is\ndescription: d\ntype: reference\nmanaged: generated\n"
+    "foundation: readme\nsource_modules:\n  - pkg/a\n---\n\n# What this is\n"
+)
+
+
+def _repo_with_both_readmes(tmp_path):
+    (tmp_path / "README.md").write_text("# The project\n\nnobody's tool wrote this\n")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "README.md").write_text(_FOUNDATION_PAGE)
+    return tmp_path
+
+
+def test_the_readme_the_foundation_set_writes_is_walked(tmp_path):
+    """Skipping the name everywhere swept up the page this tool writes, so
+    the one document every reader starts at was the one document no
+    incremental run could stamp, index or queue."""
+    root = _repo_with_both_readmes(tmp_path)
+    walked = sorted(str(path.relative_to(root)) for path in docs_meta.walk(root, "docs"))
+    assert walked == ["docs/README.md"]
+
+
+def test_the_repository_front_page_is_still_left_alone(tmp_path):
+    """It belongs to whoever wrote it, and a walk with no docs directory
+    reaches it."""
+    root = _repo_with_both_readmes(tmp_path)
+    walked = sorted(str(path.relative_to(root)) for path in docs_meta.walk(root))
+    assert walked == ["docs/README.md"]
+
+
+def test_a_changed_module_queues_the_generated_readme(tmp_path):
+    root = _repo_with_both_readmes(tmp_path)
+    queued = docs_meta.stale(root, {"rebuild": ["pkg/a"]}, "docs")["queued"]
+    assert [record["doc"] for record in queued] == ["docs/README.md"]
+
+
+def test_the_generated_readme_reaches_the_index(tmp_path):
+    root = _repo_with_both_readmes(tmp_path)
+    assert [entry["path"] for entry in docs_meta.build_index(root, "docs")] == ["docs/README.md"]
+
+
+def test_agent_instructions_are_skipped_wherever_they_sit(tmp_path):
+    """A nested AGENTS.md is read the same way the root one is."""
+    nested = tmp_path / "docs" / "pkg"
+    nested.mkdir(parents=True)
+    (nested / "AGENTS.md").write_text("# instructions\n")
+    (nested / "CLAUDE.md").write_text("# instructions\n")
+    (nested / "guide.md").write_text("---\ntitle: G\n---\n\n# G\n")
+    walked = sorted(str(path.relative_to(tmp_path)) for path in docs_meta.walk(tmp_path, "docs"))
+    assert walked == ["docs/pkg/guide.md"]

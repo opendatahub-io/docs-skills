@@ -52,7 +52,15 @@ SHA = re.compile(r"^[0-9a-f]{7,40}$")
 
 # Files that are agent instructions rather than documentation. Marking or
 # indexing these corrupts the very files an agent reads to orient itself.
-SKIP_NAMES = {"AGENTS.md", "CLAUDE.md", "GEMINI.md", "SKILL.md", "README.md"}
+# Nested ones count: an AGENTS.md beside a package is read the same way.
+SKIP_NAMES = {"AGENTS.md", "CLAUDE.md", "GEMINI.md", "SKILL.md"}
+# The repository's front page belongs to whoever wrote it, so it is left alone
+# where it sits at the root. Skipping the name everywhere instead swept up the
+# `README.md` the foundation set writes under `docs_dir`: that page could not
+# be stamped, could not reach the index, and `stale()` could never queue it,
+# so the one document every reader starts at was the one document no
+# incremental run could rewrite.
+ROOT_ONLY_SKIP = {"README.md"}
 SKIP_DIRS = {
     ".claude",
     ".cursor",
@@ -141,14 +149,18 @@ def render(front, body):
 
 
 def walk(root, docs_dir=None):
-    base = Path(root) / docs_dir if docs_dir else Path(root)
+    root = Path(root)
+    base = root / docs_dir if docs_dir else root
     if not base.exists():
         return
     for dirpath, dirnames, filenames in os.walk(base):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
         for name in sorted(filenames):
-            if name.endswith(".md") and name not in SKIP_NAMES:
-                yield Path(dirpath) / name
+            if not name.endswith(".md") or name in SKIP_NAMES:
+                continue
+            if name in ROOT_ONLY_SKIP and Path(dirpath) == root:
+                continue
+            yield Path(dirpath) / name
 
 
 # -------------------------------------------------------------------- sources
