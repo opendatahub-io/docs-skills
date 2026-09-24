@@ -55,6 +55,14 @@ ARCHETYPES = {
     "reference": "markdown-reference.md",
 }
 
+FOUNDATION_ARCHETYPES = {
+    "readme": "foundation-readme.md",
+    "get-started": "foundation-get-started.md",
+    "architecture": "foundation-architecture.md",
+    "security": "foundation-security.md",
+    "roadmap": "foundation-roadmap.md",
+}
+
 # Module paths that are not API. A test names the thing it tests, so it scores
 # well against any subject and is exactly what a document must not cite.
 _TEST_PATHS = ("/test", "test/", "tests/", "/tests", "conftest", "_test", "benchmark")
@@ -90,9 +98,14 @@ def _escapes(path, base):
         return True
 
 
-def archetype_for(doc_type):
-    """The plain Markdown example that gives a new page its type-specific shape."""
-    name = ARCHETYPES.get(doc_type)
+def archetype_for(doc_type, foundation=None):
+    """The plain Markdown example that gives a page its shape.
+
+    A foundation stem picks the archetype written for that document. Anything
+    else falls back to the archetype for its type, which is what a `--topic`
+    deliverable has always used.
+    """
+    name = FOUNDATION_ARCHETYPES.get(foundation) or ARCHETYPES.get(doc_type)
     if not name:
         return ""
     return (REFERENCE / name).read_text()
