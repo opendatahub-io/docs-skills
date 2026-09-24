@@ -41,18 +41,13 @@ def _summaries(out_dir):
 
 
 def _ranked(modules, pairs, summaries, sources):
-    """Modules ordered by fan-out crossed with onboarding priority.
-
-    Fan-out (edges where this module is the `from`) surfaces the orchestrators
-    that pull the rest of the tree together — the modules an architecture
-    overview should lead with — ahead of the leaf modules they depend on.
-    """
-    fan_out = Counter(pair.get("from") for pair in pairs if pair.get("from"))
+    """Modules ordered by fan-in crossed with onboarding priority."""
+    fan_in = Counter(pair.get("to") for pair in pairs if pair.get("to"))
     chosen = [name for name in sources if name in modules] or sorted(modules)
 
     def weight(name):
         priority = (summaries.get(name) or {}).get("onboarding_priority") or 0
-        return (-(fan_out.get(name, 0) + priority), name)
+        return (-(fan_in.get(name, 0) + priority), name)
 
     return sorted(chosen, key=weight)
 

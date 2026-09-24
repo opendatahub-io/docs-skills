@@ -38,13 +38,38 @@ def test_architecture_carries_the_graph_and_never_a_signature(tmp_path):
             "api-surface.json": {"modules": {"pkg/a": {"symbols": {"Run": {"sig": "func Run()"}}}}},
         },
     )
-    (out / "modules" / "pkg__a.json").write_text(
-        json.dumps({"module": "pkg/a", "purpose": "Runs things", "gotchas": ["Blocks on start"]})
-    )
     got = evidence.payload("architecture", tmp_path, out, ["pkg/a", "pkg/b"])
     assert got["edges"] == [{"from": "pkg/a", "to": "pkg/b"}]
-    assert got["modules"][0]["purpose"] == "Runs things"
     assert "func Run()" not in json.dumps(got)
+
+
+def test_architecture_ranks_modules_by_fan_in(tmp_path):
+    # pkg/hub is depended on by both leaves, so its fan-in (2) is unambiguously
+    # the highest in the fixture. If ranking ever regresses from fan-in to
+    # fan-out (or to source order), this fails here rather than three layers
+    # up in a document that merely looked wrong.
+    out = _out(
+        tmp_path,
+        {
+            "pkg/hub": {"kind": "library"},
+            "pkg/leaf1": {"kind": "library"},
+            "pkg/leaf2": {"kind": "library"},
+        },
+        **{
+            "dep-pairs.json": {
+                "pairs": [
+                    {"from": "pkg/leaf1", "to": "pkg/hub"},
+                    {"from": "pkg/leaf2", "to": "pkg/hub"},
+                ]
+            }
+        },
+    )
+    (out / "modules" / "pkg__hub.json").write_text(
+        json.dumps({"module": "pkg/hub", "purpose": "Shared by both leaves"})
+    )
+    got = evidence.payload("architecture", tmp_path, out, ["pkg/leaf1", "pkg/leaf2", "pkg/hub"])
+    assert got["modules"][0]["module"] == "pkg/hub"
+    assert got["modules"][0]["purpose"] == "Shared by both leaves"
 
 
 def test_the_module_list_is_capped_and_the_tail_is_counted(tmp_path):
