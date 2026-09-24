@@ -13,6 +13,7 @@ from collections import namedtuple
 from pathlib import Path
 
 from lib.foundation import commands
+from lib.md import docs_meta
 
 Document = namedtuple("Document", "stem path doc_type title")
 
@@ -94,18 +95,21 @@ def _load(path, default):
 
 
 def _exists_insensitive(root, relative):
-    """Whether `relative` exists under `root`, ignoring case in the final name.
+    """The real path matching `relative` under `root`, ignoring case, or None.
 
     `docs/architecture.md` and `docs/ARCHITECTURE.md` are one file on macOS and
     two on Linux. A run creating the second breaks the repository for half the
-    team, so the comparison is case-insensitive whatever the filesystem says.
+    team, so the comparison ignores case whatever the filesystem does. A tree
+    that does not exist yet is the normal first-run state, not an error.
     """
     target = Path(root) / relative
     parent = target.parent
-    if not parent.is_dir():
+    try:
+        entries = list(parent.iterdir())
+    except (OSError, NotADirectoryError):
         return None
     wanted = target.name.casefold()
-    for entry in parent.iterdir():
+    for entry in entries:
         if entry.name.casefold() == wanted:
             return entry
     return None
@@ -256,19 +260,25 @@ def _decide(doc, repo, docs_dir, modules, surface, pairs):
 
 
 def _collision(repo, relative):
-    """`(gate, reason)` where an existing file forbids writing, else `()`."""
+    """`(gate, reason)` where an existing file forbids writing, else `()`.
+
+    Order matters. A name differing only by case is refused before the
+    frontmatter is consulted, because the file we would create is a second
+    file on this filesystem and one file on someone else's.
+    """
     found = _exists_insensitive(repo, relative)
     if found is None:
         return ()
     name = str(Path(found).relative_to(repo))
     if Path(found).name != Path(relative).name:
-        return ("path_collision", f"{name} differs only by case")
+        return ("path_collision", f"{name} differs only by case from {relative}")
     try:
-        from lib.md import docs_meta
-
-        front, _, had = docs_meta.parse(Path(found).read_text(encoding="utf-8", errors="replace"))
-    except Exception:
-        return ()
-    if had and front.get("managed", "manual") == "manual":
+        text = Path(found).read_text(encoding="utf-8", errors="replace")
+        front, _, had = docs_meta.parse(text)
+    except (OSError, UnicodeDecodeError, docs_meta.MetaError):
+        # A page this step cannot parse is one the writer refuses for the same
+        # reason. Treating it as owned is the safe answer.
+        return ("manual_page", f"{name} cannot be parsed and is treated as owned")
+    if not had or front.get("managed", "manual") == "manual":
         return ("manual_page", f"{name} is managed: manual")
     return ()
