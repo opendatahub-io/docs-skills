@@ -112,14 +112,6 @@ def archetype_for(doc_type, foundation=None):
     return (REFERENCE / name).read_text()
 
 
-def restore(target, before):
-    """Undo a write the prose gate rejected."""
-    if before is None:
-        target.unlink(missing_ok=True)
-    else:
-        target.write_text(before)
-
-
 # ---------------------------------------------------------------- write paths
 
 
@@ -155,7 +147,7 @@ def write_generated(target, payload, front_extra, floor, marker=None):
 # ------------------------------------------------------------------- the pass
 
 
-def run_with_repair(prompt, payload, schema, args, values, place, lint_path, restore):
+def run_with_repair(prompt, payload, schema, args, values, place, lint_path):
     """Call the model, place the result, lint it, and send it back until clean."""
     attempts = max(1, getattr(args, "vale_attempts", 1))
     config = getattr(args, "vale_config", None)
@@ -308,7 +300,6 @@ def generate(
     urls=(),
 ):
     """Render a document, lint it, and send the writer back until it passes."""
-    before = target.read_text() if target.exists() else None
     captured = {}
 
     def place(result):
@@ -335,7 +326,6 @@ def generate(
         values,
         place,
         lambda: target,
-        lambda: restore(target, before),
     )
     record = {**identity, **fields}
     if result is not None:
