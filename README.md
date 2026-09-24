@@ -10,9 +10,23 @@ Claims about code are checked against the public API the analyzer extracted. Pro
 
 ## Two entry points
 
-`/docs` documents a repository from where it stands now. It reads the history, maps the modules, extracts the public API, plans a set of documents, writes them, and reviews them.
+`/docs` documents a repository from where it stands now. It reads the history, maps the modules, extracts the public API, and writes the foundation set: README, GET-STARTED, ARCHITECTURE, SECURITY and ROADMAP.
 
-`/docs-sync` keeps that documentation current. It compares an API fingerprint against a watermark, rewrites only the modules that moved, and stops early when nothing changed. This is the one for CI.
+Each of the five is written only where the repository holds evidence for it, and the gates are deterministic, so deciding costs no model call:
+
+| Document | Written when |
+|---|---|
+| `README.md` | the registry holds at least one module |
+| `GET-STARTED.md` | a module of kind `cli` or `service` exists, and a manifest declares a runnable target |
+| `ARCHITECTURE.md` | three or more modules, and at least one dependency edge between them |
+| `SECURITY.md` | a module path or public symbol matches the security vocabulary, or a security tool config is present, and no policy file exists where GitHub reads one |
+| `ROADMAP.md` | a deprecated symbol, an alpha or beta API version, or unreleased release notes |
+
+A document whose gate fails is skipped with the gate named, never scaffolded with blanks. Five documents is what a 300-module repository produces and what a three-module one produces: the payload behind each is capped, so the output does not grow with the code.
+
+Module detail is not published. It persists as committed JSON under `.docs-gen/<run>/`, where it grounds the five documents. A stale entry there is a cache miss the registry hash detects, rather than a sentence a reader believes.
+
+`/docs-sync` keeps that documentation current. It compares an API fingerprint against a watermark, rewrites the documents citing a module that moved, and stops early when nothing changed. This is the one for CI.
 
 ```cmd
 /docs: --help

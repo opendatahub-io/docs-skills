@@ -1,16 +1,24 @@
 {
   "name": "docs-skills",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "A documentation harness for pi. Reads a code repository and writes Markdown documentation, gating every page through Vale before it ships.",
-  "keywords": ["pi-package", "documentation", "vale"],
+  "keywords": [
+    "pi-package",
+    "documentation",
+    "vale"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/opendatahub-io/docs-skills.git"
   },
   "pi": {
-    "extensions": ["./extensions"],
-    "skills": ["./skills"]
+    "extensions": [
+      "./extensions"
+    ],
+    "skills": [
+      "./skills"
+    ]
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

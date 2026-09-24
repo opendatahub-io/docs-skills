@@ -1,4 +1,7 @@
-docs/
+# Anchored to the root. An unanchored `docs/` matches at any depth, which
+# silently excluded `skills/docs/` -- the /docs entry point itself -- from
+# every commit this repository has ever made.
+/docs/
 node_modules/
 __pycache__/
 *.pyc

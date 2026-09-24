@@ -20,6 +20,7 @@ skills/docs-engine/          Shared runtime for the generator. Not invoked direc
   scripts/lib/md/            docs_meta.py, fences.py, render.py, ownership.py, changeset.py
   scripts/lib/ast/           languages.yaml, per-language parse rules, exclusions.py
   scripts/lib/vale/          check.py, compose.py, repair.py
+  scripts/lib/foundation/    gates.py, evidence.py, commands.py
   scripts/lib/pipeline/      config.py, workspace.py
   scripts/lib/run/step.py    The single model call. Prompt in, validated JSON out
   scripts/lib/run/ask.py     The bridge that sends a step's prompt to the pi session
@@ -41,12 +42,23 @@ went with the ticket-driven pipeline they served.
 
 ## The two entry points
 
-`/docs` runs the plan-driven chain over one repository: git context, repository
-analysis, a plan, a document per deliverable, then review.
+`/docs` writes the foundation set over one repository: git context, repository
+analysis, the evidence gates, a document per surviving deliverable, then
+review. The set is README, GET-STARTED, ARCHITECTURE, SECURITY and ROADMAP.
+Each is written only where the repository holds evidence for it, and a
+document with nothing behind it is skipped with its gate named rather than
+scaffolded with blanks to fill in. `--topic` keeps the older planner prompt
+for a named subject.
 
 `/docs-sync` runs the incremental chain for CI: the same analysis, an API
-fingerprint diff against the watermark, a rewrite of the modules that moved,
-then review. It stops early when nothing changed.
+fingerprint diff against the watermark, then a rewrite of the documents citing
+a module that moved, joined through `source_modules` by `docs_meta.stale()`.
+It stops early when nothing changed.
+
+Nothing publishes a page per code module. Module analysis persists as
+committed JSON under `.docs-gen/<run>/`, where it grounds the five documents
+and no reader browses it: a stale entry there is a cache miss the registry
+hash detects rather than a sentence somebody believes.
 
 Both spawn the same engine and read the same `.docs-gen.yaml`.
 

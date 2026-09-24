@@ -31,7 +31,7 @@ python3 "$SYNC" --repo /path/to/code --since-watermark .docs-state.json
 git-context      what changed, and where it landed        no model
 repo-analyze     module registry, per-module API          one call per module
 api_surface      fingerprints, diff, relevance verdict    no model
-docs-write       one document set per module in rebuild[] one call per document
+docs-write       the documents citing a changed module   one call per document
 docs_meta mark   frontmatter provenance                   no model
 docs-review      grounding, staleness, fences             no model unless flagged
 docs_meta index  the document index in AGENTS.md          no model
