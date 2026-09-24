@@ -514,6 +514,7 @@ def build(repo, root, docs_dir, config, args, env_cmd):
     # A changeset stages proposed pages for review and writes an index beside
     # them. The foundation set has fixed destinations and writes in place, so
     # staging it would add a sixth file to a run whose whole point is five.
+    where = None
     if topic or not foundation.get("enabled", True):
         where = changeset_lib.directory_for(
             docs_dir, "", topic, date.today().isoformat(), base=repo
@@ -536,10 +537,12 @@ def build(repo, root, docs_dir, config, args, env_cmd):
 
     # write.py produces index.md inside `where`, so it cannot exist at the
     # gate above. Linted by exact path rather than a glob, so a stale index
-    # in a sibling changeset directory cannot fail this run.
-    code = artifact_gate(None, vale_config, files=[Path(repo) / where / "index.md"], repo=repo)
-    if code:
-        return code
+    # in a sibling changeset directory cannot fail this run. A foundation run
+    # stages nothing, so there is no index to lint.
+    if where is not None:
+        code = artifact_gate(None, vale_config, files=[Path(repo) / where / "index.md"], repo=repo)
+        if code:
+            return code
 
     if args.no_review:
         return 0

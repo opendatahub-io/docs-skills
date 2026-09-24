@@ -147,3 +147,21 @@ def test_a_topic_page_written_in_place_is_not_pruned(tmp_path):
     plan = {"deliverables": [{"path": "configure-the-scheduler.md", "kind": "new"}]}
     assert write.prune_orphans(tmp_path, "docs", plan) == []
     assert page.exists()
+
+
+def test_an_update_deliverable_is_claimed_at_its_real_location(tmp_path):
+    """An update's path is docs_dir-relative, not repo-relative.
+
+    `update_deliverable` joins it onto `repo/docs_dir` and `docs_inventory`
+    produced it by relativising against that same root, so treating it as
+    repo-relative left the page the run had just updated looking unclaimed.
+    """
+    write = _write_py()
+    guides = tmp_path / "docs" / "guides"
+    guides.mkdir(parents=True)
+    page = guides / "install.md"
+    page.write_text(_GENERATED.format(title="Install"))
+
+    plan = {"deliverables": [{"path": "guides/install.md", "kind": "update"}]}
+    assert write.prune_orphans(tmp_path, "docs", plan) == []
+    assert page.exists(), "an updated page must survive its own run's prune"

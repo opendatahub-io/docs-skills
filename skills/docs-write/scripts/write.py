@@ -806,20 +806,28 @@ def write_from_plan(repo, out_dir, args):
 def claimed_paths(repo, docs_dir, plan, changeset_dir=None):
     """Every repo-relative path this plan accounts for.
 
-    A deliverable's `path` is not a destination. A foundation deliverable's is
-    repo-relative and already carries the docs directory; a topic deliverable's
-    is a bare file name that `run_plan` joins onto the changeset directory, or
-    onto `docs_dir` when there is none. Comparing the raw field against a path
-    on disk matches neither, which is how a prune deleted the pages the same
-    run had just written.
+    A deliverable's `path` is not a destination, and the three kinds disagree
+    about what it is relative to. A foundation one is repo-relative and already
+    carries the docs directory. An `update` names a page under `docs_dir`,
+    nested or not, so it is `docs_dir`-relative: `update_deliverable` joins it
+    onto `repo/docs_dir`, and `docs_inventory` produced it by relativising
+    against that same root. A new topic page is a bare file name that
+    `run_plan` joins onto the changeset directory, or onto `docs_dir` when
+    there is none.
+
+    Comparing the raw field against a path on disk matches none of them, which
+    is how a prune deleted the pages the same run had just written.
     """
     claimed = set()
     for item in plan.get("deliverables") or []:
         path = item.get("path")
         if not path:
             continue
-        if item.get("foundation") or item.get("kind") == "update":
+        if item.get("foundation"):
             claimed.add(path)
+            continue
+        if item.get("kind") == "update":
+            claimed.add(str(Path(docs_dir) / path))
             continue
         base = os.path.relpath(Path(changeset_dir) / "new", repo) if changeset_dir else docs_dir
         claimed.add(str(Path(base) / path))

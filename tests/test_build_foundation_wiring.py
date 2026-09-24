@@ -63,3 +63,18 @@ def test_the_config_key_is_read_from_the_generate_block():
 
 def test_build_exposes_the_orchestrator_the_chain_runs():
     assert callable(build.build)
+
+
+def test_the_changeset_variable_is_bound_before_its_conditional():
+    """A foundation run stages nothing, so `where` is only sometimes set.
+
+    It is still read later for the index lint gate. Binding it inside the
+    conditional alone crashed the default run with UnboundLocalError right
+    after a successful write, losing the review step and the exit code.
+    """
+    source = _SOURCE
+    init = source.index("    where = None")
+    assigned = source.index("        where = changeset_lib.directory_for(")
+    used = source.index('files=[Path(repo) / where / "index.md"]')
+    assert init < assigned < used, "`where` must be bound before any branch sets it"
+    assert "if where is not None:" in source, "the index gate must skip when nothing was staged"

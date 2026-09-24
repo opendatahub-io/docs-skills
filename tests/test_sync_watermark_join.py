@@ -79,3 +79,22 @@ def test_the_recorded_document_is_stable_across_runs():
     first, _ = sync.modules_fully_written(queued, written)
     second, _ = sync.modules_fully_written(list(reversed(queued)), written)
     assert first == second == {"pkg/scheduler": "docs/ARCHITECTURE.md"}
+
+
+def test_the_attribution_join_survives_an_unparseable_page(tmp_path):
+    """One page nobody can parse must not end every sync.
+
+    `docs_meta.stale()` gates the whole incremental chain, and
+    `docs_meta.MetaError` subclasses `RuntimeError`, so a `ValueError` catch
+    elsewhere never covered it.
+    """
+    from lib.md import docs_meta
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "bad.md").write_text("---\nkey: [unclosed\n---\n\n# B\n")
+    (docs / "good.md").write_text(
+        "---\ntitle: G\nmanaged: generated\nsource_modules:\n  - pkg/a\n---\n\n# G\n"
+    )
+    result = docs_meta.stale(tmp_path, {"rebuild": ["pkg/a"]}, "docs")
+    assert [entry["doc"] for entry in result["queued"]] == ["docs/good.md"]

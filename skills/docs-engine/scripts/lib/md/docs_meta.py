@@ -336,9 +336,8 @@ def build_index(root, docs_dir=None):
         try:
             front, _, had = parse(path.read_text(encoding="utf-8", errors="replace"))
         except (OSError, UnicodeDecodeError, MetaError):
-            # This join gates the whole incremental chain, so one page nobody
-            # can parse must not end the run for every page that parses. The
-            # reviewer reports it; skipping it here is what lets them.
+            # A page nobody can parse is one the index cannot describe. The
+            # reviewer reports it; listing it here would be a lie.
             continue
         if not had:
             continue
@@ -401,7 +400,14 @@ def stale(root, relevance, docs_dir=None):
     rebuild = set(relevance.get("rebuild", []))
     queued, flagged = [], []
     for path in walk(root, docs_dir):
-        front, _, had = parse(path.read_text(encoding="utf-8", errors="replace"))
+        try:
+            front, _, had = parse(path.read_text(encoding="utf-8", errors="replace"))
+        except (OSError, UnicodeDecodeError, MetaError):
+            # This join gates the whole incremental chain, so one page nobody
+            # can parse must not end the run for every page that parses.
+            # `MetaError` subclasses `RuntimeError`, which is why catching
+            # `ValueError` elsewhere did not cover it.
+            continue
         if not had:
             continue
         modules = set(front.get("source_modules") or [])
