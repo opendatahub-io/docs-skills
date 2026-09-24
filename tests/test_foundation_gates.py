@@ -108,18 +108,42 @@ def test_roadmap_refuses_todo_comments_as_evidence(tmp_path):
     assert any(entry["gate"] == "no_forward_marker" for entry in skipped)
 
 
-def test_security_gate_matches_whole_vocabulary_tokens(tmp_path):
+def test_tokens_split_acronym_runs_and_titlecase_boundaries():
+    # A TitleCase boundary alone (AuthToken) is not the only shape a Go
+    # identifier takes. An initialism run meeting a TitleCase word
+    # (TLSConfig, RBACPolicy, JWTToken) is ordinary Go style, and it must
+    # split into its own token rather than fusing with what follows.
+    assert gates._tokens("TLSConfig") == ["tls", "config"]
+    assert gates._tokens("RBACPolicy") == ["rbac", "policy"]
+    assert gates._tokens("JWTToken") == ["jwt", "token"]
+    assert gates._tokens("AuthToken") == ["auth", "token"]
+    assert gates._tokens("auth_token") == ["auth", "token"]
+    assert gates._tokens("my-auth-svc") == ["my", "auth", "svc"]
+    assert gates._tokens("internal/tls") == ["internal", "tls"]
+    assert gates._tokens("pkg/authz") == ["pkg", "authz"]
+    # These merely contain a vocabulary word as a substring and must not
+    # produce it as a separate token.
+    assert gates._tokens("internal/authoring") == ["internal", "authoring"]
+    assert gates._tokens("cmd/concert") == ["cmd", "concert"]
+    assert gates._tokens("cmd/secretary") == ["cmd", "secretary"]
+
+
+def test_security_gate_matches_every_true_positive_shape(tmp_path):
+    for symbol in ("TLSConfig", "RBACPolicy", "JWTToken", "AuthToken"):
+        out = _artifacts(
+            tmp_path / symbol,
+            {"pkg/a": {}},
+            symbols={"pkg/a": {"symbols": {symbol: {"doc": ""}}}},
+        )
+        written, _ = gates.evaluate(tmp_path / symbol, out, "docs")
+        assert "SECURITY.md" in _stems(written, "path"), symbol
+
+    for module in ("internal/auth_token", "internal/AuthToken", "cmd/my-auth-svc"):
+        out = _artifacts(tmp_path / module.replace("/", "_"), {module: {}})
+        written, _ = gates.evaluate(tmp_path / module.replace("/", "_"), out, "docs")
+        assert "SECURITY.md" in _stems(written, "path"), module
+
     out = _artifacts(tmp_path, {"internal/tls": {}, "pkg/authz": {}})
-    written, _ = gates.evaluate(tmp_path, out, "docs")
-    assert "SECURITY.md" in _stems(written, "path")
-
-
-def test_security_gate_matches_camelcase_symbol_tokens(tmp_path):
-    out = _artifacts(
-        tmp_path,
-        {"pkg/a": {}},
-        symbols={"pkg/a": {"symbols": {"AuthToken": {"doc": ""}}}},
-    )
     written, _ = gates.evaluate(tmp_path, out, "docs")
     assert "SECURITY.md" in _stems(written, "path")
 

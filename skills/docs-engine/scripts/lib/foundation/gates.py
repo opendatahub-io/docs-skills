@@ -55,16 +55,24 @@ ENTRY_KINDS = ("cli", "service")
 
 _SECURITY_WORDS = frozenset(SECURITY_WORDS)
 _NON_ALNUM = re.compile(r"[^A-Za-z0-9]+")
-_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+# Two boundary rules, not one. `(?<=[a-z0-9])(?=[A-Z])` catches AuthToken;
+# on its own it misses an acronym run meeting a TitleCase word, so TLSConfig
+# stayed one token and stopped matching `tls`. `(?<=[A-Z])(?=[A-Z][a-z])`
+# catches that run-to-word boundary: TLSConfig -> TLS|Config,
+# RBACPolicy -> RBAC|Policy, JWTToken -> JWT|Token.
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 
 
 def _tokens(text):
     """Lowercase whole-word tokens: split on non-alphanumerics and camelCase.
 
     `internal/authoring` yields `{internal, authoring}`, not a substring hit
-    on `auth`; `AuthToken` yields `{auth, token}`. Vocabulary membership is
-    tested against this set, never against the raw string, so `cert` does not
-    fire on `concert` and `secret` does not fire on `secretary`.
+    on `auth`; `AuthToken` yields `{auth, token}`; `TLSConfig` yields
+    `{tls, config}`. Vocabulary membership is tested against this set, never
+    against the raw string, so `cert` does not fire on `concert`, `secret`
+    does not fire on `secretary`, and an all-caps initialism like `TLS` or
+    `RBAC` still surfaces as its own token instead of fusing with the word
+    that follows it.
     """
     tokens = []
     for chunk in _NON_ALNUM.split(text):
