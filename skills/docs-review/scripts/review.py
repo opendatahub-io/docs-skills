@@ -21,7 +21,7 @@ sys.path.insert(0, str(ENGINE / "scripts"))
 
 from lib.foundation import commands as foundation_commands  # noqa: E402
 from lib.git import api_surface  # noqa: E402
-from lib.md import docs_meta, fences, render  # noqa: E402
+from lib.md import docs_meta, fences, ownership, render  # noqa: E402
 from lib.run import step  # noqa: E402
 from lib.run.engine import PROMPTS, SCHEMAS, TOPICS  # noqa: E402
 from lib.run.report import logger  # noqa: E402
@@ -340,7 +340,7 @@ SHELL_FENCES = ("bash", "sh", "shell", "console", "terminal")
 _SEPARATORS = ("&&", "||", "|", ";")
 # A runner whose first argument names the thing being run, so the head is two
 # words rather than one. `make build` is declared; `make` alone is not.
-_SUBCOMMAND_RUNNERS = ("make", "npm", "uv", "go", "cargo", "just")
+_SUBCOMMAND_RUNNERS = ("make", "npm", "uv", "go", "cargo", "just", "docker")
 
 
 def command_heads(text):
@@ -392,14 +392,19 @@ def _command_head(part):
     return words[0]
 
 
-def check_commands(doc, allowed):
+def check_commands(doc, allowed, text=None):
     """Findings for every command head nothing in the repository declares.
 
     The writer is handed this same allowlist as evidence. This is the half
     that does not rest on the model having honoured it: a tutorial whose
     commands do not exist sends a reader somewhere that is not there.
+
+    `doc` is what the finding reports, and every other check reports a path
+    relative to the repository. Callers holding the page already pass `text`
+    rather than making this read the file a second time.
     """
-    text = Path(doc).read_text(encoding="utf-8", errors="replace")
+    if text is None:
+        text = Path(doc).read_text(encoding="utf-8", errors="replace")
     findings = []
     for number, head in command_heads(text):
         if head in allowed or head.split()[0] in foundation_commands.BUILTINS:
@@ -791,8 +796,14 @@ def stale_sweep(repo, docs_dir, relevance, head):
     return found
 
 
-def orphans(repo, docs_dir, claimed):
+def orphans(repo, docs_dir, claimed, foundation_run=False):
     """Pages this tool wrote that no current deliverable claims.
+
+    Scoped to what the run owns. A foundation run plans the five foundation
+    documents and nothing else, so the topic pages an earlier `--topic` run
+    left behind are not unclaimed by it, and a topic run is in no position to
+    judge the foundation set. Without the scope, each kind of run reported the
+    other kind's pages as rubbish to delete.
 
     The `generator` stamp is what separates a page this tool wrote from one
     somebody marked `generated` by hand. Without it, dropping a writer would
@@ -822,6 +833,8 @@ def orphans(repo, docs_dir, claimed):
         if not had or front.get("managed") != "generated":
             continue
         if not str(front.get("generator", "")).startswith("docs-skills/"):
+            continue
+        if bool(front.get("foundation")) != foundation_run:
             continue
         found.append(
             Finding(
@@ -937,7 +950,7 @@ def main(argv=None):
     # and only the getting-started document is checked against them.
     allowed_commands = foundation_commands.allowlist(foundation_commands.declared_commands(repo))
     for page in pages:
-        path, rel, text, front, body = page.path, page.rel, page.text, page.front, page.body
+        rel, text, front, body = page.rel, page.text, page.front, page.body
         findings += check_frontmatter(
             rel, front, in_changeset=in_changeset(rel), is_update_draft=is_update_draft(rel)
         )
@@ -949,7 +962,7 @@ def main(argv=None):
         findings += check_fences(rel, text, front, head)
         findings += check_evidence(rel, front, repo, evidence_by_doc.get(rel, {}))
         if front.get("foundation") == "get-started":
-            findings += check_commands(path, allowed_commands)
+            findings += check_commands(rel, allowed_commands, text)
 
     # Pages this tool wrote that the current plan no longer claims. Guarded on
     # the plan existing: with no plan there is nothing to be unclaimed by, and
@@ -961,12 +974,13 @@ def main(argv=None):
         # bare name the writer joins onto a changeset directory, so comparing
         # the raw field against disk reported every page just written.
         claimed = {r["path"] for r in (write_report or {}).get("results", []) if r.get("path")}
-        claimed |= {
-            item["path"]
-            for item in (plan.get("deliverables") or [])
-            if item.get("path") and (item.get("foundation") or item.get("kind") == "update")
-        }
-        findings += orphans(repo, args.docs_dir, claimed)
+        # `ownership.claimed_paths` is what the writer's own prune joins with,
+        # and it is the only thing that gets the three deliverable kinds right.
+        # Adding the raw `path` field here reported the page this run had just
+        # updated, because an `update` names a file under `docs_dir`.
+        claimed |= ownership.claimed_paths(repo, args.docs_dir, plan)
+        foundation_run = any(item.get("foundation") for item in (plan.get("deliverables") or []))
+        findings += orphans(repo, args.docs_dir, claimed, foundation_run)
 
     if args.vale_config:
         targets, doc_names = prose_targets(lintable, out_dir)

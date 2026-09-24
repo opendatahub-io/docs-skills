@@ -24,8 +24,58 @@ _HELP = re.compile(r"##\s*(?P<help>.+?)\s*$")
 
 # Universally available, and a tutorial needs them to set a scene. A command
 # head outside this set and outside the manifests is one nothing declared.
+# The toolchain a reader already has. No manifest declares these, so a
+# tutorial that runs an interpreter, installs a dependency or pipes output
+# must not be flagged for it. A runner that takes a declared target stays
+# out: the whole point of the check is that `make deploy` names a target the
+# Makefile has, and `docker` is handled by the allowlist so that a repository
+# with no Dockerfile is still flagged for printing one.
 BUILTINS = frozenset(
-    {"cd", "git", "export", "echo", "mkdir", "curl", "cat", "ls", "cp", "mv", "chmod"}
+    {
+        "cd",
+        "git",
+        "export",
+        "echo",
+        "mkdir",
+        "curl",
+        "cat",
+        "ls",
+        "cp",
+        "mv",
+        "chmod",
+        # Interpreters and their installers.
+        "python",
+        "python3",
+        "pip",
+        "pip3",
+        "pipx",
+        "node",
+        "npx",
+        "go",
+        "cargo",
+        # Pipe and file utilities a worked example runs output through.
+        "grep",
+        "sed",
+        "awk",
+        "tee",
+        "head",
+        "tail",
+        "sort",
+        "uniq",
+        "wc",
+        "less",
+        "diff",
+        "find",
+        "tar",
+        "unzip",
+        "rm",
+        "touch",
+        "printf",
+        "env",
+        "which",
+        "source",
+        "open",
+    }
 )
 
 
@@ -120,14 +170,30 @@ def declared_commands(repo):
 
 
 def allowlist(declared):
-    """The full command strings a document may print."""
+    """The full command strings a document may print.
+
+    Every runner `has_manifest` counts contributes here. A Docker-only
+    repository used to pass the getting-started gate on its Dockerfile and
+    then hand the writer an empty allowlist, so review flagged whatever the
+    page printed and nothing could clear it.
+    """
     allowed = set()
+    if declared.get("make"):
+        # A bare `make` runs the Makefile's first target.
+        allowed.add("make")
     for entry in declared.get("make") or []:
         allowed.add(f"make {entry['target']}")
+    if declared.get("npm"):
+        # package.json declares the scripts, so installing them is declared.
+        allowed.update({"npm install", "npm ci"})
     for name in declared.get("npm") or []:
         allowed.add(f"npm run {name}")
     for name in declared.get("python") or []:
         allowed.add(name)
+    if declared.get("docker"):
+        # ENTRYPOINT and CMD are what the image runs, not what a reader types.
+        # These two are what a reader types to reach them.
+        allowed.update({"docker build", "docker run"})
     return allowed
 
 

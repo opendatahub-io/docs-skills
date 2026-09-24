@@ -56,8 +56,17 @@ def seed_vale_config(template, target, styles):
         return
 
     text = target.read_text()
-    packages = next(line for line in template_text.splitlines() if line.startswith("Packages ="))
-    markdown_styles = template_text[template_text.index("[*.md]") :].strip()
+    # A template missing either declaration is a configuration error, and the
+    # caller reports it as one. Reading them with `next` and `index` raised
+    # StopIteration and ValueError instead, and only on the second run in a
+    # repository, where `.vale.ini` already exists.
+    packages = next(
+        (line for line in template_text.splitlines() if line.startswith("Packages =")), ""
+    )
+    head = template_text.find("[*.md]")
+    markdown_styles = template_text[head:].strip() if head != -1 else ""
+    if not packages or not markdown_styles:
+        raise ValueError(f"{template} declares no Packages or no [*.md] section")
     missing = [part for part in (packages, markdown_styles) if part not in text]
     if missing:
         additions = "\n\n".join(missing)
@@ -76,7 +85,11 @@ def sync_styles(out_dir, repo=None):
     repo.mkdir(parents=True, exist_ok=True)
     styles = out_dir / workspace.VALE_PACKAGES_DIR
     target_config = repo / ".vale.ini"
-    seed_vale_config(template, target_config, styles)
+    try:
+        seed_vale_config(template, target_config, styles)
+    except (OSError, ValueError) as exc:
+        log(f"Vale package config is unusable: {exc}", "error")
+        return 2
 
     styles.mkdir(parents=True, exist_ok=True)
     packages = [line for line in template.read_text().splitlines() if line.startswith("Packages =")]
@@ -464,6 +477,12 @@ def build(repo, root, docs_dir, config, args, env_cmd):
     if changes_path:
         plan_args += ["--changes", changes_path]
     code = run(plan_args, "planning", allowed=(0, 1, 2))
+    if code == 2:
+        # The planner's own configuration error, which is what an unknown
+        # `--skip-doc` name is. Remapping it to 3 told a caller branching on
+        # the documented table that a step had failed, and buried the typo.
+        log("planning refused the configuration", "error")
+        return 2
     if code:
         log("nothing planned", "warning")
         return 1 if code == 1 else 3
@@ -564,7 +583,7 @@ def build(repo, root, docs_dir, config, args, env_cmd):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Document a code repository")
-    parser.add_argument("--repo", default=".", help="Where documents are written")
+    parser.add_argument("--repo", default=".", help="The repository to document")
     parser.add_argument(
         "--topic", help="Narrow the run to a subject. Without it, the whole repository"
     )

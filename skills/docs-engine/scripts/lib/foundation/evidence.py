@@ -15,7 +15,9 @@ from lib.foundation import commands, gates
 
 # The modules that arrive in full. Above this the tail is counted rather than
 # described, so a 300-module repository costs what a 20-module one costs.
-MODULE_CAP = 20
+# `gates.SOURCE_CAP` is the same bound applied to what a page declares in
+# `source_modules`, and one constant keeps the two from drifting apart.
+MODULE_CAP = gates.SOURCE_CAP
 # Deprecation groups, and symbols named inside one group.
 DEPRECATION_GROUP_CAP = 20
 DEPRECATION_SYMBOL_CAP = 10
@@ -190,8 +192,14 @@ def _prerequisites(repo):
                 break
     package = root / "package.json"
     if package.is_file():
-        engines = (_load(package, {}).get("engines")) or {}
-        found.update({name: str(value) for name, value in engines.items()})
+        # Guarded the way `commands._nested_keys` guards its manifests. This
+        # reads a package.json this tool did not write, so a top-level array
+        # or an `"engines": "node"` string degrades to nothing rather than
+        # raising an AttributeError that `run_plan` does not catch.
+        data = _load(package, {})
+        engines = data.get("engines") if isinstance(data, dict) else None
+        if isinstance(engines, dict):
+            found.update({name: str(value) for name, value in engines.items()})
     dockerfile = root / "Dockerfile"
     if dockerfile.is_file():
         for line in dockerfile.read_text(encoding="utf-8", errors="replace").splitlines():

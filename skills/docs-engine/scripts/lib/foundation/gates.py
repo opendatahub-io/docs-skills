@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections import namedtuple
+from collections import Counter, namedtuple
 from pathlib import Path
 
 from lib.foundation import commands
@@ -26,6 +26,14 @@ DOCUMENTS = (
 )
 
 STEMS = {doc.stem for doc in DOCUMENTS}
+
+# How many modules a document may cite. `source_modules` ships in the page's
+# frontmatter and `docs_meta.stale()` joins it, so an uncapped list grows the
+# shipped page with the repository and re-queues README, ARCHITECTURE and
+# ROADMAP on any single-module change. `evidence.MODULE_CAP` reads this, so
+# the modules a page declares are the modules that grounded it. A change
+# outside the cap is recovered by the `full_rebuild` verdict.
+SOURCE_CAP = 20
 
 SECURITY_WORDS = (
     "auth",
@@ -94,6 +102,34 @@ def _load(path, default):
         return default
 
 
+def registry_modules(out_dir, strict=False):
+    """`(registry, modules)` from registry.json, with the shape checked.
+
+    A registry whose `modules` is a list reaches `.items()` several frames
+    later as an AttributeError, which the caller cannot tell apart from an
+    empty repository. Say what is wrong instead. The planner reads this too,
+    so the check and its wording live in one place.
+
+    `strict` re-raises an unreadable or malformed file rather than treating it
+    as an empty registry, which is what a caller that has already established
+    the file exists wants.
+    """
+    path = Path(out_dir) / "registry.json"
+    try:
+        registry = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        if strict:
+            raise
+        registry = {}
+    modules = registry.get("modules") or {} if isinstance(registry, dict) else {}
+    if not isinstance(modules, dict):
+        raise ValueError(
+            "registry.json: `modules` must be an object keyed by module path, "
+            f"found {type(modules).__name__}. Re-run docs-repo-analyze."
+        )
+    return registry, modules
+
+
 def _exists_insensitive(root, relative):
     """The real path matching `relative` under `root`, ignoring case, or None.
 
@@ -129,11 +165,33 @@ def _security_evidence(repo, modules, surface):
     return ""
 
 
-def _existing_policy(repo):
+def _capped(names, pairs):
+    """The most depended-on `SOURCE_CAP` of `names`, in name order."""
+    names = sorted(names)
+    if len(names) <= SOURCE_CAP:
+        return names
+    fan_in = Counter(pair.get("to") for pair in pairs if pair.get("to"))
+    ranked = sorted(names, key=lambda name: (-fan_in.get(name, 0), name))
+    return sorted(ranked[:SOURCE_CAP])
+
+
+def _existing_policy(repo, owned=""):
+    """The policy this repository already has, ignoring the one we write.
+
+    `owned` is the path the security document is written to. Under the
+    default `docs_dir` that is `docs/SECURITY.md`, which is also a location
+    GitHub reads, so without this the document gates itself off on the
+    second run and review then reports it as an orphan.
+    """
+    owned = owned.casefold()
     for location in POLICY_LOCATIONS:
         found = _exists_insensitive(repo, location)
-        if found is not None:
-            return str(Path(found).relative_to(repo))
+        if found is None:
+            continue
+        relative = str(Path(found).relative_to(repo))
+        if relative.casefold() == owned:
+            continue
+        return relative
     return ""
 
 
@@ -173,16 +231,7 @@ def evaluate(repo, out_dir, docs_dir, skip=()):
             f"Known: {', '.join(sorted(STEMS))}"
         )
 
-    registry = _load(Path(out_dir) / "registry.json", {})
-    modules = registry.get("modules") or {}
-    if not isinstance(modules, dict):
-        # A registry whose `modules` is a list reaches `.items()` several
-        # frames later as an AttributeError, which the caller cannot tell
-        # apart from an empty repository. Say what is wrong instead.
-        raise ValueError(
-            "registry.json: `modules` must be an object keyed by module path, "
-            f"found {type(modules).__name__}. Re-run docs-repo-analyze."
-        )
+    _, modules = registry_modules(out_dir)
     surface = (_load(Path(out_dir) / "api-surface.json", {}).get("modules")) or {}
     pairs = (_load(Path(out_dir) / "dep-pairs.json", {}).get("pairs")) or []
 
@@ -209,7 +258,7 @@ def evaluate(repo, out_dir, docs_dir, skip=()):
                 "title": doc.title,
                 "kind": "new",
                 "rationale": reason,
-                "sources": sources,
+                "sources": _capped(sources, pairs),
                 "foundation": doc.stem,
             }
         )
@@ -245,7 +294,7 @@ def _decide(doc, repo, docs_dir, modules, surface, pairs):
         return "", f"{len(modules)} modules across {len(pairs)} edges", sorted(modules)
 
     if doc.stem == "security":
-        policy = _existing_policy(repo)
+        policy = _existing_policy(repo, f"{docs_dir}/{doc.path}")
         if policy:
             return "policy_exists", f"a policy already exists at {policy}", []
         evidence = _security_evidence(repo, modules, surface)

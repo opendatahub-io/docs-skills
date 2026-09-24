@@ -156,15 +156,9 @@ def docs_inventory(repo, docs_dir):
 
 def module_evidence(out_dir):
     """The modules this repository has, and what each one exposes."""
-    registry = json.loads((Path(out_dir) / "registry.json").read_text())
-    modules = registry.get("modules") or {}
-    if not isinstance(modules, dict):
-        # `.items()` below would raise several frames from the cause, and the
-        # caller cannot tell a corrupt registry from an empty repository.
-        raise ValueError(
-            "registry.json: `modules` must be an object keyed by module path, "
-            f"found {type(modules).__name__}. Re-run docs-repo-analyze."
-        )
+    # The shape check and its wording belong to the gates, which read the same
+    # file. Two copies of it drifted apart the moment one was reworded.
+    registry, modules = gates.registry_modules(out_dir, strict=True)
 
     surface = {}
     surface_path = Path(out_dir) / "api-surface.json"
@@ -282,14 +276,18 @@ def main(argv=None):
     if not registry_path.is_file():
         log(f"no registry.json at {registry_path}; run docs-repo-analyze first", "error")
         return 2
+    # Ahead of `module_evidence`, which the foundation path then discards. It
+    # parses every module summary and the whole API surface to build evidence
+    # for a model call the foundation set never makes, and `gates.evaluate`
+    # re-reads the same artifacts afterwards.
+    if args.foundation:
+        return _foundation(args, out_dir)
+
     try:
         registry, modules = module_evidence(out_dir)
     except (json.JSONDecodeError, ValueError) as exc:
         log(f"registry.json is not readable ({exc}); re-run docs-repo-analyze", "error")
         return 2
-
-    if args.foundation:
-        return _foundation(args, out_dir)
 
     if not modules:
         # Asking a model to plan from a topic phrase and nothing else is asking

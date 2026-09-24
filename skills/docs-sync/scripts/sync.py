@@ -360,7 +360,7 @@ def main(argv=None):
     # A changed module rewrites the documents citing it, which
     # `source_modules` records and `docs_meta.stale` joins. Writing per module
     # is what the foundation set replaced.
-    queued = docs_meta.stale(repo, relevance, docs_dir)
+    queued = docs_meta.stale(repo, {**relevance, "rebuild": rebuild}, docs_dir)
     targets = [record["doc"] for record in queued["queued"]]
     if not targets:
         log(f"{len(rebuild)} module(s) moved, but no document cites them")
@@ -493,6 +493,13 @@ def main(argv=None):
     # same document next run to produce the same bytes again, for ever.
     written_docs = {r["path"] for r in report["written"]}
     written_docs |= {r.get("path") for r in report.get("unchanged") or [] if r.get("path")}
+    # A refusal the writer marked permanent is one no later run resolves: the
+    # page is not one this writer owns. Holding the module back for it queues
+    # the same page, to the same refusal, on every run from here on, so the
+    # module settles instead and the page is reported once.
+    written_docs |= {
+        r.get("path") for r in report.get("refused") or [] if r.get("permanent") and r.get("path")
+    }
     advanced, stranded = modules_fully_written(queued["queued"], written_docs)
     if stranded:
         log(

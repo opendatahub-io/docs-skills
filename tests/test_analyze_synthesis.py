@@ -743,3 +743,43 @@ def test_the_synthesis_reply_is_written_as_json_beside_the_markdown(tmp_path, mo
     written = json.loads((out / "onboarding.json").read_text())
     assert written["sections"], "the reply's sections must survive into the JSON"
     assert (out / "ONBOARDING.md").exists()
+
+
+def test_a_failed_synthesis_leaves_no_guide_behind(tmp_path, monkeypatch):
+    """`out_dir` is `.docs-gen` itself under docs-sync and is never wiped, so
+    a synthesis that then failed left the previous run's guide for
+    `evidence.payload` to read as current, with `synthesis_available` true
+    against a body nothing in this run produced."""
+    out = tmp_path / ".docs-gen"
+    (out / "modules").mkdir(parents=True)
+    (out / "modules" / f"{analyze.slug('pkg/a')}.json").write_text(
+        json.dumps({"module": "pkg/a", "purpose": "p", "responsibilities": []})
+    )
+    (out / "onboarding.json").write_text(json.dumps({"what_this_is": "last week"}))
+    (out / "ONBOARDING.md").write_text("# last week\n")
+
+    def explode(*_args, **_kwargs):
+        raise analyze.step.StepError("the model refused", "")
+
+    monkeypatch.setattr(analyze.step, "run_step", explode)
+    registry = {"language": "python", "module_count": 1, "modules": {"pkg/a": {}}}
+    try:
+        analyze.synthesize(registry, out, "true", 60)
+    except analyze.SynthesisError:
+        pass
+    else:  # pragma: no cover - the raise is the contract
+        raise AssertionError("a failed synthesis returned normally")
+    assert not (out / "onboarding.json").exists()
+    assert not (out / "ONBOARDING.md").exists()
+
+
+def test_a_narrowed_run_keeps_the_guide_a_full_run_committed(tmp_path):
+    """`--modules` declines to rebuild the guide. The committed copy still
+    describes the whole repository, and deleting it would strip README of the
+    grounding it reads."""
+    out = tmp_path / ".docs-gen"
+    out.mkdir(parents=True)
+    (out / "onboarding.json").write_text(json.dumps({"what_this_is": "the whole repo"}))
+    registry = {"language": "python", "module_count": 1, "modules": {"pkg/a": {}}}
+    assert analyze.synthesize(registry, out, "true", 60, narrowed=True) is None
+    assert (out / "onboarding.json").is_file()

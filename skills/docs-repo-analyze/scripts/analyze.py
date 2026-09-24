@@ -604,6 +604,15 @@ def synthesize(
     # The record describes this run or it describes nothing. One an earlier
     # failure left behind reads as a current one, against a guide that is fine.
     (out_dir / "synthesis-error.json").unlink(missing_ok=True)
+    # The guide is held to the same rule from here on. `out_dir` is `.docs-gen`
+    # itself under docs-sync and is never wiped, so a synthesis that then fails
+    # used to leave the previous run's copy behind for `evidence.payload` to
+    # read as current, with `synthesis_available` true against a body nothing
+    # in this run produced. Cleared here rather than on entry: the two early
+    # returns above decline to rebuild the guide, and the copy a full run
+    # committed still describes the whole repository.
+    (out_dir / "onboarding.json").unlink(missing_ok=True)
+    (out_dir / "ONBOARDING.md").unlink(missing_ok=True)
 
     reduced = compact(summaries, out_dir, llm_cmd, timeout, budget)
 

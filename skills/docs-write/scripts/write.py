@@ -24,10 +24,12 @@ from lib.run.engine import GENERATOR, LANGUAGES, PROMPTS, SCHEMAS  # noqa: E402
 REFERENCE = Path(__file__).resolve().parents[1] / "reference"
 
 from lib.foundation import evidence as foundation_evidence  # noqa: E402
+from lib.foundation import gates  # noqa: E402
 from lib.git import api_surface, commit_select  # noqa: E402
 from lib.md import changeset, docs_meta, fences, render  # noqa: E402
 from lib.md.ownership import (  # noqa: E402
     WriteRefusedError,
+    claimed_paths,
     existing_summary,
     ownership,
     write_assisted,
@@ -803,37 +805,6 @@ def write_from_plan(repo, out_dir, args):
     return code
 
 
-def claimed_paths(repo, docs_dir, plan, changeset_dir=None):
-    """Every repo-relative path this plan accounts for.
-
-    A deliverable's `path` is not a destination, and the three kinds disagree
-    about what it is relative to. A foundation one is repo-relative and already
-    carries the docs directory. An `update` names a page under `docs_dir`,
-    nested or not, so it is `docs_dir`-relative: `update_deliverable` joins it
-    onto `repo/docs_dir`, and `docs_inventory` produced it by relativising
-    against that same root. A new topic page is a bare file name that
-    `run_plan` joins onto the changeset directory, or onto `docs_dir` when
-    there is none.
-
-    Comparing the raw field against a path on disk matches none of them, which
-    is how a prune deleted the pages the same run had just written.
-    """
-    claimed = set()
-    for item in plan.get("deliverables") or []:
-        path = item.get("path")
-        if not path:
-            continue
-        if item.get("foundation"):
-            claimed.add(path)
-            continue
-        if item.get("kind") == "update":
-            claimed.add(str(Path(docs_dir) / path))
-            continue
-        base = os.path.relpath(Path(changeset_dir) / "new", repo) if changeset_dir else docs_dir
-        claimed.add(str(Path(base) / path))
-    return claimed
-
-
 def prune_orphans(repo, docs_dir, plan, changeset_dir=None):
     """Delete pages this tool generated that the plan no longer claims.
 
@@ -866,7 +837,7 @@ def prune_orphans(repo, docs_dir, plan, changeset_dir=None):
     return removed
 
 
-def _deliverable_from_document(repo, rel):
+def _deliverable_from_document(repo, rel, fresh_sources=None):
     """A `--documents` path turned into a deliverable, or a refusal record.
 
     Everything a foundation deliverable needs already lives in the document's
@@ -893,9 +864,18 @@ def _deliverable_from_document(repo, rel):
         # reading a report that was never written.
         return None, {**identity, "status": "refused", "reason": str(exc)[:200]}
 
-    stem = front.get("foundation")
+    stem = front.get("foundation") or _stem_for(rel)
     if not stem:
-        return None, {**identity, "status": "refused", "reason": "no foundation key in frontmatter"}
+        # Permanent: nothing a later run does adds a foundation key to a page
+        # this writer does not own, so repeating the refusal every run would
+        # hold the module's watermark back for good. The caller settles the
+        # module on it rather than queueing this page forever.
+        return None, {
+            **identity,
+            "status": "refused",
+            "reason": "not a foundation document",
+            "permanent": True,
+        }
 
     deliverable = {
         "path": rel,
@@ -903,10 +883,32 @@ def _deliverable_from_document(repo, rel):
         "title": front.get("title", stem),
         "kind": "new",
         "rationale": "a changed module this document cites",
-        "sources": front.get("source_modules") or [],
+        # The registry as it is now, not as the page last recorded it. Reading
+        # `source_modules` back off the page and stamping it again froze the
+        # list: a module added after the last `/docs` run appeared in no
+        # page's sources, so nothing ever queued the document that should
+        # describe it. The page's own list is the fallback for a document the
+        # gates no longer plan.
+        "sources": (
+            fresh_sources if fresh_sources is not None else front.get("source_modules") or []
+        ),
         "foundation": stem,
     }
     return deliverable, None
+
+
+def _stem_for(rel):
+    """The foundation stem a path names, for a page written before the key was.
+
+    A page from an earlier release carries `source_modules` and `managed:
+    generated` but no `foundation` key, and refusing it stranded every module
+    it cites. The five documents are known by name, so the key is recoverable.
+    """
+    name = Path(rel).name.casefold()
+    for doc in gates.DOCUMENTS:
+        if doc.path.casefold() == name:
+            return doc.stem
+    return ""
 
 
 def write_from_documents(repo, out_dir, args):
@@ -917,9 +919,19 @@ def write_from_documents(repo, out_dir, args):
     `docs_meta.stale()`, and hands them here rather than a plan. A plan names
     what does not exist yet; this names what already does.
     """
+    # What the gates would give these documents today. `gates.evaluate` is
+    # deterministic and reads three committed artifacts, so recomputing beats
+    # trusting the list the page was last written with.
+    fresh = {}
+    try:
+        planned, _ = gates.evaluate(repo, out_dir, args.docs_dir)
+        fresh = {item["path"]: item["sources"] for item in planned}
+    except (OSError, ValueError) as exc:
+        log(f"the gates could not be re-read ({exc}); using each page's own sources", "warning")
+
     deliverables, refusals = [], []
     for rel in args.documents:
-        deliverable, refusal = _deliverable_from_document(repo, rel)
+        deliverable, refusal = _deliverable_from_document(repo, rel, fresh.get(rel))
         if refusal is not None:
             refusals.append(refusal)
         else:

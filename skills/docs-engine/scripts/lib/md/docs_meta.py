@@ -236,10 +236,18 @@ def from_context(path, root, front, context):
 
 
 def mark(root, sources, force=False, write=False, docs_dir=None, context=None):
-    changed, unchanged = [], 0
+    changed, unchanged, skipped = [], 0, []
     for path in walk(root, docs_dir):
-        original = path.read_text(encoding="utf-8", errors="replace")
-        front, body, _ = parse(original)
+        try:
+            original = path.read_text(encoding="utf-8", errors="replace")
+            front, body, _ = parse(original)
+        except (OSError, UnicodeDecodeError, MetaError) as exc:
+            # Guarded the way the sweep and the staleness join are. One page
+            # nobody can parse must not leave every other page unstamped, and
+            # the caller allows this command's exit codes, so the page is
+            # named in the result rather than dropped.
+            skipped.append({"doc": str(path.relative_to(root)), "reason": str(exc)})
+            continue
         merged = dict(front)
 
         derived = {}
@@ -264,7 +272,7 @@ def mark(root, sources, force=False, write=False, docs_dir=None, context=None):
         if write:
             path.write_text(updated, encoding="utf-8")
 
-    return {"changed": changed, "unchanged": unchanged, "written": write}
+    return {"changed": changed, "unchanged": unchanged, "skipped": skipped, "written": write}
 
 
 # ------------------------------------------------------------------- validate

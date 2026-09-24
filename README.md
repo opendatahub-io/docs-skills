@@ -33,7 +33,7 @@ Module detail is not published. It persists as committed JSON under `.docs-gen/<
 
 options:
   -h, --help           show this help message and exit
-  --repo REPO          Where documents are written
+  --repo REPO          The repository to document
   --topic TOPIC        Narrow the run to a subject. Without it, the whole
                        repository
   --out OUT            The artifact root, one directory per run inside it.
