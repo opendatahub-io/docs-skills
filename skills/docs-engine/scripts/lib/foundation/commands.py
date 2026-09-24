@@ -1,0 +1,124 @@
+"""The commands a repository declares, and the allowlist a tutorial may use.
+
+A getting-started page whose commands do not run is worse than no page, so the
+commands come from what a manifest declares rather than from a model. The same
+list grounds the writer and gates the reviewer.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    tomllib = None
+
+# A target name, a colon, then either end of line, a dependency list, or the
+# `## ` help text convention. Rejects `CC := gcc` through the `=` lookahead,
+# `%.o:` through the character class, and `.PHONY:` through the leading dot.
+_TARGET = re.compile(r"^(?P<name>[A-Za-z][A-Za-z0-9_.-]*)\s*:(?!=)(?P<rest>[^=].*)?$")
+_HELP = re.compile(r"##\s*(?P<help>.+?)\s*$")
+
+# Universally available, and a tutorial needs them to set a scene. A command
+# head outside this set and outside the manifests is one nothing declared.
+BUILTINS = frozenset(
+    {"cd", "git", "export", "echo", "mkdir", "curl", "cat", "ls", "cp", "mv", "chmod"}
+)
+
+
+def _make_targets(path):
+    """Target names and their `## ` help text, in file order."""
+    found = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("\t") or line.lstrip().startswith("#"):
+            continue
+        match = _TARGET.match(line)
+        if not match or match["name"].startswith("."):
+            continue
+        rest = match["rest"] or ""
+        help_match = _HELP.search(rest)
+        found.append({"target": match["name"], "help": help_match["help"] if help_match else ""})
+    return found
+
+
+def _json_keys(path, *keys):
+    """A nested object's keys, or an empty list where anything is missing."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    for key in keys:
+        data = data.get(key) if isinstance(data, dict) else None
+        if data is None:
+            return []
+    return sorted(data) if isinstance(data, dict) else []
+
+
+def _docker_entrypoints(path):
+    """ENTRYPOINT and CMD lines, as written."""
+    found = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        head = line.strip().split(None, 1)
+        if len(head) == 2 and head[0].upper() in ("ENTRYPOINT", "CMD"):
+            found.append(head[1].strip())
+    return found
+
+
+def _pyproject_scripts(path):
+    if tomllib is None:
+        # 3.10 has no tomllib, and a TOML dependency for one gate is a poor
+        # trade. The bracket-section scan covers the shape the spec names.
+        names, inside = [], False
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("["):
+                inside = stripped == "[project.scripts]"
+                continue
+            if inside and "=" in stripped and not stripped.startswith("#"):
+                names.append(stripped.split("=", 1)[0].strip().strip('"'))
+        return sorted(names)
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError):
+        return []
+    return sorted((data.get("project") or {}).get("scripts") or {})
+
+
+def declared_commands(repo):
+    """Every command the repository's manifests declare, grouped by runner."""
+    root = Path(repo)
+    found = {"make": [], "npm": [], "docker": [], "python": []}
+    makefile = root / "Makefile"
+    if makefile.is_file():
+        found["make"] = _make_targets(makefile)
+    package = root / "package.json"
+    if package.is_file():
+        found["npm"] = _json_keys(package, "scripts")
+    dockerfile = root / "Dockerfile"
+    if dockerfile.is_file():
+        found["docker"] = _docker_entrypoints(dockerfile)
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file():
+        found["python"] = _pyproject_scripts(pyproject)
+    return found
+
+
+def allowlist(declared):
+    """The full command strings a document may print."""
+    allowed = set()
+    for entry in declared.get("make") or []:
+        allowed.add(f"make {entry['target']}")
+    for name in declared.get("npm") or []:
+        allowed.add(f"npm run {name}")
+    for name in declared.get("python") or []:
+        allowed.add(name)
+    return allowed
+
+
+def has_manifest(repo):
+    """Whether anything declares a runnable target. The GET-STARTED gate."""
+    declared = declared_commands(repo)
+    return any(declared[key] for key in declared)
