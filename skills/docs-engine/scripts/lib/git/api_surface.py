@@ -56,23 +56,40 @@ def rollup(fingerprints):
 def signature_of(node):
     args = node.args
     parts = []
-    for group, prefix in ((args.posonlyargs, ""), (args.args, "")):
-        parts.extend(prefix + a.arg for a in group)
-    if args.posonlyargs:
-        parts.insert(len(args.posonlyargs), "/")
+
+    def expression(value):
+        try:
+            return ast.unparse(value)
+        except Exception:
+            return ast.dump(value, include_attributes=False)
+
+    def parameter(arg, default=None, has_default=False):
+        text = arg.arg
+        if arg.annotation is not None:
+            text += f": {expression(arg.annotation)}"
+        if has_default:
+            text += f"={expression(default)}"
+        return text
+
+    positional = args.posonlyargs + args.args
+    default_offset = len(positional) - len(args.defaults)
+    for index, arg in enumerate(positional):
+        has_default = index >= default_offset
+        default = args.defaults[index - default_offset] if has_default else None
+        parts.append(parameter(arg, default, has_default))
+        if args.posonlyargs and index == len(args.posonlyargs) - 1:
+            parts.append("/")
     if args.vararg:
-        parts.append("*" + args.vararg.arg)
+        parts.append("*" + parameter(args.vararg))
     elif args.kwonlyargs:
         parts.append("*")
-    parts.extend(a.arg for a in args.kwonlyargs)
+    for arg, default in zip(args.kwonlyargs, args.kw_defaults):
+        parts.append(parameter(arg, default, default is not None))
     if args.kwarg:
-        parts.append("**" + args.kwarg.arg)
+        parts.append("**" + parameter(args.kwarg))
     returns = ""
     if node.returns is not None:
-        try:
-            returns = " -> " + ast.unparse(node.returns)
-        except Exception:
-            returns = ""
+        returns = " -> " + expression(node.returns)
     return f"{node.name}({', '.join(parts)}){returns}"
 
 
@@ -153,6 +170,8 @@ def usable_modules(out_dir):
 def load_registry(path):
     data = json.loads(Path(path).read_text())
     mapping = {}
+    if isinstance(data, dict) and isinstance(data.get("modules"), dict):
+        data = data["modules"]
     if isinstance(data, list):
         for entry in data:
             name = entry.get("name") or entry.get("module")
@@ -163,9 +182,12 @@ def load_registry(path):
                 mapping[name] = [p.rstrip("/") for p in prefixes]
     else:
         for name, prefixes in data.items():
+            if isinstance(prefixes, dict):
+                prefixes = prefixes.get("paths") or prefixes.get("path") or name
             if isinstance(prefixes, str):
                 prefixes = [prefixes]
-            mapping[name] = [p.rstrip("/") for p in prefixes]
+            if isinstance(prefixes, (list, tuple)):
+                mapping[name] = [p.rstrip("/") for p in prefixes if isinstance(p, str)]
     return mapping
 
 

@@ -1,5 +1,15 @@
 # CLI command reference
 
+## Reader questions
+
+- Who are the intended users, and what do they already know?
+- What job does the user need to accomplish with this code, feature, or tool?
+- What does the code or feature do, and what does it explicitly not do?
+- What is the shortest realistic example that shows the code or feature being used successfully?
+- What are the main concepts, components, commands, or workflows the user needs to understand?
+- What problems or errors do users commonly encounter, why do they happen, and how are they resolved?
+- How does the user verify that the installation, example, or task worked, and where should they go next?
+
 Use this reference to look up command syntax, common options, and exit codes.
 
 ## Command syntax

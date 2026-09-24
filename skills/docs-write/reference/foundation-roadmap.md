@@ -13,6 +13,11 @@ What the code says is changing. Nothing about what anyone intends.
   and that is all it is evidence of.
 - No dates. No priorities. No commitments the code does not carry.
 
+## Reader questions
+
+- What does the code or feature do, and what does it explicitly not do?
+- What are the main concepts, components, commands, or workflows the user needs to understand?
+
 ## Shape
 
 ## Deprecations

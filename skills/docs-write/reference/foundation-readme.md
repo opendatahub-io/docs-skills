@@ -11,6 +11,14 @@ repository they want.
   nothing about behaviour.
 - Never write the link list. The renderer emits it.
 
+## Reader questions
+
+- What problem does this code solve, and who has that problem?
+- Who are the intended users, and what do they already know?
+- What should the user be able to do after reading the documentation?
+- What does the code or feature do, and what does it explicitly not do?
+- What are the main concepts, components, commands, or workflows the user needs to understand?
+
 ## Shape
 
 ## What this is

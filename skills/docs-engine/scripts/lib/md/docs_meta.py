@@ -85,8 +85,9 @@ class MetaError(RuntimeError):
 # ------------------------------------------------------------- parse / render
 
 
-def parse(text):
+def parse(text, source=None):
     """Split a document into (frontmatter dict, body, had_frontmatter)."""
+    location = f"{source}: " if source is not None else ""
     if not text.startswith("---"):
         return {}, text, False
     lines = text.split("\n")
@@ -95,7 +96,7 @@ def parse(text):
             block = "\n".join(lines[1:index])
             body = "\n".join(lines[index + 1 :])
             if yaml is None:
-                raise MetaError("PyYAML is required to read frontmatter")
+                raise MetaError(f"{location}PyYAML is required to read frontmatter")
             try:
                 data = yaml.safe_load(block) or {}
             except yaml.YAMLError as exc:
@@ -103,9 +104,9 @@ def parse(text):
                 # vocabulary. A `YAMLError` reaching it from here is a
                 # different exception for the same fact, and it escaped every
                 # guard that had been written for malformed frontmatter.
-                raise MetaError(f"Frontmatter is not valid YAML: {exc}") from exc
+                raise MetaError(f"{location}Frontmatter is not valid YAML: {exc}") from exc
             if not isinstance(data, dict):
-                raise MetaError("Frontmatter is not a mapping")
+                raise MetaError(f"{location}Frontmatter is not a mapping")
             return data, body, True
     return {}, text, False
 
@@ -121,9 +122,10 @@ def _scalar(value):
     risky = (
         risky or ":" in text or text.lower() in ("true", "false", "null", "yes", "no", "on", "off")
     )
-    risky = risky or (text.replace(".", "", 1).isdigit())
+    risky = risky or (text.replace(".", "", 1).isdigit()) or "\n" in text or "\r" in text
+    risky = risky or re.search(r"\s#", text) is not None
     if risky:
-        return "'" + text.replace("'", "''") + "'"
+        return json.dumps(text, ensure_ascii=False)
     return text
 
 
@@ -170,7 +172,7 @@ def from_file(path, root, front):
     """Everything derivable from the document itself."""
     out = {}
     text = path.read_text(encoding="utf-8", errors="replace")
-    _, body, _ = parse(text)
+    _, body, _ = parse(text, source=path)
 
     heading = next(
         (line[2:].strip() for line in body.splitlines() if line.startswith("# ")),
@@ -252,7 +254,7 @@ def mark(root, sources, force=False, write=False, docs_dir=None, context=None):
     for path in walk(root, docs_dir):
         try:
             original = path.read_text(encoding="utf-8", errors="replace")
-            front, body, _ = parse(original)
+            front, body, _ = parse(original, source=path)
         except (OSError, UnicodeDecodeError, MetaError) as exc:
             # Guarded the way the sweep and the staleness join are. One page
             # nobody can parse must not leave every other page unstamped, and
@@ -272,7 +274,10 @@ def mark(root, sources, force=False, write=False, docs_dir=None, context=None):
 
         for key, value in derived.items():
             # Fill-when-absent is what keeps descriptions and tags from churning
-            # across runs. --force is the deliberate override.
+            # across runs. --force is the deliberate override, except that
+            # source inspection must never demote an explicitly managed file.
+            if key == "managed" and key in merged:
+                continue
             if force or key not in merged or merged[key] in (None, "", []):
                 merged[key] = value
 
@@ -297,9 +302,9 @@ def validate(root, strict=False, docs_dir=None):
     for path in walk(root, docs_dir):
         rel = str(path.relative_to(root))
         try:
-            front, _, had = parse(path.read_text(encoding="utf-8", errors="replace"))
+            front, _, had = parse(path.read_text(encoding="utf-8", errors="replace"), source=rel)
         except MetaError as exc:
-            errors.append(f"{rel}: {exc}")
+            errors.append(str(exc))
             continue
         if not had:
             errors.append(f"{rel}: no frontmatter")
@@ -354,7 +359,7 @@ def build_index(root, docs_dir=None):
     entries = []
     for path in walk(root, docs_dir):
         try:
-            front, _, had = parse(path.read_text(encoding="utf-8", errors="replace"))
+            front, _, had = parse(path.read_text(encoding="utf-8", errors="replace"), source=path)
         except (OSError, UnicodeDecodeError, MetaError):
             # A page nobody can parse is one the index cannot describe. The
             # reviewer reports it; listing it here would be a lie.
@@ -421,7 +426,7 @@ def stale(root, relevance, docs_dir=None):
     queued, flagged = [], []
     for path in walk(root, docs_dir):
         try:
-            front, _, had = parse(path.read_text(encoding="utf-8", errors="replace"))
+            front, _, had = parse(path.read_text(encoding="utf-8", errors="replace"), source=path)
         except (OSError, UnicodeDecodeError, MetaError):
             # This join gates the whole incremental chain, so one page nobody
             # can parse must not end the run for every page that parses.
@@ -481,7 +486,8 @@ def cmd_stale(args):
 
 
 def cmd_show(args):
-    front, body, had = parse(Path(args.file).read_text(encoding="utf-8"))
+    path = Path(args.file)
+    front, body, had = parse(path.read_text(encoding="utf-8"), source=path)
     emit({"had_frontmatter": had, "frontmatter": front, "body_lines": len(body.splitlines())})
     return 0
 

@@ -1,5 +1,15 @@
 # Container orchestration
 
+## Reader questions
+
+- What problem does this code solve, and who has that problem?
+- Who are the intended users, and what do they already know?
+- What job does the user need to accomplish with this code, feature, or tool?
+- What should the user be able to do after reading the documentation?
+- What does the code or feature do, and what does it explicitly not do?
+- What is the shortest realistic example that shows the code or feature being used successfully?
+- What are the main concepts, components, commands, or workflows the user needs to understand?
+
 Container orchestration coordinates containerized workloads across a group of machines. It manages where workloads run and keeps their actual state aligned with the state that an administrator specifies.
 
 ## How orchestration works

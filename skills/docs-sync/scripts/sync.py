@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Run the whole artifact chain, in order, and stop early when nothing moved.
 
-The CI entry point. Composes git-context, repo-analyze, the fingerprint layer,
-docs-write, docs-review, and the metadata pass. Every arrow between steps is a
-file under `.docs-gen/`, so a run can stop anywhere and resume from disk.
+The incremental entry point for user-defined automation. Composes git-context,
+repo-analyze, the fingerprint layer, docs-write, docs-review, and the metadata
+pass. Every arrow between steps is a file under `.docs-gen/`, so a run can stop
+anywhere and resume from disk.
 
     sync.py --repo . --since-watermark .docs-state.json --llm-cmd "pi -p"
     sync.py --repo . --bootstrap --max-modules 20

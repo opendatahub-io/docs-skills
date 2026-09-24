@@ -15,6 +15,11 @@ What the modules are, and the shape they make together.
 - Where `tail` reports modules that did not fit, say how many and of what kind
   rather than listing them.
 
+## Reader questions
+
+- What does the code or feature do, and what does it explicitly not do?
+- What are the main concepts, components, commands, or workflows the user needs to understand?
+
 ## Shape
 
 ## Overview

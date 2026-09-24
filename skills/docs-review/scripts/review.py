@@ -461,13 +461,13 @@ def check_evidence(doc, front, repo, report):
         if URL_SCHEME.match(entry):
             continue
         path, _, line = entry.rpartition(":")
-        if not path or not (Path(repo) / path).exists():
+        if not path or evidence_file(repo, path) is None:
             findings.append(
                 Finding(
                     "bad-evidence",
                     "warning",
                     doc,
-                    f"evidence cites {entry}, and that file is not in the repo",
+                    f"evidence cites {entry}, and that path is not a file inside the repo",
                 )
             )
     return findings
@@ -709,10 +709,24 @@ def judge_style(doc, body, llm_cmd, timeout, limit=12000, assets=None):
     return findings
 
 
+def evidence_file(repo, path):
+    """Resolve a relative evidence path without allowing it to leave the repo."""
+    root = Path(repo).resolve()
+    relative = Path(path)
+    if relative.is_absolute() or ".." in relative.parts:
+        return None
+    try:
+        target = (root / relative).resolve()
+        target.relative_to(root)
+    except (OSError, RuntimeError, ValueError):
+        return None
+    return target if target.is_file() else None
+
+
 def read_evidence(repo, reference, span=6):
     path, _, line = reference.rpartition(":")
-    target = Path(repo) / path
-    if not target.exists() or not line.isdigit():
+    target = evidence_file(repo, path)
+    if target is None or not line.isdigit():
         return None
     lines = target.read_text(errors="replace").splitlines()
     index = int(line) - 1

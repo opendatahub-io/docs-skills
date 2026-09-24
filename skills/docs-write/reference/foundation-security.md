@@ -12,6 +12,11 @@ The security surface this repository actually has, and nothing else.
 - No vulnerability reporting process unless the evidence carries one. That
   belongs to a policy file, which a maintainer owns.
 
+## Reader questions
+
+- What does the code or feature do, and what does it explicitly not do?
+- What are the main concepts, components, commands, or workflows the user needs to understand?
+
 ## Shape
 
 ## Surface

@@ -1,5 +1,16 @@
 # Install the command-line tool
 
+## Reader questions
+
+- Who are the intended users, and what do they already know?
+- What job does the user need to accomplish with this code, feature, or tool?
+- What should the user be able to do after reading the documentation?
+- What does the code or feature do, and what does it explicitly not do?
+- What are the prerequisites, dependencies, environment requirements, and installation steps?
+- What is the shortest realistic example that shows the code or feature being used successfully?
+- What problems or errors do users commonly encounter, why do they happen, and how are they resolved?
+- How does the user verify that the installation, example, or task worked, and where should they go next?
+
 Install the command-line tool on a workstation so that you can run it from your terminal.
 
 ## Prerequisites

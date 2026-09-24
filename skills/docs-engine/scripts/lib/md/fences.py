@@ -8,10 +8,10 @@ import sys
 from pathlib import Path
 
 BEGIN = re.compile(
-    r"^(?P<indent>[ \t]*)<!--[ \t]*docs-gen:begin(?P<attrs>[^>]*?)-->[ \t]*$",
+    r"^(?P<indent>[ \t]*)<!--[ \t]*docs-gen:begin(?P<attrs>[^>]*?)-->[ \t]*\r?$",
     re.MULTILINE,
 )
-END = re.compile(r"^[ \t]*<!--[ \t]*docs-gen:end[ \t]*-->[ \t]*$", re.MULTILINE)
+END = re.compile(r"^[ \t]*<!--[ \t]*docs-gen:end[ \t]*-->[ \t]*\r?$", re.MULTILINE)
 ATTR = re.compile(r"(?P<key>[a-zA-Z_][a-zA-Z0-9_-]*)=(?P<value>\"[^\"]*\"|\S+)")
 
 

@@ -26,7 +26,10 @@ A document whose gate fails is skipped with the gate named, never scaffolded wit
 
 Module detail is not published. It persists as committed JSON under `.docs-gen/<run>/`, where it grounds the five documents. A stale entry there is a cache miss the registry hash detects, rather than a sentence a reader believes.
 
-`/docs-sync` keeps that documentation current. It compares an API fingerprint against a watermark, rewrites the documents citing a module that moved, and stops early when nothing changed. This is the one for CI.
+`/docs-sync` keeps that documentation current. It compares an API fingerprint
+against a watermark, rewrites the documents citing a module that moved, and
+stops early when nothing changed. You can call it from CI. Each repository owns
+its triggers, secret handling, permissions, and pull-request behavior.
 
 ```cmd
 /docs: --help

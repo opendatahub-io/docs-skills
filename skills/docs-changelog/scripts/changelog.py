@@ -82,6 +82,7 @@ SECTIONS = [
 HIDDEN = {"chore", "style", "test", "ci", "build"}
 
 MARKER = re.compile(r"<!-- changelog:begin -->.*?<!-- changelog:end -->", re.DOTALL)
+RELEASE_HEADING = re.compile(r"^## (?!#).+$", re.MULTILINE)
 
 
 # ------------------------------------------------------------- deterministic
@@ -193,6 +194,28 @@ def summarize(context, llm_cmd, timeout):
 # ------------------------------------------------------------------- merging
 
 
+def release_key(block):
+    """Version label from a generated release heading, without its date."""
+    first = block.splitlines()[0] if block.splitlines() else ""
+    if not first.startswith("## "):
+        return None
+    return re.sub(r" \(\d{4}-\d{2}-\d{2}\)$", "", first[3:])
+
+
+def merge_releases(previous, block):
+    """Prepend a new release, replacing that version if it already exists."""
+    key = release_key(block)
+    if key:
+        headings = list(RELEASE_HEADING.finditer(previous))
+        for index, match in enumerate(headings):
+            end = headings[index + 1].start() if index + 1 < len(headings) else len(previous)
+            if release_key(previous[match.start() : end].strip()) == key:
+                return previous[: match.start()] + block + previous[end:]
+
+    previous = previous.strip()
+    return f"{block}\n\n{previous}" if previous else block
+
+
 def merge(existing, block):
     """Prepend a release section, keeping everything already written.
 
@@ -212,11 +235,12 @@ def merge(existing, block):
         return docs_meta.render(front, body)
 
     if MARKER.search(existing):
-        return MARKER.sub(
-            lambda _: f"<!-- changelog:begin -->\n{block}\n<!-- changelog:end -->",
-            existing,
-            count=1,
-        )
+        match = MARKER.search(existing)
+        marked = match.group()
+        previous = marked[len("<!-- changelog:begin -->") : -len("<!-- changelog:end -->")]
+        releases = merge_releases(previous.strip(), block)
+        replacement = f"<!-- changelog:begin -->\n{releases}\n<!-- changelog:end -->"
+        return existing[: match.start()] + replacement + existing[match.end() :]
 
     front, body, had = docs_meta.parse(existing)
     lines = body.splitlines()
@@ -225,7 +249,10 @@ def merge(existing, block):
         if line.startswith("# "):
             insert = index + 1
             break
-    merged = "\n".join(lines[:insert]) + f"\n\n{block}\n\n" + "\n".join(lines[insert:])
+    before = "\n".join(lines[:insert]).strip()
+    after = "\n".join(lines[insert:]).strip()
+    marked = f"<!-- changelog:begin -->\n{block}\n<!-- changelog:end -->"
+    merged = "\n\n".join(part for part in (before, marked, after) if part)
     return docs_meta.render(front, merged) if had else merged
 
 

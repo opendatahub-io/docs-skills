@@ -1,6 +1,6 @@
 ---
 name: docs-sync
-description: Keep a repository's Markdown documentation current with its code. Runs the whole chain — history, module registry, API fingerprints, change relevance, writing, review, metadata, changelog — and stops early when nothing changed. The CI entry point.
+description: Keep a repository's Markdown documentation current with its code. Runs the whole chain — history, module registry, API fingerprints, change relevance, writing, review, metadata, changelog — and stops early when nothing changed. The incremental entry point for user-defined automation.
 argument-hint: <repo-path> [--bootstrap | --since-watermark FILE] [--llm-cmd CMD]
 allowed-tools: Bash, Read, Write
 ---
@@ -50,7 +50,9 @@ artifacts it already produced, and the next run picks up from them.
 | 3 | Review found errors, or a step failed |
 | 5 | Every write was refused by the ownership contract |
 
-CI treats 1 as success and opens no pull request.
+Treat 1 as a successful no-op in automation. `docs-sync` does not create pull
+requests; configure your CI system to handle generated files and review for
+your repository.
 
 ## The loop guard
 
