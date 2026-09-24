@@ -19,6 +19,7 @@ if not (ENGINE / "scripts" / "lib" / "run" / "step.py").exists():
     )
 sys.path.insert(0, str(ENGINE / "scripts"))
 
+from lib.foundation import commands as foundation_commands  # noqa: E402
 from lib.git import api_surface  # noqa: E402
 from lib.md import docs_meta, fences, render  # noqa: E402
 from lib.run import step  # noqa: E402
@@ -331,6 +332,89 @@ def check_staleness(doc, front, relevance, head):
             modules=moved,
         )
     ]
+
+
+SHELL_FENCES = ("bash", "sh", "shell", "console", "terminal")
+# What separates one command from the next on a line. A reader runs every one
+# of them, so every one is checked.
+_SEPARATORS = ("&&", "||", "|", ";")
+# A runner whose first argument names the thing being run, so the head is two
+# words rather than one. `make build` is declared; `make` alone is not.
+_SUBCOMMAND_RUNNERS = ("make", "npm", "uv", "go", "cargo", "just")
+
+
+def command_heads(text):
+    """`(line_number, head)` for every command inside a shell fence.
+
+    A head is the command as a reader would type it, which for a declared
+    target is two words. A leading `VAR=value` is environment rather than a
+    command, so it is stepped over.
+    """
+    found = []
+    fence = None
+    for number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            info = stripped[3:].strip().lower()
+            fence = info if fence is None else None
+            continue
+        if fence not in SHELL_FENCES or not stripped:
+            continue
+        body = stripped[1:].strip() if stripped.startswith("$") else stripped
+        for part in _split_commands(body):
+            head = _command_head(part)
+            if head:
+                found.append((number, head))
+    return found
+
+
+def _split_commands(line):
+    parts = [line]
+    for separator in _SEPARATORS:
+        split = []
+        for part in parts:
+            split.extend(part.split(separator))
+        parts = split
+    return [part.strip() for part in parts if part.strip()]
+
+
+def _command_head(part):
+    """What a fragment runs, with its subcommand where the runner takes one."""
+    words = part.split()
+    while words and "=" in words[0] and not words[0].startswith("-"):
+        words = words[1:]
+    if not words:
+        return ""
+    if len(words) >= 3 and words[0] == "npm" and words[1] == "run":
+        return " ".join(words[:3])
+    if len(words) >= 2 and words[0] in _SUBCOMMAND_RUNNERS:
+        return " ".join(words[:2])
+    return words[0]
+
+
+def check_commands(doc, allowed):
+    """Findings for every command head nothing in the repository declares.
+
+    The writer is handed this same allowlist as evidence. This is the half
+    that does not rest on the model having honoured it: a tutorial whose
+    commands do not exist sends a reader somewhere that is not there.
+    """
+    text = Path(doc).read_text(encoding="utf-8", errors="replace")
+    findings = []
+    for number, head in command_heads(text):
+        if head in allowed or head.split()[0] in foundation_commands.BUILTINS:
+            continue
+        findings.append(
+            Finding(
+                "command",
+                "warning",
+                str(doc),
+                f"`{head}` is declared by no manifest in this repository. "
+                "A reader running it gets an error.",
+                line=number,
+            )
+        )
+    return findings
 
 
 def check_fences(doc, text, front, head):
@@ -802,6 +886,9 @@ def main(argv=None):
     # a human's wording in a file the writer will never touch leaves nobody
     # able to clear the block.
     lintable = [page for page in pages if not page.is_manual]
+    # Read once rather than per page: `declared_commands` opens four manifests
+    # and only the getting-started document is checked against them.
+    allowed_commands = foundation_commands.allowlist(foundation_commands.declared_commands(repo))
     for page in pages:
         path, rel, text, front, body = page.path, page.rel, page.text, page.front, page.body
         findings += check_frontmatter(
@@ -814,6 +901,8 @@ def main(argv=None):
         )
         findings += check_fences(rel, text, front, head)
         findings += check_evidence(rel, front, repo, evidence_by_doc.get(rel, {}))
+        if front.get("foundation") == "get-started":
+            findings += check_commands(path, allowed_commands)
 
     if args.vale_config:
         targets, doc_names = prose_targets(lintable, out_dir)
