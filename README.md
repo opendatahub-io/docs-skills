@@ -223,17 +223,10 @@ generate:
 
 `llm_cmd` is the command every step runs. `llm_cmd_steps` overrides it for the steps you name.
 
-A named step spawns the command it names, as its own process with its own model. Every step you do not name goes to the session's own model.
-
-The entry is a command rather than a model pattern, which is what lets a step use a runner that is not pi at all:
-
-```yaml
-  llm_cmd_steps:
-    plan:   "pi -p -nt --offline --model openai/gpt-5.6-luna:high"
-    review: "claude -p"
-```
-
-Add `-nt` to a pinned `pi` command. Without it the spawned pi runs its full agent loop with tools, and every step here wants a single completion that returns JSON. `--offline` skips pi's startup network calls.
+A named step spawns the command it names as its own process. Every step you do
+not name uses the session's model. For a pinned Pi command, add `-nt` so the
+process returns one JSON completion instead of entering its tool loop.
+`--offline` skips Pi's startup network calls.
 
 ## Ownership
 

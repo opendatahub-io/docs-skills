@@ -37,9 +37,6 @@ the way, so a tree above the skills does not survive installation. It does place
 every skill as a flat sibling, which is what the other skills use to reach the
 engine.
 
-There are no `agents/`, `hooks/`, or `eval/` directories. Subagent definitions
-went with the ticket-driven pipeline they served.
-
 ## The two entry points
 
 `/docs` writes the foundation set over one repository: git context, repository
@@ -47,8 +44,8 @@ analysis, the evidence gates, a document per surviving deliverable, then
 review. The set is README, GET-STARTED, ARCHITECTURE, SECURITY and ROADMAP.
 Each is written only where the repository holds evidence for it, and a
 document with nothing behind it is skipped with its gate named rather than
-scaffolded with blanks to fill in. `--topic` keeps the older planner prompt
-for a named subject.
+scaffolded with blanks to fill in. `--topic` uses the topic planner prompt for
+a named subject.
 
 `/docs-sync` runs the incremental chain for CI: the same analysis, an API
 fingerprint diff against the watermark, then a rewrite of the documents citing
@@ -60,7 +57,7 @@ committed JSON under `.docs-gen/<run>/`, where it grounds the five documents
 and no reader browses it: a stale entry there is a cache miss the registry
 hash detects rather than a sentence somebody believes.
 
-Both spawn the same engine and read the same `.docs-gen.yaml`.
+Both commands use the same engine and read the same `.docs-gen.yaml`.
 
 ## Calling scripts from skills
 
@@ -84,9 +81,9 @@ the skills side by side.
 
 ## Conventions
 
-**No harness variables.** Nothing reads `${CLAUDE_PLUGIN_ROOT}` or
-`${CLAUDE_SKILL_DIR}`, because no harness sets a plugin root. A Python script
-finds the engine by its fixed position as a sibling:
+**No harness-specific paths.** Skills cannot rely on variables set by a host
+application. A Python script finds the engine by its fixed position as a
+sibling:
 
 ```python
 ENGINE = Path(__file__).resolve().parents[2] / "docs-engine"
@@ -138,9 +135,6 @@ a prompt, where it costs tokens on every call.
 **Skills** (invoked via the Skill tool) use bare names: `docs`, `docs-sync`,
 `docs-write`, `docs-query-code`. Qualified names (`docs-skills:docs-sync`) also
 work.
-
-There are no agents to name. Every model step is a `step.py` invocation rather
-than a subagent dispatch.
 
 ## Coding guidelines
 
