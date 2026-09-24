@@ -785,16 +785,54 @@ def write_from_plan(repo, out_dir, args):
         commits=commits,
         marker=marker,
     )
-    report, code = write_report(out_dir, args.docs_dir, outcome["results"], plan)
+    results = outcome["results"]
+    if getattr(args, "prune_orphans", False):
+        pruned = prune_orphans(repo, args.docs_dir, plan)
+        if pruned:
+            log(f"pruned {len(pruned)} orphaned document(s)")
+        results = results + pruned
+    report, code = write_report(out_dir, args.docs_dir, results, plan)
     if not changeset_dir:
         # Writing in place: there is no changeset to prune and no index to put
         # beside documents that are already where they belong.
         return code
-    removals = changeset.prune(repo, changeset_dir, outcome["results"])
+    removals = changeset.prune(repo, changeset_dir, results)
     index_path = Path(changeset_dir) / "index.md"
     index_path.parent.mkdir(parents=True, exist_ok=True)
     index_path.write_text(changeset.index(report, removals))
     return code
+
+
+def prune_orphans(repo, docs_dir, plan):
+    """Delete pages this tool generated that the plan no longer claims.
+
+    `docs-review` reports these and never removes them, because a generated
+    page can carry inbound links from hand-written ones. Deleting is a
+    separate, asked-for act, which is what this flag is.
+
+    The `generator` stamp is what separates a page this tool wrote from one
+    somebody marked `generated` by hand, and a `manual` page is never touched.
+    """
+    root = Path(repo) / docs_dir
+    if not root.is_dir():
+        return []
+    claimed = {item["path"] for item in (plan.get("deliverables") or []) if item.get("path")}
+    removed = []
+    for path in sorted(root.rglob("*.md")):
+        rel = str(path.relative_to(repo))
+        if rel in claimed:
+            continue
+        try:
+            front, _, had = docs_meta.parse(path.read_text())
+        except (OSError, UnicodeDecodeError, docs_meta.MetaError):
+            continue
+        if not had or front.get("managed") != "generated":
+            continue
+        if not str(front.get("generator", "")).startswith("docs-skills/"):
+            continue
+        path.unlink()
+        removed.append({"path": rel, "status": "pruned", "reason": "no deliverable claims it"})
+    return removed
 
 
 def _deliverable_from_document(repo, rel):
@@ -901,6 +939,11 @@ def build_parser():
             "Where this run's new documents land, and the only directory pruned. "
             "Omit to write in place and prune nothing"
         ),
+    )
+    picks.add_argument(
+        "--prune-orphans",
+        action="store_true",
+        help="Delete pages this tool generated that the plan no longer claims",
     )
     picks.add_argument("--changes", default=None, help="changes.json, for commit evidence")
     picks.add_argument(

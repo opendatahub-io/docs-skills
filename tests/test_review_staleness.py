@@ -51,3 +51,22 @@ def test_a_page_covering_nothing_that_moved_is_not_stale():
         "abc1234",
     )
     assert findings == []
+
+
+def test_the_sweep_survives_a_page_whose_frontmatter_will_not_parse(tmp_path):
+    """One malformed page must not end the sweep for every other page.
+
+    `docs_meta.MetaError` subclasses `RuntimeError`, so a `ValueError` catch
+    here never caught it and a single badly formatted file crashed the whole
+    review step. The sweep reads every page under `docs_dir`, so the blast
+    radius was the entire run.
+    """
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "broken.md").write_text("---\n: : not: yaml: at all\n---\n\n# B\n")
+    (docs / "fine.md").write_text(
+        "---\ntitle: F\nmanaged: generated\nsource_modules:\n  - pkg/a\n"
+        "source_sha: old1234\n---\n\n# F\n"
+    )
+    found = review.stale_sweep(tmp_path, "docs", {"rebuild": ["pkg/a"]}, "new5678")
+    assert [entry["doc"] for entry in found] == ["docs/fine.md"]
